@@ -1,0 +1,40 @@
+@FFI("C")
+extern fn printf(format: Byte^, ...) -> Int32
+
+@FFI("C")
+extern fn time(ret: Int64^) -> Int64
+
+@FFI
+(
+	"C"
+)
+extern fn getchar() -> Int32
+
+fn doTheThing(n: Int32) -> Int32 #=hello=#
+	printf("Normal function-call syntax%s\n", ".")
+	"Here is a number: %d\n" -> printf(n)
+	
+	return 17
+
+fn theMeaningOfLifeTheUniverseAndEverything() -> Int32 { return 42 }
+
+#========================================================
+	This is the documentation for the `main` function, 
+	which is the entry point for the application
+========================================================#
+fn main()
+	let xyz = 123
+	
+	doTheThing( doTheThing( theMeaningOfLifeTheUniverseAndEverything() ) )
+	printf("The time is: %d\nAnd here is the value of a local variable: %d\n", time(0), xyz)
+	
+	let mut c = getchar()
+	
+	if c + 1 * 1 + 2 - 2 == 97
+		printf("You typed the letter 'a'.\n")
+	else
+		printf("You did not type the letter 'a'. You typed '%c'\n", c)
+	
+	printf("%c%c%c%c%c%c%c!\n",
+			103, 111, 111, 100,
+			98, 121, 101)
