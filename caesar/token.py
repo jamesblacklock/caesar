@@ -15,18 +15,31 @@ class TokenType(Enum):
 	LBRACK = 'LBRACK'
 	RBRACK = 'RBRACK'
 	COLON = 'COLON'
+	DOT = 'DOT'
 	CARET = 'CARET'
 	COMMA = 'COMMA'
 	ELLIPSIS = 'ELLIPSIS'
 	ARROW = 'ARROW'
-	PLUS = 'PLUS'
-	MINUS = 'MINUS'
+	LSHIFT = 'LSHIFT'
+	RSHIFT = 'RSHIFT'
 	TIMES = 'TIMES'
 	DIV = 'DIV'
+	MODULO = 'MODULO'
+	PLUS = 'PLUS'
+	MINUS = 'MINUS'
+	BITAND = 'BITAND'
+	BITOR = 'BITOR'
+	RNGCLOSED = 'RNGCLOSED'
+	RNGOPEN = 'RNGOPEN'
+	EQ = 'EQ'
+	NEQ = 'NEQ'
 	GREATER = 'GREATER'
 	LESS = 'LESS'
+	GREATEREQ = 'GREATEREQ'
+	LESSEQ = 'LESSEQ'
+	AND = 'AND'
+	OR = 'OR'
 	ASGN = 'ASGN'
-	EQ = 'EQ'
 	SEMICOLON = 'SEMICOLON'
 	INTEGER = 'INTEGER'
 	STRING = 'STRING'
@@ -71,6 +84,8 @@ class TokenType(Enum):
 			return '`]`'
 		elif self == TokenType.COLON:
 			return '`:`'
+		elif self == TokenType.DOT:
+			return '`.`'
 		elif self == TokenType.CARET:
 			return '`^`'
 		elif self == TokenType.COMMA:
@@ -79,22 +94,46 @@ class TokenType(Enum):
 			return '`...`'
 		elif self == TokenType.ARROW:
 			return '`->`'
-		elif self == TokenType.PLUS:
-			return '`+`'
-		elif self == TokenType.MINUS:
-			return '`-`'
+		elif self == TokenType.LSHIFT:
+			return '`<<`'
+		elif self == TokenType.RSHIFT:
+			return '`>>`'
 		elif self == TokenType.TIMES:
 			return '`*`'
 		elif self == TokenType.DIV:
 			return '`/`'
+		elif self == TokenType.MODULO:
+			return '`%`'
+		elif self == TokenType.PLUS:
+			return '`+`'
+		elif self == TokenType.MINUS:
+			return '`-`'
+		elif self == TokenType.BITAND:
+			return '`&`'
+		elif self == TokenType.BITOR:
+			return '`|`'
+		elif self == TokenType.RNGCLOSED:
+			return '`..<`'
+		elif self == TokenType.RNGOPEN:
+			return '`..=`'
+		elif self == TokenType.EQ:
+			return '`==`'
+		elif self == TokenType.NEQ:
+			return '`!=`'
 		elif self == TokenType.GREATER:
 			return '`>`'
 		elif self == TokenType.LESS:
 			return '`<`'
+		elif self == TokenType.GREATEREQ:
+			return '`>=`'
+		elif self == TokenType.LESSEQ:
+			return '`<=`'
+		elif self == TokenType.AND:
+			return '`&&`'
+		elif self == TokenType.OR:
+			return '`||`'
 		elif self == TokenType.ASGN:
 			return '`=`'
-		elif self == TokenType.EQ:
-			return '`==`'
 		elif self == TokenType.SEMICOLON:
 			return '`;`'
 		elif self == TokenType.INTEGER:
@@ -144,5 +183,5 @@ class Token:
 	def __repr__(self):
 		return self.__str__()
 
-def revealToken(source, token, message=''):
-	return revealSpan(source, token.span, message)
+def revealToken(token, message=''):
+	return revealSpan(token.span, message)

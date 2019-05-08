@@ -1,3 +1,4 @@
+import re
 from enum import Enum
 from .token import TokenType, revealToken
 from .span import Span, revealSpan, AnsiColor
@@ -14,6 +15,7 @@ class ParserState:
 		self.tok               = self.tokens[0]
 		self.eof               = self.tok.type == TokenType.EOF
 		self.indentLevels      = [0]
+		self.failed            = False
 	
 	def advance(self):
 		if self.eof:
@@ -72,6 +74,138 @@ class ParserState:
 
 
 #######################
+#  Operators & Types
+#######################
+
+# ->
+# << >>
+# * / %
+# + -
+# & ^ |
+# ..< ...
+# < <= > >= == !=
+# &&
+# ||
+
+INFIX_OPS = {
+	TokenType.ARROW:     900, 
+	TokenType.LSHIFT:    800, 
+	TokenType.RSHIFT:    800, 
+	TokenType.TIMES:     700,
+	TokenType.DIV:       700,
+	TokenType.MODULO:    700, 
+	TokenType.PLUS:      600, 
+	TokenType.MINUS:     600,
+	TokenType.BITAND:    500, 
+	TokenType.BITOR:     500, 
+	TokenType.CARET:     500, 
+	TokenType.RNGCLOSED: 400, 
+	TokenType.RNGOPEN:   400, 
+	TokenType.EQ:        300, 
+	TokenType.NEQ:       300, 
+	TokenType.GREATER:   300, 
+	TokenType.LESS:      300,
+	TokenType.GREATEREQ: 300, 
+	TokenType.LESSEQ:    300,
+	TokenType.AND:       200, 
+	TokenType.OR:        100
+}
+
+class InfixOp(Enum):
+	ARROW = 'ARROW'
+	LSHIFT = 'LSHIFT'
+	RSHIFT = 'RSHIFT'
+	TIMES = 'TIMES'
+	DIV = 'DIV'
+	MODULO = 'MODULO'
+	PLUS = 'PLUS'
+	MINUS = 'MINUS'
+	BITAND = 'BITAND'
+	BITOR = 'BITOR'
+	BITXOR = 'BITXOR'
+	RNGCLOSED = 'RNGCLOSED'
+	RNGOPEN = 'RNGOPEN'
+	EQ = 'EQ'
+	NEQ = 'NEQ'
+	GREATER = 'GREATER'
+	LESS = 'LESS'
+	GREATEREQ = 'GREATEREQ'
+	LESSEQ = 'LESSEQ'
+	AND = 'AND'
+	OR = 'OR'
+	
+	@staticmethod
+	def fromTokenType(type):
+		if type == TokenType.ARROW:
+			return InfixOp.ARROW
+		elif type == TokenType.LSHIFT:
+			return InfixOp.LSHIFT
+		elif type == TokenType.RSHIFT:
+			return InfixOp.RSHIFT
+		elif type == TokenType.TIMES:
+			return InfixOp.TIMES
+		elif type == TokenType.DIV:
+			return InfixOp.DIV
+		elif type == TokenType.MODULO:
+			return InfixOp.MODULO
+		elif type == TokenType.PLUS:
+			return InfixOp.PLUS
+		elif type == TokenType.MINUS:
+			return InfixOp.MINUS
+		elif type == TokenType.BITAND:
+			return InfixOp.BITAND
+		elif type == TokenType.BITOR:
+			return InfixOp.BITOR
+		elif type == TokenType.CARET:
+			return InfixOp.BITXOR
+		elif type == TokenType.RNGCLOSED:
+			return InfixOp.RNGCLOSED
+		elif type == TokenType.RNGOPEN:
+			return InfixOp.RNGOPEN
+		elif type == TokenType.EQ:
+			return InfixOp.EQ
+		elif type == TokenType.NEQ:
+			return InfixOp.NEQ
+		elif type == TokenType.GREATER:
+			return InfixOp.GREATER
+		elif type == TokenType.LESS:
+			return InfixOp.LESS
+		elif type == TokenType.GREATEREQ:
+			return InfixOp.GREATEREQ
+		elif type == TokenType.LESSEQ:
+			return InfixOp.LESSEQ
+		elif type == TokenType.AND:
+			return InfixOp.AND
+		elif type == TokenType.OR:
+			return InfixOp.OR
+		else:
+			return None
+
+class Type:
+	def __init__(self, name, byteSize):
+		self.name = name
+		self.byteSize = byteSize
+
+PLATFORM_WORD_SIZE = 8
+BUILTIN_TYPES = [
+	Type('Bool',    1),
+	Type('Int8',    1),
+	Type('UInt8',   1),
+	Type('Int16',   2),
+	Type('UInt16',  2),
+	Type('Int32',   4),
+	Type('UInt32',  4),
+	Type('Char',    4),
+	Type('Int64',   8),
+	Type('UInt64',  8),
+	Type('ISize',   PLATFORM_WORD_SIZE),
+	Type('USize',   PLATFORM_WORD_SIZE),
+	Type('Float32', 4),
+	Type('Float64', 8)
+]
+
+
+#######################
 #  AST structs
 #######################
 
@@ -107,25 +241,19 @@ class ModAST:
 		self.importDecls = []
 		self.fnDecls = []
 		self.staticDecls = []
+		
+		for type in BUILTIN_TYPES:
+			self.symbolTable[type.name] = type
 	
 	def declImport(self, decl):
-		if decl.name in self.symbolTable:
-			raise CsrCompileError('the name `{}` is declared multiple times'.format(decl.name))
-		
 		self.symbolTable[decl.name] = decl
 		self.importDecls.append(decl)
 	
 	def declStatic(self, decl):
-		if decl.name in self.symbolTable:
-			raise CsrCompileError('the name `{}` is declared multiple times'.format(decl.name))
-		
 		self.symbolTable[decl.name] = decl
 		self.staticDecls.append(decl)
 	
 	def declFn(self, decl):
-		if decl.name in self.symbolTable:
-			raise CsrCompileError('the name `{}` is declared multiple times'.format(decl.name))
-		
 		self.symbolTable[decl.name] = decl
 		self.fnDecls.append(decl)
 
@@ -194,8 +322,9 @@ class StrLitAST:
 		self.span = span
 
 class IntLitAST:
-	def __init__(self, value, span):
+	def __init__(self, value, suffix, span):
 		self.value = value
+		self.suffix = suffix
 		self.span = span
 
 class TupleLitAST:
@@ -219,117 +348,12 @@ class InfixOpAST:
 
 
 #######################
-#  Operators
-#######################
-
-# ->
-# << >>
-# * / %
-# + -
-# & ^ |
-# ..< ...
-# < <= > >= == !=
-# &&
-# ||
-
-INFIX_OPS = {
-	TokenType.ARROW:     900, 
-	# TokenType.LSHIFT:    800, 
-	# TokenType.RSHIFT:    800, 
-	TokenType.TIMES:     700,
-	TokenType.DIV:       700,
-	# TokenType.MODULO:    700, 
-	TokenType.PLUS:      600, 
-	TokenType.MINUS:     600,
-	# TokenType.BITAND:    500, 
-	# TokenType.BITOR:     500, 
-	# TokenType.BITXOR:    500, 
-	# TokenType.RNGCLOSED: 400, 
-	# TokenType.RNGOPEN:   400, 
-	TokenType.EQ:        300, 
-	# TokenType.NEQ:       300, 
-	TokenType.GREATER:   300, 
-	TokenType.LESS:      300,
-	# TokenType.GREATEREQ: 300, 
-	# TokenType.LESSEQ:    300,
-	# TokenType.AND:       200, 
-	# TokenType.OR:        100
-}
-
-class InfixOp(Enum):
-	ARROW = 'ARROW'
-	LSHIFT = 'LSHIFT'
-	RSHIFT = 'RSHIFT'
-	TIMES = 'TIMES'
-	DIV = 'DIV'
-	MODULO = 'MODULO'
-	PLUS = 'PLUS'
-	MINUS = 'MINUS'
-	BITAND = 'BITAND'
-	BITOR = 'BITOR'
-	BITXOR = 'BITXOR'
-	RNGCLOSED = 'RNGCLOSED'
-	RNGOPEN = 'RNGOPEN'
-	EQ = 'EQ'
-	NEQ = 'NEQ'
-	GREATER = 'GREATER'
-	LESS = 'LESS'
-	GREATEREQ = 'GREATEREQ'
-	LESSEQ = 'LESSEQ'
-	AND = 'AND'
-	OR = 'OR'
-	
-	@staticmethod
-	def fromTokenType(type):
-		if type == TokenType.ARROW:
-			return InfixOp.ARROW
-		# elif type == TokenType.LSHIFT:
-		# 	return InfixOp.LSHIFT
-		# elif type == TokenType.RSHIFT:
-		# 	return InfixOp.RSHIFT
-		elif type == TokenType.TIMES:
-			return InfixOp.TIMES
-		elif type == TokenType.DIV:
-			return InfixOp.DIV
-		# elif type == TokenType.MODULO:
-		# 	return InfixOp.MODULO
-		elif type == TokenType.PLUS:
-			return InfixOp.PLUS
-		elif type == TokenType.MINUS:
-			return InfixOp.MINUS
-		# elif type == TokenType.BITAND:
-		# 	return InfixOp.BITAND
-		# elif type == TokenType.BITOR:
-		# 	return InfixOp.BITOR
-		# elif type == TokenType.BITXOR:
-		# 	return InfixOp.BITXOR
-		# elif type == TokenType.RNGCLOSED:
-		# 	return InfixOp.RNGCLOSED
-		# elif type == TokenType.RNGOPEN:
-		# 	return InfixOp.RNGOPEN
-		elif type == TokenType.EQ:
-			return InfixOp.EQ
-		# elif type == TokenType.NEQ:
-		# 	return InfixOp.NEQ
-		elif type == TokenType.GREATER:
-			return InfixOp.GREATER
-		elif type == TokenType.LESS:
-			return InfixOp.LESS
-		# elif type == TokenType.GREATEREQ:
-		# 	return InfixOp.GREATEREQ
-		# elif type == TokenType.LESSEQ:
-		# 	return InfixOp.LESSEQ
-		# elif type == TokenType.AND:
-		# 	return InfixOp.AND
-		# elif type == TokenType.OR:
-		# 	return InfixOp.OR
-		else:
-			return None
-
-
-#######################
 #  Parser
 #######################
+
+def logError(state, token, message):
+	state.failed = True
+	print(revealToken(token, message))
 
 def expectIndent(state):
 	if state.tok.span.startColumn != 1:
@@ -342,8 +366,8 @@ def expectIndent(state):
 	
 	level = 0 if indentTok == None else len(indentTok.content)
 	if level != state.indentLevel:
-		print(revealToken(state.source, state.tok, 'expected indent level {}, found level {}'
-				.format(state.indentLevel, level)))
+		logError(state, state.tok, 'expected indent level {}, found level {}'
+				.format(state.indentLevel, level))
 		return False
 	
 	return True
@@ -370,7 +394,7 @@ def expectIndentIncrease(state):
 	
 	level = 0 if indentTok == None else len(indentTok.content)
 	if level <= state.indentLevel:
-		print(revealToken(state.source, state.tok, 'expected indented block'))
+		logError(state, state.tok, 'expected indented block')
 		return False
 	else:
 		state.pushIndentLevel(level)
@@ -387,7 +411,7 @@ def expectIndentOrIndentIncrease(state):
 	
 	level = 0 if indentTok == None else len(indentTok.content)
 	if level < state.indentLevel:
-		print(revealToken(state.source, state.tok, 'expected indented block'))
+		logError(state, state.tok, 'expected indented block')
 		return False
 	else:
 		if level > state.indentLevel:
@@ -398,8 +422,8 @@ def expectType(state, *types):
 	if state.tok.type not in types:
 		typesStr = ', '.join([type.desc() for type in types[0:-1]]) + \
 			(',' if len(types) > 2 else '') + (' or ' if len(types) > 1 else '') + types[-1].desc()
-		print(revealToken(state.source, state.tok, 'expected {}, found {}'
-				.format(typesStr, state.tok.type.desc())))
+		logError(state, state.tok, 'expected {}, found {}'
+				.format(typesStr, state.tok.type.desc()))
 		return False
 	else:
 		return True
@@ -453,7 +477,7 @@ def parseFnDeclParams(state):
 			ret = state.tok
 			state.advance()
 			if state.tok.type != TokenType.RPAREN:
-				print(revealToken(state.source, ret, 'C variadic parameter must come last'))
+				logError(state, ret, 'C variadic parameter must come last')
 				return None
 			
 			return ret
@@ -531,7 +555,7 @@ def parseBlock(state, parseItem, sepType=TokenType.SEMICOLON,
 		state.advance()
 		state.skipEmptyLines()
 	elif requireBlockMarkers:
-		print(revealToken(state.source, state.tok, 'expected {}, found {}'.format(openMarker, state.tok.type.desc())))
+		logError(state, state.tok, 'expected {}, found {}'.format(openMarker, state.tok.type.desc()))
 		state.skipUntil(TokenType.NEWLINE)
 		return Block([], startSpan, False)
 	
@@ -552,7 +576,7 @@ def parseBlock(state, parseItem, sepType=TokenType.SEMICOLON,
 		if onOneLine or state.tok.type == TokenType.COMMENT:
 			state.skipSpace()
 		elif state.tok.type == TokenType.SPACE:
-			print(revealToken(state.source, state.tok, 'expected expression, found space'))
+			logError(state, state.tok, 'expected expression, found space')
 		
 		if needsTerm and state.tok.type == closeMarker or state.tok.type == TokenType.EOF:
 			if needsTerm: expectType(state, closeMarker)
@@ -690,12 +714,15 @@ def parseValueExpr(state, precedence=0):
 		expr = StrLitAST(state.tok.content, state.tok.span)
 		state.advance()
 	elif state.tok.type == TokenType.INTEGER:
-		expr = IntLitAST(state.tok.content, state.tok.span)
+		matches = re.match(r"(^[\d_]+)(:?i8|u8|i16|u16|i32|u32|i64|u64|sz|usz)?$", state.tok.content)
+		value = matches[1].replace('_', '')
+		suffix = matches[2]
+		expr = IntLitAST(value, suffix, state.tok.span)
 		state.advance()
 	elif state.tok.type == TokenType.IF:
 		expr = parseIf(state)
 	else:
-		print(revealToken(state.source, state.tok, 'expected value expression, found {}'.format(state.tok.type.desc())))
+		logError(state, state.tok, 'expected value expression, found {}'.format(state.tok.type.desc()))
 		state.skipUntil(TokenType.NEWLINE, TokenType.SEMICOLON, TokenType.RBRACE)
 		expr = None
 	
@@ -769,7 +796,7 @@ def parseFnExpr(state):
 	elif state.tok.type == TokenType.LET:
 		return parseLet(state)
 	else:
-		print(revealToken(state.source, state.tok, 'expected expression, found {}'.format(state.tok.type.desc())))
+		logError(state, state.tok, 'expected expression, found {}'.format(state.tok.type.desc()))
 		state.skipUntil(TokenType.NEWLINE, TokenType.SEMICOLON, TokenType.RBRACE)
 
 def parseFnDecl(state, doccomment, attrs, extern):
@@ -863,7 +890,10 @@ def parse(source, tokens):
 	state = ParserState(source, tokens)
 	
 	modAST = ModAST()
-	modAST.span = Span(1, 1, len(source.lines)+1, len(source.lines[-1])+1)
+	modAST.span = Span(source, 1, 1, len(source.lines)+1, len(source.lines[-1])+1)
 	parseModuleBody(state, modAST, False)
+	
+	if state.failed:
+		exit(1)
 	
 	return modAST

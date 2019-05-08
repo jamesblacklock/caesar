@@ -12,8 +12,9 @@ class TestState:
 		self.done = False
 
 class LexerState:
-	def __init__(self, content):
-		self.content = content
+	def __init__(self, source):
+		self.source = source
+		self.content = source.content
 		self.offset = 0
 		self.line = 1
 		self.column = 1
@@ -64,7 +65,7 @@ def lexToken(state, type, test=singleCharTest, testState=None, advance=0):
 		endColumn = state.column
 		state.advance()
 	
-	tok = Token(Span(startLine, startColumn, endLine, endColumn), type, state.content[contentStart:state.offset])
+	tok = Token(Span(state.source, startLine, startColumn, endLine, endColumn), type, state.content[contentStart:state.offset])
 	
 	if not testState.done:
 		state.error = 'found unexpected <end-of-file> while parsing'
@@ -155,9 +156,19 @@ def lexOperator(state):
 	operators = \
 	[
 		('...', TokenType.ELLIPSIS),
-		('->', TokenType.ARROW),
+		('..<', TokenType.RNGCLOSED),
+		('..=', TokenType.RNGOPEN),
+		('>=', TokenType.GREATEREQ),
+		('<=', TokenType.LESSEQ),
+		('&&', TokenType.AND),
+		('||', TokenType.OR),
 		('==', TokenType.EQ),
+		('!=', TokenType.NEQ),
+		('->', TokenType.ARROW),
+		('<<', TokenType.LSHIFT),
+		('>>', TokenType.RSHIFT),
 		('@', TokenType.AT),
+		('.', TokenType.DOT),
 		('(', TokenType.LPAREN),
 		(')', TokenType.RPAREN),
 		('{', TokenType.LBRACE),
@@ -165,10 +176,13 @@ def lexOperator(state):
 		(':', TokenType.COLON),
 		('^', TokenType.CARET),
 		(',', TokenType.COMMA),
-		('+', TokenType.PLUS),
-		('-', TokenType.MINUS),
 		('*', TokenType.TIMES),
 		('/', TokenType.DIV),
+		('%', TokenType.MODULO),
+		('+', TokenType.PLUS),
+		('-', TokenType.MINUS),
+		('&', TokenType.BITAND),
+		('|', TokenType.BITOR),
 		('>', TokenType.GREATER),
 		('<', TokenType.LESS),
 		('=', TokenType.ASGN),
@@ -256,7 +270,7 @@ def lexUnknownToken(state):
 	return tok
 
 def tokenize(source):
-	state = LexerState(source.content)
+	state = LexerState(source)
 	tokens = []
 	while state.char != '':
 		tok = None
@@ -278,12 +292,12 @@ def tokenize(source):
 			tok = lexUnknownToken(state)
 		
 		if state.error:
-			raise CsrSyntaxError(revealToken(source, state.errorToken, state.error))
+			raise CsrSyntaxError(revealToken(state.errorToken, state.error))
 		
 		tok.offset = len(tokens)
 		tokens.append(tok)
 	
-	tokens.append(Token(Span(state.line, state.column, state.line, state.column), 
+	tokens.append(Token(Span(source, state.line, state.column, state.line, state.column), 
 		TokenType.EOF, '', len(tokens)))
 	
 	return tokens

@@ -23,7 +23,7 @@ fn theMeaningOfLifeTheUniverseAndEverything() -> Int32 { return 42 }
 	which is the entry point for the application
 ========================================================#
 fn main()
-	let xyz = 123
+	let xyz = 123i64
 	
 	doTheThing( doTheThing( theMeaningOfLifeTheUniverseAndEverything() ) )
 	printf("The time is: %d\nAnd here is the value of a local variable: %d\n", time(0), xyz)
@@ -36,6 +36,6 @@ fn main()
 		printf("You did not type the letter 'a'. You typed '%c'\n", c + 
 			10 * 2 - 11 * 2 + 2)
 	
-	printf("%c%c%c%c%c%c%c!\n",
+	printf("%c%c%c%c%c%c%c!!\n",
 			103, 111, 111, 100,
 			98, 121, 101)

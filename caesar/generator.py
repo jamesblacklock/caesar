@@ -317,14 +317,11 @@ def fnToIR(fnDecl):
 	return fn
 
 def generateIR(mod):
-	for decl in mod.symbolTable.values():
+	for decl in mod.fnDecls:
 		if decl.extern:
-			pass
-		elif type(decl) == FnDeclAST:
-			ir = fnToIR(decl)
-			mod.symbolTable[decl.name].ir = ir
-		else:
-			assert False
+			continue
+		ir = fnToIR(decl)
+		mod.symbolTable[decl.name].ir = ir
 
 
 ARG_REGS = ['rdi', 'rsi', 'rdx', 'rcx', 'r8', 'r9']
@@ -419,13 +416,11 @@ def generateAsm(mod):
 	fns = []
 	#statics = []
 	
-	for decl in mod.symbolTable.values():
+	for decl in mod.fnDecls:
 		if decl.extern:
 			externSymbols.append(decl)
-		elif type(decl) == FnDeclAST:
-			fns.append(decl)
 		else:
-			assert False
+			fns.append(decl)
 	
 	lines = []
 	for decl in externSymbols:

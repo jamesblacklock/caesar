@@ -1,10 +1,6 @@
 from caesar.exception import CsrCompileError
 from caesar.parser import FnDeclAST, CConv
 
-class Mod:
-	def __init__(self, symbolTable):
-		self.symbolTable = symbolTable
-
 def ffiAttr(decl, params):
 	if len(params) != 1 or params[0].content != '"C"':
 		raise CsrCompileError('FFI currently only supports the "C" convention')
@@ -14,8 +10,7 @@ def ffiAttr(decl, params):
 	decl.cconv = CConv.C
 	decl.mangledName = '_{}'.format(decl.name)
 
-builtinAttrs = \
-{
+builtinAttrs = {
 	'FFI': ffiAttr
 }
 
@@ -27,16 +22,15 @@ def invokeAttrs(decl):
 		
 		attrHandler(decl, attr.args)
 
-# def generate(mod):
-# 	pack = Pack()
-# 	state = GeneratorState(mod, pack)
-	
-# 	for decl in mod.symbolTable.values():
-# 		meta = invokeAttrs(decl, state)
-
 def analyze(mod):
-	for decls in (mod.importDecls, mod.staticDecls, mod.fnDecls):
-		for decl in decls:
-			invokeAttrs(decl)
+	for decl in mod.importDecls:
+		invokeAttrs(decl)
+	
+	for decl in mod.staticDecls:
+		invokeAttrs(decl)
+	
+	for decl in mod.fnDecls:
+		invokeAttrs(decl)
+		
 	
 	return mod

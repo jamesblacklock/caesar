@@ -2,7 +2,8 @@ from re import findall
 from enum import Enum
 
 class Span:
-	def __init__(self, startLine, startColumn, endLine, endColumn):
+	def __init__(self, source, startLine, startColumn, endLine, endColumn):
+		self.source = source
 		self.startLine = startLine
 		self.startColumn = startColumn
 		self.endLine = endLine
@@ -10,27 +11,7 @@ class Span:
 	
 	@staticmethod
 	def merge(span1, span2):
-		if span1.startLine > span2.startLine:
-			span1, span2 = span2, span1
-		
-		if span1.startLine == span2.startLine:
-			startLine = span1.startLine
-			startColumn = min(span1.startColumn, span2.startColumn)
-		else:
-			startLine = span1.startLine
-			startColumn = span1.startColumn
-		
-		if span1.endLine > span2.endLine:
-			span1, span2 = span2, span1
-		
-		if span1.endLine == span2.endLine:
-			endLine = span1.endLine
-			endColumn = max(span1.endColumn, span2.endColumn)
-		else:
-			endLine = span2.endLine
-			endColumn = span2.endColumn
-		
-		return Span(startLine, startColumn, endLine, endColumn)
+		return Span(span1.source, span1.startLine, span1.startColumn, span2.endLine, span2.endColumn)
 
 class AnsiColor:
 	CLEAR = ''
@@ -39,7 +20,8 @@ class AnsiColor:
 	BLUE = '34'
 	BLACK = '30'
 
-def revealSpan(source, span, message='', leadingLines=2, followingLines=2, indicatorChar='^', color=AnsiColor.RED):
+def revealSpan(span, message='', leadingLines=2, followingLines=2, indicatorChar='^', color=AnsiColor.RED):
+	source = span.source
 	gutterPadding = ' ' if span.startLine == span.endLine else '   '
 	
 	# print file info
