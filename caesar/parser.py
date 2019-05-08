@@ -201,7 +201,8 @@ BUILTIN_TYPES = [
 	Type('ISize',   PLATFORM_WORD_SIZE),
 	Type('USize',   PLATFORM_WORD_SIZE),
 	Type('Float32', 4),
-	Type('Float64', 8)
+	Type('Float64', 8),
+	Type('$Ptr',    PLATFORM_WORD_SIZE)
 ]
 
 
@@ -258,10 +259,11 @@ class ModAST:
 		self.fnDecls.append(decl)
 
 class ModLevelDeclAST:
-	def __init__(self, doccomment, attrs, extern, name, span):
+	def __init__(self, doccomment, attrs, extern, nameTok, span):
 		self.span = span
-		self.name = name
-		self.mangledName = name
+		self.nameTok = nameTok
+		self.name = nameTok.content
+		self.mangledName = self.name
 		self.doccomment = doccomment
 		self.attrs = attrs
 		self.extern = extern
@@ -273,8 +275,8 @@ class AttrAST:
 		self.args = args
 
 class FnDeclAST(ModLevelDeclAST):
-	def __init__(self, doccomment, attrs, extern, name, params, cVarArgs, returnType, body, span):
-		super().__init__(doccomment, attrs, extern, name, span)
+	def __init__(self, doccomment, attrs, extern, nameTok, params, cVarArgs, returnType, body, span):
+		super().__init__(doccomment, attrs, extern, nameTok, span)
 		self.params = params
 		self.cVarArgs = cVarArgs
 		self.returnType = returnType
@@ -810,9 +812,9 @@ def parseFnDecl(state, doccomment, attrs, extern):
 		state.skipEmptyLines()
 		expectIndentIncrease(state)
 	
-	name = None
+	nameTok = None
 	if expectType(state, TokenType.NAME):
-		name = state.tok.content
+		nameTok = state.tok
 		span = Span.merge(span, state.tok.span)
 		state.advance()
 	
@@ -840,7 +842,7 @@ def parseFnDecl(state, doccomment, attrs, extern):
 		body = block.list
 		span = Span.merge(span, block.span)
 	
-	return FnDeclAST(doccomment, attrs, extern, name, params, cVarArgs, returnType, body, span)
+	return FnDeclAST(doccomment, attrs, extern, nameTok, params, cVarArgs, returnType, body, span)
 
 def parseModuleBody(state, modAST, braceTerm):
 	
@@ -882,7 +884,10 @@ def parseModuleBody(state, modAST, braceTerm):
 			fnDecl = parseFnDecl(state, doccomment, attrs, extern)
 			if fnDecl != None:
 				fnDecl.span = Span.merge(startToken.span, fnDecl.span)
-				modAST.declFn(fnDecl)
+				if fnDecl.name in modAST.symbolTable:
+					logError(state, fnDecl.nameTok, 'cannot redeclare `{}` as a different symbol'.format(fnDecl.name))
+				else:
+					modAST.declFn(fnDecl)
 		else:
 			state.skipUntil(TokenType.NEWLINE, TokenType.SEMICOLON)
 

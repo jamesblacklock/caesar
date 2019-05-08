@@ -1,5 +1,5 @@
 from enum import Enum
-from .span import Span, revealSpan
+from .span import Span, revealSpan, AnsiColor
 
 class TokenType(Enum):
 	SPACE = 'SPACE'
@@ -183,5 +183,5 @@ class Token:
 	def __repr__(self):
 		return self.__str__()
 
-def revealToken(token, message=''):
-	return revealSpan(token.span, message)
+def revealToken(token, message='', leadingLines=2, followingLines=2, indicatorChar='^', color=AnsiColor.RED):
+	return revealSpan(token.span, message, leadingLines, followingLines, indicatorChar, color)
