@@ -8,8 +8,8 @@ class Span:
 		self.endLine = endLine
 		self.endColumn = endColumn
 	
-	@classmethod
-	def merge(self, span1, span2):
+	@staticmethod
+	def merge(span1, span2):
 		if span1.startLine > span2.startLine:
 			span1, span2 = span2, span1
 		

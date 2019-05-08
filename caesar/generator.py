@@ -1,6 +1,6 @@
 from enum                                         import Enum
 from caesar.parser                                import FnDeclAST, FnCallAST, ValueRefAST, StrLitAST, \
-	IntLitAST, ReturnAST, LetAST, IfAST#, BinOpExpr, BinOp, CConv
+	IntLitAST, ReturnAST, LetAST, IfAST, InfixOpAST, InfixOp
 
 class Type(Enum):
 	I1 = 'i1'
@@ -86,6 +86,42 @@ class Eq(Instr):
 	
 	def __str__(self):
 		return '{} = {} == {}'.format(self.dest, self.l, self.r)
+
+class Add(Instr):
+	def __init__(self, l, r, dest):
+		self.l = l
+		self.r = r
+		self.dest = dest
+	
+	def __str__(self):
+		return '{} = {} + {}'.format(self.dest, self.l, self.r)
+
+class Sub(Instr):
+	def __init__(self, l, r, dest):
+		self.l = l
+		self.r = r
+		self.dest = dest
+	
+	def __str__(self):
+		return '{} = {} - {}'.format(self.dest, self.l, self.r)
+
+class Mul(Instr):
+	def __init__(self, l, r, dest):
+		self.l = l
+		self.r = r
+		self.dest = dest
+	
+	def __str__(self):
+		return '{} = {} * {}'.format(self.dest, self.l, self.r)
+
+class Div(Instr):
+	def __init__(self, l, r, dest):
+		self.l = l
+		self.r = r
+		self.dest = dest
+	
+	def __str__(self):
+		return '{} = {} / {}'.format(self.dest, self.l, self.r)
 
 def returnToIR(ret, fn, block):
 	target = None
@@ -176,6 +212,54 @@ def eqToIr(eq, fn, block):
 	
 	block.append(Eq(l, r, dest))
 
+def addToIr(eq, fn, block):
+	exprToIR(eq.l, fn, block)
+	l = block[-1].dest.clone()
+	
+	exprToIR(eq.r, fn, block)
+	r = block[-1].dest.clone()
+	
+	fn.sp += 1
+	dest = Target(Storage.LOCAL, Type.I8, fn.sp)
+	
+	block.append(Add(l, r, dest))
+
+def subToIr(eq, fn, block):
+	exprToIR(eq.l, fn, block)
+	l = block[-1].dest.clone()
+	
+	exprToIR(eq.r, fn, block)
+	r = block[-1].dest.clone()
+	
+	fn.sp += 1
+	dest = Target(Storage.LOCAL, Type.I8, fn.sp)
+	
+	block.append(Sub(l, r, dest))
+
+def mulToIr(eq, fn, block):
+	exprToIR(eq.l, fn, block)
+	l = block[-1].dest.clone()
+	
+	exprToIR(eq.r, fn, block)
+	r = block[-1].dest.clone()
+	
+	fn.sp += 1
+	dest = Target(Storage.LOCAL, Type.I8, fn.sp)
+	
+	block.append(Mul(l, r, dest))
+
+def divToIr(eq, fn, block):
+	exprToIR(eq.l, fn, block)
+	l = block[-1].dest.clone()
+	
+	exprToIR(eq.r, fn, block)
+	r = block[-1].dest.clone()
+	
+	fn.sp += 1
+	dest = Target(Storage.LOCAL, Type.I8, fn.sp)
+	
+	block.append(Div(l, r, dest))
+
 def exprToIR(expr, fn, block):
 	if type(expr) == IntLitAST:
 		intLitToIR(expr, fn, block)
@@ -191,8 +275,16 @@ def exprToIR(expr, fn, block):
 		ifBlockToIR(expr, fn, block)
 	elif type(expr) == ReturnAST:
 		returnToIR(expr, fn, block)
-	elif type(expr) == BinOpExpr and expr.op == BinOp.EQ:
+	elif type(expr) == InfixOpAST and expr.op == InfixOp.EQ:
 		eqToIr(expr, fn, block)
+	elif type(expr) == InfixOpAST and expr.op == InfixOp.PLUS:
+		addToIr(expr, fn, block)
+	elif type(expr) == InfixOpAST and expr.op == InfixOp.MINUS:
+		subToIr(expr, fn, block)
+	elif type(expr) == InfixOpAST and expr.op == InfixOp.TIMES:
+		mulToIr(expr, fn, block)
+	elif type(expr) == InfixOpAST and expr.op == InfixOp.DIV:
+		divToIr(expr, fn, block)
 	else:
 		assert 0
 
@@ -290,6 +382,26 @@ def irToAsm(instr, fnIR, mod):
 		)
 	elif type(instr) == Eq:
 		return 'mov rbx, 0\n\t\tmov rax, {}\n\t\tcmp rax, {}\n\t\tsetz bl\n\t\tmov {}, rbx'.format(
+			targetToOperand(instr.l, fnIR),
+			targetToOperand(instr.r, fnIR),
+			targetToOperand(instr.dest, fnIR))
+	elif type(instr) == Add:
+		return 'mov rax, {}\n\t\tadd rax, {}\n\t\tmov {}, rax'.format(
+			targetToOperand(instr.l, fnIR),
+			targetToOperand(instr.r, fnIR),
+			targetToOperand(instr.dest, fnIR))
+	elif type(instr) == Sub:
+		return 'mov rax, {}\n\t\tsub rax, {}\n\t\tmov {}, rax'.format(
+			targetToOperand(instr.l, fnIR),
+			targetToOperand(instr.r, fnIR),
+			targetToOperand(instr.dest, fnIR))
+	elif type(instr) == Mul:
+		return 'mov rax, {}\n\t\tmov rbx, {}\n\t\tmul rbx\n\t\tmov {}, rax'.format(
+			targetToOperand(instr.l, fnIR),
+			targetToOperand(instr.r, fnIR),
+			targetToOperand(instr.dest, fnIR))
+	elif type(instr) == Div:
+		return 'mov rax, {}\n\t\tmov rbx, {}\n\t\tdiv rbx\n\t\tmov {}, rax'.format(
 			targetToOperand(instr.l, fnIR),
 			targetToOperand(instr.r, fnIR),
 			targetToOperand(instr.dest, fnIR))

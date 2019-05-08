@@ -64,7 +64,7 @@ class TokenType(Enum):
 		elif self == TokenType.LBRACE:
 			return '`{`'
 		elif self == TokenType.RBRACE:
-			return '`)`'
+			return '`}`'
 		elif self == TokenType.LBRACK:
 			return '`[`'
 		elif self == TokenType.RBRACK:

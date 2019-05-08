@@ -1,5 +1,7 @@
 #! /usr/local/bin/python3
 
+import sys
+
 from caesar.exception                    import CsrError
 from caesar.sourcefile                   import SourceFile
 from caesar.span                         import revealSpan, Span
@@ -9,15 +11,19 @@ from caesar.parser                       import parse
 from caesar.analyzer                     import analyze
 from caesar.generator                    import generateIR, generateAsm
 
-def main():
-	source = SourceFile('test.csr')
+def main(args):
+	if len(args) < 2 or len(args) > 3:
+		print('Usage: caesar <input filename> [<output filename>]')
+		exit(1)
+	
+	source = SourceFile(args[1])
 	
 	try:
 		tokens = tokenize(source)
 		module = parse(source, tokens)
-		# analyze(module)
-		# generateIR(module)
-		# asm = generateAsm(module)
+		analyze(module)
+		generateIR(module)
+		asm = generateAsm(module)
 	except CsrError as e:
 		print(e)
 		return
@@ -35,7 +41,11 @@ def main():
 	# for decl in module.symbolTable.values():
 	# 	print(str(decl.ir).replace('\t', '    ')) 
 	
-	# print(asm.replace('\t', '    '))
+	if len(args) == 3:
+		outfile = open(args[2], 'w')
+		outfile.write(asm.replace('\t', '    '))
+	else:
+		print(asm.replace('\t', '    '))
 
 if __name__ == '__main__':
-	main()
+	main(sys.argv)

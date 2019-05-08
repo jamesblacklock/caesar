@@ -30,10 +30,11 @@ fn main()
 	
 	let mut c = getchar()
 	
-	if c + 1 * 1 + 2 - 2 == 97
+	if c + 4 * 3 + 2 - 13 == 98
 		printf("You typed the letter 'a'.\n")
 	else
-		printf("You did not type the letter 'a'. You typed '%c'\n", c)
+		printf("You did not type the letter 'a'. You typed '%c'\n", c + 
+			10 * 2 - 11 * 2 + 2)
 	
 	printf("%c%c%c%c%c%c%c!\n",
 			103, 111, 111, 100,

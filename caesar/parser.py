@@ -36,7 +36,7 @@ class ParserState:
 	
 	def popIndentLevel(self):
 		if len(self.indentLevels) < 2:
-			raise RuntimeError('asdf')
+			assert 0
 		return self.indentLevels.pop()
 	
 	def rollback(self, offset):
@@ -255,6 +255,76 @@ INFIX_OPS = {
 	# TokenType.AND:       200, 
 	# TokenType.OR:        100
 }
+
+class InfixOp(Enum):
+	ARROW = 'ARROW'
+	LSHIFT = 'LSHIFT'
+	RSHIFT = 'RSHIFT'
+	TIMES = 'TIMES'
+	DIV = 'DIV'
+	MODULO = 'MODULO'
+	PLUS = 'PLUS'
+	MINUS = 'MINUS'
+	BITAND = 'BITAND'
+	BITOR = 'BITOR'
+	BITXOR = 'BITXOR'
+	RNGCLOSED = 'RNGCLOSED'
+	RNGOPEN = 'RNGOPEN'
+	EQ = 'EQ'
+	NEQ = 'NEQ'
+	GREATER = 'GREATER'
+	LESS = 'LESS'
+	GREATEREQ = 'GREATEREQ'
+	LESSEQ = 'LESSEQ'
+	AND = 'AND'
+	OR = 'OR'
+	
+	@staticmethod
+	def fromTokenType(type):
+		if type == TokenType.ARROW:
+			return InfixOp.ARROW
+		# elif type == TokenType.LSHIFT:
+		# 	return InfixOp.LSHIFT
+		# elif type == TokenType.RSHIFT:
+		# 	return InfixOp.RSHIFT
+		elif type == TokenType.TIMES:
+			return InfixOp.TIMES
+		elif type == TokenType.DIV:
+			return InfixOp.DIV
+		# elif type == TokenType.MODULO:
+		# 	return InfixOp.MODULO
+		elif type == TokenType.PLUS:
+			return InfixOp.PLUS
+		elif type == TokenType.MINUS:
+			return InfixOp.MINUS
+		# elif type == TokenType.BITAND:
+		# 	return InfixOp.BITAND
+		# elif type == TokenType.BITOR:
+		# 	return InfixOp.BITOR
+		# elif type == TokenType.BITXOR:
+		# 	return InfixOp.BITXOR
+		# elif type == TokenType.RNGCLOSED:
+		# 	return InfixOp.RNGCLOSED
+		# elif type == TokenType.RNGOPEN:
+		# 	return InfixOp.RNGOPEN
+		elif type == TokenType.EQ:
+			return InfixOp.EQ
+		# elif type == TokenType.NEQ:
+		# 	return InfixOp.NEQ
+		elif type == TokenType.GREATER:
+			return InfixOp.GREATER
+		elif type == TokenType.LESS:
+			return InfixOp.LESS
+		# elif type == TokenType.GREATEREQ:
+		# 	return InfixOp.GREATEREQ
+		# elif type == TokenType.LESSEQ:
+		# 	return InfixOp.LESSEQ
+		# elif type == TokenType.AND:
+		# 	return InfixOp.AND
+		# elif type == TokenType.OR:
+		# 	return InfixOp.OR
+		else:
+			return None
 
 
 #######################
@@ -485,7 +555,7 @@ def parseBlock(state, parseItem, sepType=TokenType.SEMICOLON,
 			print(revealToken(state.source, state.tok, 'expected expression, found space'))
 		
 		if needsTerm and state.tok.type == closeMarker or state.tok.type == TokenType.EOF:
-			expectType(state, closeMarker)
+			if needsTerm: expectType(state, closeMarker)
 			endSpan = state.tok.span
 			state.advance()
 			break
@@ -511,9 +581,9 @@ def parseBlock(state, parseItem, sepType=TokenType.SEMICOLON,
 		
 		offset = state.offset
 		state.skipEmptyLines()
-		if onOneLine and startLine != state.tok.span.startLine:
-			onOneLine = False
+		if onOneLine and startLine != state.tok.span.startLine and state.tok.type == TokenType.INDENT:
 			expectIndentIncrease(state)
+			onOneLine = False
 		
 		if not onOneLine:
 			if needsTerm:
@@ -603,7 +673,7 @@ def parseInfixOp(state, l):
 	if op == TokenType.ARROW:
 		return parseMethodCall(state, l, r)
 	else:
-		return InfixOpAST(l, r, op, Span.merge(l.span, r.span))
+		return InfixOpAST(l, r, InfixOp.fromTokenType(op), Span.merge(l.span, r.span))
 
 def parseValueExpr(state, precedence=0):
 	if state.tok.type == TokenType.LPAREN:
