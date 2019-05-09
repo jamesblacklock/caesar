@@ -1,7 +1,7 @@
 import re
 from enum import Enum
 from .token import *
-from .exception import CsrSyntaxError
+from .err import logError
 
 class IndentMode(Enum):
 	SPACE = 'SPACE'
@@ -293,7 +293,8 @@ def tokenize(source):
 			tok = lexUnknownToken(state)
 		
 		if state.error:
-			raise CsrSyntaxError(revealToken(state.errorToken, state.error))
+			logError(state, state.errorToken.span, state.error)
+			exit(1)
 		
 		tok.offset = len(tokens)
 		tokens.append(tok)

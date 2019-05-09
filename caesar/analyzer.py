@@ -1,13 +1,12 @@
-from .exception          import CsrCompileError
 from .parser             import CConv, FnDeclAST, LetAST, FnCallAST, ReturnAST, IfAST
 from .types              import Type, Void
 from .err                import logError
 
 def ffiAttr(decl, params):
 	if len(params) != 1 or params[0].content != '"C"':
-		raise CsrCompileError('FFI currently only supports the "C" convention')
+		raise RuntimeError('FFI currently only supports the "C" convention')
 	if type(decl) != FnDeclAST:
-		raise CsrCompileError('FFI attribute can only be applied to functions')
+		raise RuntimeError('FFI attribute can only be applied to functions')
 	
 	decl.cconv = CConv.C
 	decl.mangledName = '_{}'.format(decl.name)
