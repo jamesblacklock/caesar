@@ -45,6 +45,7 @@ class TokenType(Enum):
 	STRING = 'STRING'
 	EXTERN = 'EXTERN'
 	FN = 'FN'
+	MOD = 'MOD'
 	STRUCT = 'STRUCT'
 	LET = 'LET'
 	MUT = 'MUT'
@@ -144,6 +145,8 @@ class TokenType(Enum):
 			return '`extern`'
 		elif self == TokenType.FN:
 			return '`fn`'
+		elif self == TokenType.MOD:
+			return '`mod`'
 		elif self == TokenType.STRUCT:
 			return '`struct`'
 		elif self == TokenType.RETURN:

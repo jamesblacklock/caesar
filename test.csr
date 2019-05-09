@@ -18,12 +18,15 @@ fn doTheThing(n: Int32) -> Int32 #=hello=#
 
 fn theMeaningOfLifeTheUniverseAndEverything() -> Int32 { return 42 }
 
+mod testMod
+	fn otherFn()
+
 #========================================================
 	This is the documentation for the `main` function, 
 	which is the entry point for the application
 ========================================================#
 fn main()
-	let xyz = 123i64
+	let xyz: Int64 = 123i64
 	
 	doTheThing( doTheThing( theMeaningOfLifeTheUniverseAndEverything() ) )
 	printf("The time is: %d\nAnd here is the value of a local variable: %d\n", time(0), xyz)

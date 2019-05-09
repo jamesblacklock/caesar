@@ -1,5 +1,5 @@
 from enum                                         import Enum
-from caesar.parser                                import FnDeclAST, FnCallAST, ValueRefAST, StrLitAST, \
+from .parser                                      import FnDeclAST, FnCallAST, ValueRefAST, StrLitAST, \
 	IntLitAST, ReturnAST, LetAST, IfAST, InfixOpAST, InfixOp
 
 class Type(Enum):

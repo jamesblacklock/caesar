@@ -242,6 +242,7 @@ def lexNameOrKeyword(state):
 	[
 		('extern', TokenType.EXTERN),
 		('fn', TokenType.FN),
+		('mod', TokenType.MOD),
 		('struct', TokenType.STRUCT),
 		('let', TokenType.LET),
 		('mut', TokenType.MUT),
