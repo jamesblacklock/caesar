@@ -10,35 +10,35 @@ extern fn time(ret: Int64^) -> Int64
 )
 extern fn getchar() -> Int32
 
-fn doTheThing(n: Int32) -> Int32 #=hello=#
+fn doTheThing(n: Int16) -> Int16 #=hello=#
 	printf("Normal function-call syntax%s\n", ".")
 	"Here is a number: %d\n" -> printf(n)
 	
 	return 17
 
-fn theMeaningOfLifeTheUniverseAndEverything() -> Int32 { return 42 }
+fn theMeaningOfLifeTheUniverseAndEverything() -> Int16 { return 42 }
 
 mod testMod
-	fn otherFn()
+	fn otherFn() -> Int32 { printf("asdf"), return getchar() }
 
 #========================================================
 	This is the documentation for the `main` function, 
 	which is the entry point for the application
 ========================================================#
 fn main()
-	let xyz: Int64 = 123i64
+	let xyz: Int64 = 123
 	
 	doTheThing( doTheThing( theMeaningOfLifeTheUniverseAndEverything() ) )
 	printf("The time is: %d\nAnd here is the value of a local variable: %d\n", time(0), xyz)
 	
-	let mut c = getchar()
+	let mut c = testMod::otherFn()
 	
-	if c + 4 * 3 + 2 - 13 == 98
+	#=if c + 4 * 3 + 2 - 13 == 98
 		printf("You typed the letter 'a'.\n")
 	else
 		printf("You did not type the letter 'a'. You typed '%c'\n", c + 
 			10 * 2 - 11 * 2 + 2)
-	
+	=#
 	printf("%c%c%c%c%c%c%c!!\n",
 			103, 111, 111, 100,
 			98, 121, 101)

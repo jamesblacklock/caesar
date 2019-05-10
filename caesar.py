@@ -2,10 +2,7 @@
 
 import sys
 
-from caesar.exception                    import CsrError
 from caesar.sourcefile                   import SourceFile
-from caesar.span                         import revealSpan, Span
-from caesar.token                        import TokenType, revealToken
 from caesar.tokenizer                    import tokenize
 from caesar.parser                       import parse
 from caesar.analyzer                     import analyze

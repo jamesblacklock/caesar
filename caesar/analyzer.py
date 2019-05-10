@@ -1,5 +1,8 @@
-from .parser             import CConv, FnDeclAST, LetAST, FnCallAST, ReturnAST, IfAST
-from .types              import Type, Void
+from .parser             import CConv, FnDeclAST, LetAST, FnCallAST, ReturnAST, IfAST, TypeRefAST, \
+                                StrLitAST, IntLitAST, TupleLitAST, ValueRefAST, InfixOpAST, FnCallAST, \
+								IfAST, ModAST
+from .                   import types
+from .types              import typesMatch
 from .err                import logError
 
 def ffiAttr(decl, params):
@@ -23,34 +26,163 @@ def invokeAttrs(state, decl):
 		
 		builtinAttrs[attr.name](decl, attr.args)
 
-def expectTypeExists(state, typeRef):
-	if typeRef.name not in state.mod.symbolTable:
+def lookupSymbol(state, scope, symbolRef):
+	path = symbolRef.path
+	symbol = None
+	
+	while scope != None:
+		if path[0] in scope.symbolTable:
+			symbol = scope.symbolTable[path[0]]
+			break
+		scope = scope.parentScope
+	
+	if symbol == None:
+		return None
+	
+	for name in path[1:]:
+		if type(symbol) != ModAST:
+			logError(state, symbolRef.span, '`{}` is not a module'.format(symbol.name))
+			return None
+		
+		if name not in symbol.symbolTable:
+			return None
+		symbol = symbol.symbolTable[name]
+	
+	return symbol
+
+def resolveValueExprType(state, scope, expr):
+	if type(expr) == StrLitAST:
+		expr.resolvedType = types.Ptr
+	elif type(expr) == IntLitAST:
+		if expr.suffix == 'i8':
+			expr.resolvedType = types.Int8
+		elif expr.suffix == 'u8':
+			expr.resolvedType = types.UInt8
+		elif expr.suffix == 'i16':
+			expr.resolvedType = types.Int16
+		elif expr.suffix == 'u16':
+			expr.resolvedType = types.UInt16
+		elif expr.suffix == 'i32':
+			expr.resolvedType = types.Int32
+		elif expr.suffix == 'u32':
+			expr.resolvedType = types.UInt32
+		elif expr.suffix == 'i64':
+			expr.resolvedType = types.Int64
+		elif expr.suffix == 'u64':
+			expr.resolvedType = types.UInt64
+		elif expr.suffix == 'sz':
+			expr.resolvedType = types.ISize
+		elif expr.suffix == 'usz':
+			expr.resolvedType = types.USize
+		else:
+			expr.resolvedType = types.ResolvedMultiIntType(int(expr.value))
+	elif type(expr) == TupleLitAST:
+		raise RuntimeError('unimplemented!')
+	elif type(expr) == ValueRefAST:
+		typeCheckValueRef(state, scope, expr)
+	elif type(expr) == InfixOpAST:
+		raise RuntimeError('unimplemented!')
+	elif type(expr) == FnCallAST:
+		typeCheckFnCall(state, scope, expr)
+	elif type(expr) == IfAST:
+		typeCheckIf(state, scope, expr)
+
+def resolveTypeRefType(state, scope, typeRef):
+	resolvedType = lookupSymbol(state, scope, typeRef)
+	if resolvedType == None:
 		logError(state, typeRef.span, 'cannot resolve type `{}`'.format(typeRef.name))
-	elif type(state.mod.symbolTable[typeRef.name]) != Type:
+	elif type(resolvedType) != types.ResolvedType:
 		logError(state, typeRef.span, '`{}` is not a type'.format(typeRef.name))
+	
+	typeRef.resolvedType = resolvedType if typeRef.indirectionLevel == 0 else types.Ptr
+
+def typeCheckValueRef(state, scope, valueRef):
+	symbol = lookupSymbol(state, scope, valueRef)
+	if symbol == None:
+		logError(state, valueRef.span, 'cannot resolve the symbol `{}`'.format(valueRef.name))
+	elif not isinstance(valueRef, ValueRefAST):
+		logError(state, valueRef.span, 'found a type reference where a value was expected')
+	else:
+		valueRef.resolvedType = symbol.resolvedSymbolType
 
 def typeCheckFnSig(state, fnDecl):
 	if fnDecl.returnType == None:
-		fnDecl.returnType = Void
+		fnDecl.returnType = TypeRefAST('Void', 0, fnDecl.span)
 	
-	expectTypeExists(state, fnDecl.returnType)
+	resolveTypeRefType(state, fnDecl, fnDecl.returnType)
 	
 	for param in fnDecl.params:
-		expectTypeExists(state, param.type)
+		resolveTypeRefType(state, fnDecl, param.typeRef)
+		if param.name in fnDecl.symbolTable:
+			logError(state, param.span, 'duplicate parameter name')
+		else:
+			fnDecl.symbolTable[param.name] = param
+	
+	resolvedParamTypes = [param.typeRef.resolvedType for param in fnDecl.params]
+	fnDecl.resolvedSymbolType = types.ResolvedFnType(resolvedParamTypes, fnDecl.cVarArgs, fnDecl.returnType.resolvedType)
 	
 	if fnDecl.cVarArgs and fnDecl.cconv != CConv.C:
-		logError(state, fnDecl.cVarArgsSpan, 
-			'may not use C variadic parameter without the C calling convention')
+		logError(state, fnDecl.cVarArgsSpan, 'may not use C variadic parameter without the C calling convention')
 
-def typeCheckLet(state, fnDecl, letExpr):
-	determineValueExprType(state, letExpr.expr)
-	expectTypeExists(state, letExpr.type)
+def typeCheckLet(state, scope, letExpr):
+	if type(scope) != FnDeclAST:
+		fnScope = scope.parentScope
+		while True:
+			if letExpr.name in scope.symbolTable:
+				logError(state, letExpr.span, '`{}` has already been declared in an outer scope'.format(letExpr.name))
+				break
+			
+			if type(fnScope) == FnDeclAST:
+				break
+	
+	scope.symbolTable[letExpr.name] = letExpr
+	
+	resolveValueExprType(state, scope, letExpr.expr)
+	
+	if letExpr.typeRef:
+		resolveTypeRefType(state, scope, letExpr.typeRef)
+		letExpr.resolvedSymbolType = letExpr.typeRef.resolvedType
+		
+		if not typesMatch(letExpr.expr.resolvedType, letExpr.resolvedSymbolType):
+			logError(state, letExpr.expr.span, 'expected type {}, found {}'
+				.format(letExpr.resolvedSymbolType, letExpr.expr.resolvedType))
+	else:
+		letExpr.resolvedSymbolType = letExpr.expr.resolvedType
 
-def typeCheckFnCall(state, fnDecl, fnCallexpr):
-	raise RuntimeError('unimplemented!')
+def typeCheckFnCall(state, scope, fnCallExpr):
+	resolveValueExprType(state, scope, fnCallExpr.expr)
+	fnType = fnCallExpr.expr.resolvedType
+	if fnType == None:
+		return
+	
+	if not fnType.isFnType:
+		logError(state, fnCallExpr.expr.span, 'the expression cannot be called as a function')
+		return
+	
+	fnCallExpr.resolvedType = fnType.resolvedReturnType
+	
+	for arg in fnCallExpr.args:
+		resolveValueExprType(state, scope, arg)
+	
+	if len(fnCallExpr.args) < len(fnType.resolvedParamTypes) or \
+		not fnType.cVarArgs and len(fnCallExpr.args) > len(fnType.resolvedParamTypes):
+		logError(state, fnCallExpr.span, 
+			'function called with wrong number of arguments (expected {}, found {})'.format(len(fnType.resolvedParamTypes), len(fnCallExpr.args)))
+		return
+	
+	for (expected, found) in zip(fnType.resolvedParamTypes, fnCallExpr.args):
+		if not typesMatch(expected, found.resolvedType):
+			logError(state, found.span, 'expected type {}, found {}'.format(expected, found.resolvedType))
 
-def typeCheckReturn(state, fnDecl, retExpr):
-	raise RuntimeError('unimplemented!')
+def typeCheckReturn(state, scope, retExpr):
+	fnScope = scope
+	while type(scope) != FnDeclAST:
+		scope = scope.parentScope
+	
+	resolveValueExprType(state, scope, retExpr.expr)
+	if not typesMatch(retExpr.expr.resolvedType, scope.resolvedSymbolType.resolvedReturnType):
+		logError(state, retExpr.expr.span, 'invalid return type (expected {}, found {})'
+			.format(scope.resolvedSymbolType.resolvedReturnType, retExpr.expr.resolvedType))
 
 def typeCheckIf(state, fnDecl, ifExpr):
 	raise RuntimeError('unimplemented!')
@@ -71,16 +203,11 @@ def typeCheckFnBody(state, fnDecl):
 		else:
 			assert 0
 	
+	# TODO: escape analysis
+	
 	state.failed = True
 
-class AnalyzerState:
-	def __init__(self, mod):
-		self.mod = mod
-		self.failed = False
-
-def analyze(mod):
-	state = AnalyzerState(mod)
-	
+def typeCheckMod(state, mod):
 	for decl in mod.importDecls:
 		invokeAttrs(state, decl)
 	
@@ -93,8 +220,21 @@ def analyze(mod):
 	for decl in mod.fnDecls:
 		typeCheckFnSig(state, decl)
 	
+	for decl in mod.modDecls:
+		typeCheckMod(state, decl)
+	
 	for decl in mod.fnDecls:
 		typeCheckFnBody(state, decl)
+
+class AnalyzerState:
+	def __init__(self, mod):
+		self.mod = mod
+		self.failed = False
+
+def analyze(mod):
+	state = AnalyzerState(mod)
+	
+	typeCheckMod(state, mod)
 	
 	if state.failed:
 		exit(1)

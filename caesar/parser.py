@@ -223,6 +223,7 @@ class ModLevelDeclAST:
 		self.doccomment = doccomment
 		self.attrs = attrs
 		self.extern = extern
+		self.parentScope = None
 
 class ModAST(ModLevelDeclAST):
 	def __init__(self, state, doccomment, nameTok, decls, span, name=None):
@@ -239,6 +240,8 @@ class ModAST(ModLevelDeclAST):
 			self.symbolTable[builtin.name] = builtin
 		
 		for decl in decls:
+			decl.parentScope = self
+			
 			if type(decl) == FnDeclAST:
 				self.fnDecls.append(decl)
 			elif type(decl) == ModAST:
@@ -266,17 +269,18 @@ class FnDeclAST(ModLevelDeclAST):
 		self.returnType = returnType
 		self.body = body
 		self.cconv = CConv.CAESAR
+		self.symbolTable = {}
+		self.resolvedSymbolType = None
 
 class FnParamAST:
-	def __init__(self, name, type, span):
+	def __init__(self, name, typeRef, span):
 		self.name = name
-		self.type = type
+		self.typeRef = typeRef
 		self.span = span
+		self.resolvedSymbolType = None
 
-class FnCallAST:
-	def __init__(self, expr, args, span):
-		self.expr = expr
-		self.args = args
+class CVarArgsParamAST:
+	def __init__(self, span):
 		self.span = span
 
 class ReturnAST:
@@ -285,52 +289,73 @@ class ReturnAST:
 		self.span = span
 
 class LetAST:
-	def __init__(self, mut, name, type, expr, span):
+	def __init__(self, mut, name, typeRef, expr, span):
 		self.mut = mut
 		self.name = name
-		self.type = type
+		self.typeRef = typeRef
 		self.expr = expr
 		self.span = span
+		self.resolvedSymbolType = None
 
 class TypeRefAST:
 	def __init__(self, name, indirectionLevel, span):
 		self.name = name
+		self.path = [name]
 		self.indirectionLevel = indirectionLevel
 		self.span = span
+		self.resolvedType = None
 
-class ValueRefAST:
-	def __init__(self, name, span):
-		self.name = name
-		self.span = span
+class ValueExprAST:
+	def __init__(self):
+		self.resolvedType = None
 
-class StrLitAST:
+class StrLitAST(ValueExprAST):
 	def __init__(self, value, span):
+		super().__init__()
 		self.value = strBytes(value)
 		self.span = span
 
-class IntLitAST:
+class IntLitAST(ValueExprAST):
 	def __init__(self, value, suffix, span):
+		super().__init__()
 		self.value = value
 		self.suffix = suffix
 		self.span = span
 
-class TupleLitAST:
+class TupleLitAST(ValueExprAST):
 	def __init__(self, values, span):
+		super().__init__()
 		self.values = values
 		self.span = span
 
-class IfAST:
-	def __init__(self, expr, ifBlock, elseBlock, span):
-		self.expr = expr
-		self.ifBlock = ifBlock
-		self.elseBlock = elseBlock
+class ValueRefAST(ValueExprAST):
+	def __init__(self, path, span):
+		super().__init__()
+		self.path = path
+		self.name = path[-1]
 		self.span = span
 
-class InfixOpAST:
+class InfixOpAST(ValueExprAST):
 	def __init__(self, l, r, op, span):
+		super().__init__()
 		self.l = l
 		self.r = r
 		self.op = op
+		self.span = span
+
+class FnCallAST(ValueExprAST):
+	def __init__(self, expr, args, span):
+		super().__init__()
+		self.expr = expr
+		self.args = args
+		self.span = span
+
+class IfAST(ValueExprAST):
+	def __init__(self, expr, ifBlock, elseBlock, span):
+		super().__init__()
+		self.expr = expr
+		self.ifBlock = ifBlock
+		self.elseBlock = elseBlock
 		self.span = span
 
 
@@ -457,7 +482,7 @@ def parseAttrs(state):
 def parseFnDeclParams(state):
 	def parseFnParam(state):
 		if state.tok.type == TokenType.ELLIPSIS:
-			ret = state.tok
+			ret = CVarArgsParamAST(state.tok.span)
 			state.advance()
 			if state.tok.type != TokenType.RPAREN:
 				logError(state, ret.span, 'C variadic parameter must come last')
@@ -480,9 +505,9 @@ def parseFnDeclParams(state):
 		state.advance()
 		state.skipSpace()
 		
-		type = parseTypeRef(state)
+		typeRef = parseTypeRef(state)
 		
-		return FnParamAST(name, type, Span.merge(span, state.tokens[state.offset-1].span))
+		return FnParamAST(name, typeRef, Span.merge(span, state.tokens[state.offset-1].span))
 	
 	return parseBlock(state, parseFnParam, TokenType.COMMA, BlockMarkers.PAREN, True)
 
@@ -508,7 +533,7 @@ class Block:
 		self.span = span
 		self.trailingSeparator = trailingSeparator
 
-def parseBlock(state, parseItem, sepType=TokenType.SEMICOLON, 
+def parseBlock(state, parseItem, sepType=TokenType.COMMA, 
 	blockMarkers=BlockMarkers.BRACE, requireBlockMarkers=False, topLevelBlock=False):
 	if blockMarkers == BlockMarkers.BRACE:
 		openMarker = TokenType.LBRACE
@@ -684,6 +709,23 @@ def parseInfixOp(state, l):
 	else:
 		return InfixOpAST(l, r, InfixOp.fromTokenType(op), Span.merge(l.span, r.span))
 
+def parseValueRef(state):
+	path = [state.tok.content]
+	span = state.tok.span
+	state.advance()
+	
+	while state.tok.type == TokenType.PATH:
+		span = Span.merge(span, state.tok.span)
+		state.advance()
+		if expectType(state, TokenType.NAME) == False:
+			break
+		
+		path.append(state.tok.content)
+		span = Span.merge(span, state.tok.span)
+		state.advance()
+	
+	return ValueRefAST(path, span)
+
 def parseValueExpr(state, precedence=0):
 	if state.tok.type == TokenType.LPAREN:
 		block = parseBlock(state, parseValueExpr, TokenType.COMMA, BlockMarkers.PAREN, True)
@@ -693,8 +735,7 @@ def parseValueExpr(state, precedence=0):
 		else:
 			expr = TupleLitAST(block.list, block.span)
 	elif state.tok.type == TokenType.NAME:
-		expr = ValueRefAST(state.tok.content, state.tok.span)
-		state.advance()
+		expr = parseValueRef(state)
 	elif state.tok.type == TokenType.STRING:
 		expr = StrLitAST(state.tok.content, state.tok.span)
 		state.advance()
@@ -708,7 +749,7 @@ def parseValueExpr(state, precedence=0):
 		expr = parseIf(state)
 	else:
 		logError(state, state.tok.span, 'expected value expression, found {}'.format(state.tok.type.desc()))
-		state.skipUntil(TokenType.NEWLINE, TokenType.SEMICOLON, TokenType.RBRACE)
+		state.skipUntil(TokenType.NEWLINE, TokenType.COMMA, TokenType.RBRACE)
 		expr = None
 	
 	if expr == None:
@@ -736,7 +777,7 @@ def parseReturn(state):
 	state.skipSpace()
 	
 	expr = None
-	if state.tok.type != TokenType.SEMICOLON and state.tok.type != TokenType.NEWLINE:
+	if state.tok.type != TokenType.COMMA and state.tok.type != TokenType.NEWLINE:
 		expr = parseValueExpr(state)
 		if expr != None:
 			span = Span.merge(span, expr.span)
@@ -761,11 +802,11 @@ def parseLet(state):
 	state.advance()
 	state.skipSpace()
 	
-	type = None
+	typeRef = None
 	if state.tok.type == TokenType.COLON:
 		state.advance()
 		state.skipSpace()
-		type = parseTypeRef(state)
+		typeRef = parseTypeRef(state)
 	
 	expr = None
 	if state.tok.type == TokenType.ASGN:
@@ -776,7 +817,7 @@ def parseLet(state):
 		if expr != None:
 			span = Span.merge(span, expr.span)
 	
-	return LetAST(mut, name, type, expr, span)
+	return LetAST(mut, name, typeRef, expr, span)
 
 def parseFnExpr(state):
 	if state.tok.type in (TokenType.NAME, TokenType.STRING, TokenType.INTEGER, TokenType.IF):
@@ -787,7 +828,7 @@ def parseFnExpr(state):
 		return parseLet(state)
 	else:
 		logError(state, state.tok.span, 'expected expression, found {}'.format(state.tok.type.desc()))
-		state.skipUntil(TokenType.NEWLINE, TokenType.SEMICOLON, TokenType.RBRACE)
+		state.skipUntil(TokenType.NEWLINE, TokenType.COMMA, TokenType.RBRACE)
 
 def parseFnDecl(state, doccomment, attrs, extern):
 	span = state.tok.span
@@ -813,7 +854,7 @@ def parseFnDecl(state, doccomment, attrs, extern):
 		block = parseFnDeclParams(state)
 		params = block.list
 		span = Span.merge(span, block.span)
-		if len(params) > 0 and params[-1].type == TokenType.ELLIPSIS:
+		if len(params) > 0 and type(params[-1]) == CVarArgsParamAST:
 			cVarArgsSpan = params.pop().span
 			cVarArgs = True
 	

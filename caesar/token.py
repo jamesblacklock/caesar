@@ -16,6 +16,7 @@ class TokenType(Enum):
 	RBRACK = 'RBRACK'
 	COLON = 'COLON'
 	DOT = 'DOT'
+	PATH = 'PATH'
 	CARET = 'CARET'
 	COMMA = 'COMMA'
 	ELLIPSIS = 'ELLIPSIS'
@@ -87,6 +88,8 @@ class TokenType(Enum):
 			return '`:`'
 		elif self == TokenType.DOT:
 			return '`.`'
+		elif self == TokenType.PATH:
+			return '`::`'
 		elif self == TokenType.CARET:
 			return '`^`'
 		elif self == TokenType.COMMA:
