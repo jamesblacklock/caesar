@@ -29,7 +29,7 @@ fn main()
 	let xyz: Int64 = 123
 	
 	doTheThing( doTheThing( theMeaningOfLifeTheUniverseAndEverything() ) )
-	printf("The time is: %d\nAnd here is the value of a local variable: %d\n", time(0), xyz)
+	printf("The time is: %d\nAnd here is the value of a local variable: %d\n", time(0 as Int64^), xyz)
 	
 	let mut c = testMod::otherFn()
 	

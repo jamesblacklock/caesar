@@ -26,7 +26,7 @@ def invokeAttrs(state, decl):
 		
 		builtinAttrs[attr.name](decl, attr.args)
 
-def lookupSymbol(state, scope, symbolRef):
+def lookupSymbol(state, scope, symbolRef, inTypePosition):
 	path = symbolRef.path
 	symbol = None
 	
@@ -36,23 +36,38 @@ def lookupSymbol(state, scope, symbolRef):
 			break
 		scope = scope.parentScope
 	
-	if symbol == None:
-		return None
+	if symbol != None:
+		for name in path[1:]:
+			if type(symbol) != ModAST:
+				logError(state, symbolRef.span, '`{}` is not a module'.format(symbol.name))
+				symbol = None
+				break
+			
+			if name not in symbol.symbolTable:
+				return None
+			symbol = symbol.symbolTable[name]
 	
-	for name in path[1:]:
-		if type(symbol) != ModAST:
-			logError(state, symbolRef.span, '`{}` is not a module'.format(symbol.name))
-			return None
-		
-		if name not in symbol.symbolTable:
-			return None
-		symbol = symbol.symbolTable[name]
+	if inTypePosition:
+		if symbol == None:
+			logError(state, symbolRef.span, 'cannot resolve type `{}`'.format(symbolRef.name))
+		elif type(symbol) != types.ResolvedType:
+			logError(state, symbolRef.span, '`{}` is not a type'.format(symbolRef.name))
+			symbol = None
+	else:
+		if symbol == None:
+			logError(state, symbolRef.span, 'cannot resolve the symbol `{}`'.format(symbolRef.name))
+		elif type(symbol) == types.ResolvedType:
+			logError(state, symbolRef.span, 'found a type reference where a value was expected')
+			symbol = None
+		elif type(symbol) == ModAST:
+			logError(state, symbolRef.span, 'found a module name where a value was expected')
+			symbol = None
 	
 	return symbol
 
 def resolveValueExprType(state, scope, expr):
 	if type(expr) == StrLitAST:
-		expr.resolvedType = types.Ptr
+		expr.resolvedType = types.ResolvedPtrType(types.Byte, 1)
 	elif type(expr) == IntLitAST:
 		if expr.suffix == 'i8':
 			expr.resolvedType = types.Int8
@@ -88,22 +103,16 @@ def resolveValueExprType(state, scope, expr):
 		typeCheckIf(state, scope, expr)
 
 def resolveTypeRefType(state, scope, typeRef):
-	resolvedType = lookupSymbol(state, scope, typeRef)
-	if resolvedType == None:
-		logError(state, typeRef.span, 'cannot resolve type `{}`'.format(typeRef.name))
-	elif type(resolvedType) != types.ResolvedType:
-		logError(state, typeRef.span, '`{}` is not a type'.format(typeRef.name))
+	resolvedType = lookupSymbol(state, scope, typeRef, True)
 	
-	typeRef.resolvedType = resolvedType if typeRef.indirectionLevel == 0 else types.Ptr
+	if typeRef.indirectionLevel > 0:
+		resolvedType = types.ResolvedPtrType(resolvedType, typeRef.indirectionLevel)
+	
+	typeRef.resolvedType = resolvedType
 
 def typeCheckValueRef(state, scope, valueRef):
-	symbol = lookupSymbol(state, scope, valueRef)
-	if symbol == None:
-		logError(state, valueRef.span, 'cannot resolve the symbol `{}`'.format(valueRef.name))
-	elif not isinstance(valueRef, ValueRefAST):
-		logError(state, valueRef.span, 'found a type reference where a value was expected')
-	else:
-		valueRef.resolvedType = symbol.resolvedSymbolType
+	symbol = lookupSymbol(state, scope, valueRef, False)
+	valueRef.resolvedType = symbol.resolvedSymbolType if symbol else None
 
 def typeCheckFnSig(state, fnDecl):
 	if fnDecl.returnType == None:
@@ -143,7 +152,7 @@ def typeCheckLet(state, scope, letExpr):
 		resolveTypeRefType(state, scope, letExpr.typeRef)
 		letExpr.resolvedSymbolType = letExpr.typeRef.resolvedType
 		
-		if not typesMatch(letExpr.expr.resolvedType, letExpr.resolvedSymbolType):
+		if not typesMatch(letExpr.resolvedSymbolType, letExpr.expr.resolvedType):
 			logError(state, letExpr.expr.span, 'expected type {}, found {}'
 				.format(letExpr.resolvedSymbolType, letExpr.expr.resolvedType))
 	else:
@@ -180,7 +189,7 @@ def typeCheckReturn(state, scope, retExpr):
 		scope = scope.parentScope
 	
 	resolveValueExprType(state, scope, retExpr.expr)
-	if not typesMatch(retExpr.expr.resolvedType, scope.resolvedSymbolType.resolvedReturnType):
+	if not typesMatch(scope.resolvedSymbolType.resolvedReturnType, retExpr.expr.resolvedType):
 		logError(state, retExpr.expr.span, 'invalid return type (expected {}, found {})'
 			.format(scope.resolvedSymbolType.resolvedReturnType, retExpr.expr.resolvedType))
 

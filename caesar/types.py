@@ -1,21 +1,32 @@
 class ResolvedType:
-	def __init__(self, name, byteSize, isFnType=False, isMultiIntType=False):
+	def __init__(self, name, byteSize, isFnType=False, isMultiIntType=False, isPtrType=False):
 		self.name = name
 		self.byteSize = byteSize
 		self.isFnType = isFnType
 		self.isMultiIntType = isMultiIntType
+		self.isPtrType = isPtrType
 	
 	def __str__(self):
 		return self.name
 
 class ResolvedFnType(ResolvedType):
 	def __init__(self, resolvedParamTypes, cVarArgs, resolvedReturnType):
-		super().__init__('function', 0, isFnType=True)
+		name = 'fn ({}) -> {}'.format(
+			', '.join([t.name for t in resolvedParamTypes]), 
+			resolvedReturnType.name)
+		super().__init__(name, 0, isFnType=True)
 		self.resolvedReturnType = resolvedReturnType
 		self.resolvedParamTypes = resolvedParamTypes
 		self.cVarArgs = cVarArgs
 
 PLATFORM_WORD_SIZE = 8
+
+class ResolvedPtrType(ResolvedType):
+	def __init__(self, baseType, indirectionLevel):
+		name = baseType.name + ('^' * indirectionLevel)
+		super().__init__(name, PLATFORM_WORD_SIZE, isPtrType=True)
+		self.baseType = baseType
+		self.indirectionLevel = indirectionLevel
 
 Void    = ResolvedType('Void',    0)
 Bool    = ResolvedType('Bool',    1)
@@ -33,7 +44,6 @@ ISize   = ResolvedType('ISize',   PLATFORM_WORD_SIZE)
 USize   = ResolvedType('USize',   PLATFORM_WORD_SIZE)
 Float32 = ResolvedType('Float32', 4)
 Float64 = ResolvedType('Float64', 8)
-Ptr     = ResolvedType('$Ptr',    PLATFORM_WORD_SIZE)
 
 BUILTIN_TYPES = [
 	Void,
@@ -51,8 +61,7 @@ BUILTIN_TYPES = [
 	ISize,
 	USize,
 	Float32,
-	Float64,
-	Ptr
+	Float64
 ]
 
 I8_MAX  = 127
@@ -101,18 +110,24 @@ class ResolvedMultiIntType(ResolvedType):
 	def __str__(self):
 		return self.possibleTypes[0].__str__() if len(self.possibleTypes) > 0 else self.name
 
-def typesMatch(t1, t2):
-	if type(t2) == ResolvedMultiIntType:
-		t1, t2 = t2, t1
+def typesMatch(expectedType, foundType):
+	if expectedType == None:
+		return True
 	
-	if type(t1) == ResolvedMultiIntType:
-		if type(t2) == ResolvedMultiIntType:
-			for t in t1.possibleTypes:
-				if t in t2.possibleTypes:
+	if type(expectedType) == ResolvedMultiIntType:
+		expectedType, foundType = foundType, expectedType
+	
+	if type(foundType) == ResolvedMultiIntType:
+		if type(expectedType) == ResolvedMultiIntType:
+			for t in foundType.possibleTypes:
+				if t in expectedType.possibleTypes:
 					return True
 			
 			return False
 		else:
-			return t2 in t1.possibleTypes
-	
-	return t1 and t2 and (t1 is t2)
+			return expectedType in foundType.possibleTypes
+	elif type(expectedType) == ResolvedPtrType and type(foundType) == ResolvedPtrType:
+		return expectedType.baseType == foundType.baseType and \
+			expectedType.indirectionLevel == foundType.indirectionLevel
+	else:
+		return expectedType is foundType
