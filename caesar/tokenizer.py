@@ -183,7 +183,7 @@ def lexOperator(state):
 		('+', TokenType.PLUS),
 		('-', TokenType.MINUS),
 		('&', TokenType.BITAND),
-		('|', TokenType.BITOR),
+		('|', TokenType.PIPE),
 		('>', TokenType.GREATER),
 		('<', TokenType.LESS),
 		('=', TokenType.ASGN),
@@ -251,7 +251,10 @@ def lexNameOrKeyword(state):
 		('if', TokenType.IF),
 		('else', TokenType.ELSE),
 		('while', TokenType.WHILE),
-		('for', TokenType.FOR)
+		('for', TokenType.FOR),
+		('as', TokenType.AS),
+		('true', TokenType.TRUE),
+		('false', TokenType.FALSE)
 	]
 	
 	for (kw, type) in keywords:

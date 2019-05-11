@@ -1,6 +1,7 @@
-from enum                                         import Enum
-from .parser                                      import FnDeclAST, FnCallAST, ValueRefAST, StrLitAST, \
-	IntLitAST, ReturnAST, LetAST, IfAST, InfixOpAST, InfixOp
+from enum                            import Enum
+from .parser                         import FnDeclAST, FnCallAST, ValueRefAST, StrLitAST, BlockAST, \
+	                                        IntLitAST, ReturnAST, LetAST, IfAST, InfixOpAST, InfixOp, \
+											CoercionAST, BoolLitAST
 
 class Type(Enum):
 	I1 = 'i1'
@@ -157,6 +158,14 @@ def ifBlockToIR(ifAst, fn, block):
 	
 	block.append(IfElse(result, ifBlock, elseBlock))
 
+def boolLitToIR(lit, fn, block):
+	fn.sp += 1
+	
+	src = Target(Storage.IMM, Type.I8, 1 if lit.value else 0)
+	dest = Target(Storage.LOCAL, Type.I8, fn.sp)
+	
+	block.append(Move(src, dest))
+
 def intLitToIR(lit, fn, block):
 	fn.sp += 1
 	
@@ -199,6 +208,10 @@ def valueRefToIR(expr, fn, block):
 	dest = Target(Storage.LOCAL, Type.I8, fn.sp)
 	
 	block.append(Move(src, dest))
+
+def listToIr(exprs, fn, block):
+	for expr in exprs:
+		exprToIR(expr, fn, block)
 
 def eqToIr(eq, fn, block):
 	exprToIR(eq.l, fn, block)
@@ -261,7 +274,9 @@ def divToIr(eq, fn, block):
 	block.append(Div(l, r, dest))
 
 def exprToIR(expr, fn, block):
-	if type(expr) == IntLitAST:
+	if type(expr) == BoolLitAST:
+		boolLitToIR(expr, fn, block)
+	elif type(expr) == IntLitAST:
 		intLitToIR(expr, fn, block)
 	elif type(expr) == StrLitAST:
 		strLitToIR(expr, fn, block)
@@ -275,6 +290,10 @@ def exprToIR(expr, fn, block):
 		ifBlockToIR(expr, fn, block)
 	elif type(expr) == ReturnAST:
 		returnToIR(expr, fn, block)
+	elif type(expr) == BlockAST:
+		listToIr(expr.exprs, fn, block)
+	elif type(expr) == CoercionAST:
+		print('skipping coercion (unimplemented)')
 	elif type(expr) == InfixOpAST and expr.op == InfixOp.EQ:
 		eqToIr(expr, fn, block)
 	elif type(expr) == InfixOpAST and expr.op == InfixOp.PLUS:

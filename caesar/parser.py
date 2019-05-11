@@ -3,7 +3,7 @@ from os import path
 from enum import Enum
 from .token import TokenType, revealToken
 from .span import Span, revealSpan, AnsiColor
-from .types import BUILTIN_TYPES
+from .types import BUILTIN_TYPES, InfixOp, INFIX_PRECEDENCE
 from .err import logError
 
 #######################
@@ -74,116 +74,6 @@ class ParserState:
 	def skipUntil(self, *types):
 		while self.tok.type != TokenType.EOF and self.tok.type not in types:
 			self.advance()
-
-
-#######################
-#  Operators & Types
-#######################
-
-# ->
-# << >>
-# * / %
-# + -
-# & ^ |
-# ..< ...
-# < <= > >= == !=
-# &&
-# ||
-
-INFIX_OPS = {
-	TokenType.ARROW:     900, 
-	TokenType.LSHIFT:    800, 
-	TokenType.RSHIFT:    800, 
-	TokenType.TIMES:     700,
-	TokenType.DIV:       700,
-	TokenType.MODULO:    700, 
-	TokenType.PLUS:      600, 
-	TokenType.MINUS:     600,
-	TokenType.BITAND:    500, 
-	TokenType.BITOR:     500, 
-	TokenType.CARET:     500, 
-	TokenType.RNGCLOSED: 400, 
-	TokenType.RNGOPEN:   400, 
-	TokenType.EQ:        300, 
-	TokenType.NEQ:       300, 
-	TokenType.GREATER:   300, 
-	TokenType.LESS:      300,
-	TokenType.GREATEREQ: 300, 
-	TokenType.LESSEQ:    300,
-	TokenType.AND:       200, 
-	TokenType.OR:        100
-}
-
-class InfixOp(Enum):
-	ARROW = 'ARROW'
-	LSHIFT = 'LSHIFT'
-	RSHIFT = 'RSHIFT'
-	TIMES = 'TIMES'
-	DIV = 'DIV'
-	MODULO = 'MODULO'
-	PLUS = 'PLUS'
-	MINUS = 'MINUS'
-	BITAND = 'BITAND'
-	BITOR = 'BITOR'
-	BITXOR = 'BITXOR'
-	RNGCLOSED = 'RNGCLOSED'
-	RNGOPEN = 'RNGOPEN'
-	EQ = 'EQ'
-	NEQ = 'NEQ'
-	GREATER = 'GREATER'
-	LESS = 'LESS'
-	GREATEREQ = 'GREATEREQ'
-	LESSEQ = 'LESSEQ'
-	AND = 'AND'
-	OR = 'OR'
-	
-	@staticmethod
-	def fromTokenType(type):
-		if type == TokenType.ARROW:
-			return InfixOp.ARROW
-		elif type == TokenType.LSHIFT:
-			return InfixOp.LSHIFT
-		elif type == TokenType.RSHIFT:
-			return InfixOp.RSHIFT
-		elif type == TokenType.TIMES:
-			return InfixOp.TIMES
-		elif type == TokenType.DIV:
-			return InfixOp.DIV
-		elif type == TokenType.MODULO:
-			return InfixOp.MODULO
-		elif type == TokenType.PLUS:
-			return InfixOp.PLUS
-		elif type == TokenType.MINUS:
-			return InfixOp.MINUS
-		elif type == TokenType.BITAND:
-			return InfixOp.BITAND
-		elif type == TokenType.BITOR:
-			return InfixOp.BITOR
-		elif type == TokenType.CARET:
-			return InfixOp.BITXOR
-		elif type == TokenType.RNGCLOSED:
-			return InfixOp.RNGCLOSED
-		elif type == TokenType.RNGOPEN:
-			return InfixOp.RNGOPEN
-		elif type == TokenType.EQ:
-			return InfixOp.EQ
-		elif type == TokenType.NEQ:
-			return InfixOp.NEQ
-		elif type == TokenType.GREATER:
-			return InfixOp.GREATER
-		elif type == TokenType.LESS:
-			return InfixOp.LESS
-		elif type == TokenType.GREATEREQ:
-			return InfixOp.GREATEREQ
-		elif type == TokenType.LESSEQ:
-			return InfixOp.LESSEQ
-		elif type == TokenType.AND:
-			return InfixOp.AND
-		elif type == TokenType.OR:
-			return InfixOp.OR
-		else:
-			return None
-
 
 #######################
 #  AST structs
@@ -315,6 +205,12 @@ class StrLitAST(ValueExprAST):
 		self.value = strBytes(value)
 		self.span = span
 
+class BoolLitAST(ValueExprAST):
+	def __init__(self, value, span):
+		super().__init__()
+		self.value = value
+		self.span = span
+
 class IntLitAST(ValueExprAST):
 	def __init__(self, value, suffix, span):
 		super().__init__()
@@ -328,6 +224,12 @@ class TupleLitAST(ValueExprAST):
 		self.values = values
 		self.span = span
 
+class BlockAST(ValueExprAST):
+	def __init__(self, exprs, span):
+		super().__init__()
+		self.exprs = exprs
+		self.span = span
+
 class ValueRefAST(ValueExprAST):
 	def __init__(self, path, span):
 		super().__init__()
@@ -336,11 +238,19 @@ class ValueRefAST(ValueExprAST):
 		self.span = span
 
 class InfixOpAST(ValueExprAST):
-	def __init__(self, l, r, op, span):
+	def __init__(self, l, r, op, span, opSpan):
 		super().__init__()
 		self.l = l
 		self.r = r
 		self.op = op
+		self.span = span
+		self.opSpan = opSpan
+
+class CoercionAST(ValueExprAST):
+	def __init__(self, expr, typeRef, span):
+		super().__init__()
+		self.expr = expr
+		self.typeRef = typeRef
 		self.span = span
 
 class FnCallAST(ValueExprAST):
@@ -515,12 +425,27 @@ def parseFnDeclReturnType(state):
 	# span = state.tok.span
 	state.advance() # skip `->`
 	
-	if state.tok.type == TokenType.NEWLINE:
-		state.skipEmptyLines()
-		expectIndentIncrease(state)
+	# if state.tok.type == TokenType.NEWLINE:
+	# 	state.skipEmptyLines()
+	# 	expectIndentIncrease(state)
 	
 	state.skipSpace()
 	return parseTypeRef(state)
+
+def parseCoercion(state, expr):
+	span = Span.merge(expr.span, state.tok.span)
+	state.advance() # skip `as`
+	
+	# if state.tok.type == TokenType.NEWLINE:
+	# 	state.skipEmptyLines()
+	# 	expectIndentIncrease(state)
+	
+	state.skipSpace()
+	typeRef = parseTypeRef(state)
+	if typeRef == None:
+		return None
+	
+	return CoercionAST(expr, typeRef, Span.merge(span, typeRef.span))
 
 class BlockMarkers(Enum):
 	PAREN = 'PAREN'
@@ -528,7 +453,7 @@ class BlockMarkers(Enum):
 	BRACK = 'BRACK'
 
 class Block:
-	def __init__(self, list, span, trailingSeparator):
+	def __init__(self, list, span, trailingSeparator=False):
 		self.list = list
 		self.span = span
 		self.trailingSeparator = trailingSeparator
@@ -603,9 +528,12 @@ def parseBlock(state, parseItem, sepType=TokenType.COMMA,
 		
 		state.skipSpace()
 		
-		expectedTypes = (sepType, TokenType.NEWLINE, closeMarker) if needsTerm else (sepType, TokenType.NEWLINE)
-		if expectType(state, *expectedTypes) == False:
-			state.skipUntil(TokenType.NEWLINE)
+		if needsTerm:
+			if expectType(state, TokenType.INDENT, sepType, TokenType.NEWLINE, closeMarker) == False:
+				state.skipUntil(closeMarker)
+		else:
+			if expectType(state, TokenType.INDENT, sepType, TokenType.NEWLINE) == False:
+				state.skipUntil(TokenType.NEWLINE)
 		
 		if state.tok.type == sepType:
 			state.advance()
@@ -679,7 +607,7 @@ def parseIf(state):
 	if expr == None:
 		return None
 	
-	ifBlock = parseBlock(state, parseFnExpr)
+	ifBlock = parseBlock(state, parseFnBodyExpr)
 	span = Span.merge(span, ifBlock.span)
 	elseBlock = None
 	
@@ -688,26 +616,35 @@ def parseIf(state):
 		state.tok.type == TokenType.INDENT and state.tokens[state.offset+1].type == TokenType.ELSE:
 		expectIndent(state)
 		state.advance()
-		elseBlock = parseBlock(state, parseFnExpr)
+		state.skipSpace()
+		
+		if state.tok.type == TokenType.IF:
+			tok = state.tok
+			elseIf = parseIf(state)
+			elseBlock = Block([elseIf], elseIf.span) if elseIf else Block([], tok.span)
+		else:
+			elseBlock = parseBlock(state, parseFnBodyExpr)
+		
 		span = Span.merge(span, elseBlock.span)
 	
-	return IfAST(expr, ifBlock.list, elseBlock.list, span)
+	return IfAST(expr, ifBlock.list, elseBlock.list if elseBlock else None, span)
 
 def parseInfixOp(state, l):
 	op = state.tok.type
+	opSpan = state.tok.span
 	
 	state.advance()
 	state.skipEmptyLines()
 	expectIndentOrIndentIncrease(state)
 	
-	r = parseValueExpr(state, INFIX_OPS[op])
+	r = parseValueExpr(state, INFIX_PRECEDENCE[op])
 	if r == None:
 		return l
 	
 	if op == TokenType.ARROW:
 		return parseMethodCall(state, l, r)
 	else:
-		return InfixOpAST(l, r, InfixOp.fromTokenType(op), Span.merge(l.span, r.span))
+		return InfixOpAST(l, r, InfixOp.fromTokenType(op), Span.merge(l.span, r.span), opSpan)
 
 def parseValueRef(state):
 	path = [state.tok.content]
@@ -727,7 +664,14 @@ def parseValueRef(state):
 	return ValueRefAST(path, span)
 
 def parseValueExpr(state, precedence=0):
-	if state.tok.type == TokenType.LPAREN:
+	state.skipSpace()
+	if state.tok.type == TokenType.NEWLINE:
+		block = parseBlock(state, parseFnBodyExpr)
+		expr = BlockAST(block.list, block.span)
+	elif state.tok.type == TokenType.LBRACE:
+		block = parseBlock(state, parseFnBodyExpr, requireBlockMarkers=True)
+		expr = BlockAST(block.list, block.span)
+	elif state.tok.type == TokenType.LPAREN:
 		block = parseBlock(state, parseValueExpr, TokenType.COMMA, BlockMarkers.PAREN, True)
 		if len(block.list) == 1 and not block.trailingSeparator:
 			expr = block.list[0]
@@ -745,6 +689,10 @@ def parseValueExpr(state, precedence=0):
 		suffix = matches[2]
 		expr = IntLitAST(value, suffix, state.tok.span)
 		state.advance()
+	elif state.tok.type == TokenType.FALSE or state.tok.type == TokenType.TRUE:
+		value = state.tok.type == TokenType.TRUE
+		expr = BoolLitAST(value, state.tok.span)
+		state.advance()
 	elif state.tok.type == TokenType.IF:
 		expr = parseIf(state)
 	else:
@@ -761,7 +709,9 @@ def parseValueExpr(state, precedence=0):
 	while True:
 		if state.tok.type == TokenType.LPAREN:
 			expr = parseFnCall(state, expr)
-		elif state.tok.type in INFIX_OPS and INFIX_OPS[state.tok.type] > precedence:
+		elif state.tok.type == TokenType.AS:
+			expr = parseCoercion(state, expr)
+		elif state.tok.type in INFIX_PRECEDENCE and INFIX_PRECEDENCE[state.tok.type] > precedence:
 			expr = parseInfixOp(state, expr)
 		else:
 			break
@@ -812,14 +762,13 @@ def parseLet(state):
 	if state.tok.type == TokenType.ASGN:
 		span = Span.merge(span, state.tok.span)
 		state.advance()
-		state.skipSpace()
 		expr = parseValueExpr(state)
 		if expr != None:
 			span = Span.merge(span, expr.span)
 	
 	return LetAST(mut, name, typeRef, expr, span)
 
-def parseFnExpr(state):
+def parseFnBodyExpr(state):
 	if state.tok.type in (TokenType.NAME, TokenType.STRING, TokenType.INTEGER, TokenType.IF):
 		return parseValueExpr(state)
 	elif state.tok.type == TokenType.RETURN:
@@ -868,7 +817,7 @@ def parseFnDecl(state, doccomment, attrs, extern):
 	
 	body = None
 	if not extern:
-		block = parseBlock(state, parseFnExpr)
+		block = parseBlock(state, parseFnBodyExpr)
 		body = block.list
 		span = Span.merge(span, block.span)
 	

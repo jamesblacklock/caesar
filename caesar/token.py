@@ -29,7 +29,7 @@ class TokenType(Enum):
 	PLUS = 'PLUS'
 	MINUS = 'MINUS'
 	BITAND = 'BITAND'
-	BITOR = 'BITOR'
+	PIPE = 'PIPE'
 	RNGCLOSED = 'RNGCLOSED'
 	RNGOPEN = 'RNGOPEN'
 	EQ = 'EQ'
@@ -55,6 +55,9 @@ class TokenType(Enum):
 	ELSE = 'ELSE'
 	WHILE = 'WHILE'
 	FOR = 'FOR'
+	AS = 'AS'
+	TRUE = 'TRUE'
+	FALSE = 'FALSE'
 	NAME = 'NAME',
 	UNKNOWN = 'UNKNOWN'
 	EOF = 'EOF'
@@ -114,7 +117,7 @@ class TokenType(Enum):
 			return '`-`'
 		elif self == TokenType.BITAND:
 			return '`&`'
-		elif self == TokenType.BITOR:
+		elif self == TokenType.PIPE:
 			return '`|`'
 		elif self == TokenType.RNGCLOSED:
 			return '`..<`'
@@ -166,6 +169,12 @@ class TokenType(Enum):
 			return '`while`'
 		elif self == TokenType.FOR:
 			return '`for`'
+		elif self == TokenType.AS:
+			return '`as`'
+		elif self == TokenType.TRUE:
+			return '`true`'
+		elif self == TokenType.FALSE:
+			return '`false`'
 		elif self == TokenType.NAME:
 			return 'name'
 		elif self == TokenType.UNKNOWN:

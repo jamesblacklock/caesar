@@ -1,6 +1,7 @@
 from .parser             import CConv, FnDeclAST, LetAST, FnCallAST, ReturnAST, IfAST, TypeRefAST, \
-                                StrLitAST, IntLitAST, TupleLitAST, ValueRefAST, InfixOpAST, FnCallAST, \
-								IfAST, ModAST
+                                StrLitAST, IntLitAST, BoolLitAST, TupleLitAST, ValueRefAST, \
+								InfixOpAST, FnCallAST, IfAST, CoercionAST, ModAST, ValueExprAST, \
+								BlockAST
 from .                   import types
 from .types              import typesMatch
 from .err                import logError
@@ -68,6 +69,8 @@ def lookupSymbol(state, scope, symbolRef, inTypePosition):
 def resolveValueExprType(state, scope, expr):
 	if type(expr) == StrLitAST:
 		expr.resolvedType = types.ResolvedPtrType(types.Byte, 1)
+	elif type(expr) == BoolLitAST:
+		expr.resolvedType = types.Bool
 	elif type(expr) == IntLitAST:
 		if expr.suffix == 'i8':
 			expr.resolvedType = types.Int8
@@ -90,17 +93,24 @@ def resolveValueExprType(state, scope, expr):
 		elif expr.suffix == 'usz':
 			expr.resolvedType = types.USize
 		else:
-			expr.resolvedType = types.ResolvedMultiIntType(int(expr.value))
+			expr.resolvedType = types.ResolvedMultiIntType.fromValue(int(expr.value))
+	elif type(expr) == BlockAST:
+		typeCheckBlock(state, scope, expr.exprs)
+		expr.resolvedType = getBlockType(expr.exprs)
 	elif type(expr) == TupleLitAST:
 		raise RuntimeError('unimplemented!')
 	elif type(expr) == ValueRefAST:
 		typeCheckValueRef(state, scope, expr)
 	elif type(expr) == InfixOpAST:
-		raise RuntimeError('unimplemented!')
+		typeCheckInfixOp(state, scope, expr)
 	elif type(expr) == FnCallAST:
 		typeCheckFnCall(state, scope, expr)
 	elif type(expr) == IfAST:
 		typeCheckIf(state, scope, expr)
+	elif type(expr) == CoercionAST:
+		typeCheckCoercion(state, scope, expr)
+	else:
+		assert 0
 
 def resolveTypeRefType(state, scope, typeRef):
 	resolvedType = lookupSymbol(state, scope, typeRef, True)
@@ -113,6 +123,36 @@ def resolveTypeRefType(state, scope, typeRef):
 def typeCheckValueRef(state, scope, valueRef):
 	symbol = lookupSymbol(state, scope, valueRef, False)
 	valueRef.resolvedType = symbol.resolvedSymbolType if symbol else None
+
+def typeCheckInfixOp(state, scope, infixOp):
+	opErr = lambda: \
+		logError(state, infixOp.opSpan, 'invalid operand types for operator `{}`'.format(infixOp.op.desc()))
+	
+	resolveValueExprType(state, scope, infixOp.l)
+	resolveValueExprType(state, scope, infixOp.r)
+	
+	if not infixOp.l.resolvedType or not infixOp.r.resolvedType:
+		return
+	
+	if infixOp.l.resolvedType.isIntType and infixOp.r.resolvedType.isIntType:
+		lType = infixOp.l.resolvedType
+		rType = infixOp.r.resolvedType
+		
+		possibleTypes = types.ResolvedMultiIntType.inCommon(lType, rType)
+		
+		if len(possibleTypes) > 0:
+			if infixOp.op in types.ARITHMETIC_OPS:
+				if len(possibleTypes) == 1:
+					infixOp.resolvedType = possibleTypes[0]
+					return
+				else:
+					infixOp.resolvedType = types.ResolvedMultiIntType(possibleTypes)
+					return
+			elif infixOp.op in types.CMP_OPS:
+				infixOp.resolvedType = types.Bool
+				return
+	
+	opErr()
 
 def typeCheckFnSig(state, fnDecl):
 	if fnDecl.returnType == None:
@@ -193,28 +233,63 @@ def typeCheckReturn(state, scope, retExpr):
 		logError(state, retExpr.expr.span, 'invalid return type (expected {}, found {})'
 			.format(scope.resolvedSymbolType.resolvedReturnType, retExpr.expr.resolvedType))
 
-def typeCheckIf(state, fnDecl, ifExpr):
-	raise RuntimeError('unimplemented!')
+def getBlockType(block):
+	if len(block) == 0:
+		return types.Void
+	
+	lastExpr = block[-1]
+	if not isinstance(lastExpr, ValueExprAST):
+		return types.Void
+	
+	return lastExpr.resolvedType
+
+def typeCheckIf(state, scope, ifExpr):
+	resolveValueExprType(state, scope, ifExpr.expr)
+	if ifExpr.expr.resolvedType != types.Bool:
+		logError(state, ifExpr.expr.span, 
+			'condition type must be Bool (found {})'.format(ifExpr.expr.resolvedType))
+	
+	typeCheckBlock(state, scope, ifExpr.ifBlock)
+	resolvedType = getBlockType(ifExpr.ifBlock)
+	
+	if ifExpr.elseBlock:
+		typeCheckBlock(state, scope, ifExpr.elseBlock)
+		elseResolvedType = getBlockType(ifExpr.elseBlock)
+		if not typesMatch(resolvedType, elseResolvedType):
+			if typesMatch(elseResolvedType, resolvedType):
+				resolvedType = elseResolvedType
+			else:
+				resolvedType = types.ResolvedOptionType(resolvedType, elseResolvedType)
+	
+	ifExpr.resolvedType = resolvedType
+
+def typeCheckCoercion(state, scope, asExpr):
+	resolveValueExprType(state, scope, asExpr.expr)
+	resolveTypeRefType(state, scope, asExpr.typeRef)
+	
+	asExpr.resolvedType = asExpr.typeRef.resolvedType
+	
+	if not types.canCoerce(asExpr.expr.resolvedType, asExpr.typeRef.resolvedType):
+		logError(state, asExpr.span, 'cannot coerce from {} to {}'
+			.format(asExpr.expr.resolvedType, asExpr.typeRef.resolvedType))
+
+def typeCheckBlock(state, scope, block):
+	for expr in block:
+		if type(expr) == LetAST:
+			typeCheckLet(state, scope, expr)
+		elif type(expr) == ReturnAST:
+			typeCheckReturn(state, scope, expr)
+		elif isinstance(expr, ValueExprAST):
+			resolveValueExprType(state, scope, expr)
+		else:
+			assert 0
 
 def typeCheckFnBody(state, fnDecl):
 	if fnDecl.body == None:
 		return
 	
-	for expr in fnDecl.body:
-		if type(expr) == LetAST:
-			typeCheckLet(state, fnDecl, expr)
-		elif type(expr) == FnCallAST:
-			typeCheckFnCall(state, fnDecl, expr)
-		elif type(expr) == ReturnAST:
-			typeCheckReturn(state, fnDecl, expr)
-		elif type(expr) == IfAST:
-			typeCheckIf(state, fnDecl, expr)
-		else:
-			assert 0
-	
+	typeCheckBlock(state, fnDecl, fnDecl.body)
 	# TODO: escape analysis
-	
-	state.failed = True
 
 def typeCheckMod(state, mod):
 	for decl in mod.importDecls:
