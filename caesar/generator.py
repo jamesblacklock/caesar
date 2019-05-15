@@ -1,7 +1,8 @@
 from enum                            import Enum
 from .parser                         import FnDeclAST, FnCallAST, ValueRefAST, StrLitAST, BlockAST, \
 	                                        IntLitAST, ReturnAST, LetAST, IfAST, InfixOpAST, InfixOp, \
-											CoercionAST, BoolLitAST
+											CoercionAST, BoolLitAST, WhileAST, AsgnAST
+from .analyzer                       import lookupSymbol
 
 class Type(Enum):
 	I1 = 'i1'
@@ -52,10 +53,11 @@ class Move(Instr):
 		return 'move {} = {}'.format(self.dest, self.src)
 
 class Call(Instr):
-	def __init__(self, callee, args, dest):
+	def __init__(self, callee, args, dest, cVarArgs):
 		self.callee = callee
 		self.args = args
 		self.dest = dest
+		self.cVarArgs = cVarArgs
 	
 	def __str__(self):
 		return '{} = call {}({})'.format(
@@ -79,10 +81,21 @@ class IfElse(Instr):
 		target = '' if self.target == None else ' {}'.format(self.target)
 		return 'if {}\n{}\telse\n{}'.format(self.target, blockToStr(self.ifBlock, 2), blockToStr(self.elseBlock, 2))
 
-class Eq(Instr):
-	def __init__(self, l, r, dest):
+class While(Instr):
+	def __init__(self, target, condBlock, block):
+		self.target = target
+		self.condBlock = condBlock
+		self.block = block
+	
+	def __str__(self):
+		target = '' if self.target == None else ' {}'.format(self.target)
+		return 'if {}\n{}\telse\n{}'.format(self.target, blockToStr(self.ifBlock, 2), blockToStr(self.elseBlock, 2))
+
+class Cmp(Instr):
+	def __init__(self, l, r, op, dest):
 		self.l = l
 		self.r = r
+		self.op = op
 		self.dest = dest
 	
 	def __str__(self):
@@ -124,19 +137,19 @@ class Div(Instr):
 	def __str__(self):
 		return '{} = {} / {}'.format(self.dest, self.l, self.r)
 
-def returnToIR(ret, fn, block):
+def returnToIR(scope, ret, fn, block):
 	target = None
 	if ret.expr != None:
-		exprToIR(ret.expr, fn, block)
+		exprToIR(scope, ret.expr, fn, block)
 		target = block[-1].dest.clone()
 	
 	block.append(Ret(target))
 
-def letToIR(let, fn, block):
+def letToIR(scope, let, fn, block):
 	if let.expr == None:
 		src = Target(Storage.IMM, Type.I8, 0)
 	else:
-		exprToIR(let.expr, fn, block)
+		exprToIR(scope, let.expr, fn, block)
 		src = block[-1].dest.clone()
 	
 	fn.sp += 1
@@ -145,20 +158,45 @@ def letToIR(let, fn, block):
 	
 	block.append(Move(src, dest))
 
-def ifBlockToIR(ifAst, fn, block):
-	exprToIR(ifAst.expr, fn, block)
+def asgnToIR(scope, asgn, fn, block):
+	exprToIR(scope, asgn.rvalue, fn, block)
+	src = block[-1].dest.clone()
+	
+	dest = Target(Storage.LOCAL, Type.I8, fn.locals[asgn.lvalue.name])
+	
+	block.append(Move(src, dest))
+
+def ifBlockToIR(scope, ifAst, fn, block):
+	exprToIR(scope, ifAst.expr, fn, block)
 	result = block[-1].dest.clone()
 	
 	ifBlock = []
-	blockToIR(ifAst.ifBlock, fn, ifBlock)
+	blockToIR(scope, ifAst.ifBlock, fn, ifBlock)
 	
 	elseBlock = []
 	if ifAst.elseBlock != None:
-		blockToIR(ifAst.elseBlock, fn, elseBlock)
+		blockToIR(scope, ifAst.elseBlock, fn, elseBlock)
 	
 	block.append(IfElse(result, ifBlock, elseBlock))
+	
+	# right now if exprs always return 0
+	fn.sp += 1
+	
+	src = Target(Storage.IMM, Type.I8, "0")
+	dest = Target(Storage.LOCAL, Type.I8, fn.sp)
+	
+	block.append(Move(src, dest))
 
-def boolLitToIR(lit, fn, block):
+def whileBlockToIR(scope, whileAst, fn, block):
+	condBlock = []
+	exprToIR(scope, whileAst.expr, fn, condBlock)
+	result = condBlock[-1].dest.clone()
+	
+	whileBlock = []
+	blockToIR(scope, whileAst.block, fn, whileBlock)
+	block.append(While(result, condBlock, whileBlock))
+
+def boolLitToIR(scope, lit, fn, block):
 	fn.sp += 1
 	
 	src = Target(Storage.IMM, Type.I8, 1 if lit.value else 0)
@@ -166,7 +204,7 @@ def boolLitToIR(lit, fn, block):
 	
 	block.append(Move(src, dest))
 
-def intLitToIR(lit, fn, block):
+def intLitToIR(scope, lit, fn, block):
 	fn.sp += 1
 	
 	src = Target(Storage.IMM, Type.I8, lit.value)
@@ -174,7 +212,7 @@ def intLitToIR(lit, fn, block):
 	
 	block.append(Move(src, dest))
 
-def strLitToIR(lit, fn, block):
+def strLitToIR(scope, lit, fn, block):
 	addr = len(fn.staticDefs)
 	fn.staticDefs.append(lit.value)
 	fn.sp += 1
@@ -184,24 +222,24 @@ def strLitToIR(lit, fn, block):
 	
 	block.append(Move(src, dest))
 
-def fnCallToIR(fnCall, fn, block):
+def fnCallToIR(scope, fnCall, fn, block):
 	args = []
 	for expr in fnCall.args:
-		exprToIR(expr, fn, block)
+		exprToIR(scope, expr, fn, block)
 		args.append(block[-1].dest.clone())
 	
 	if type(fnCall.expr) == ValueRefAST:
-		src = Target(Storage.LABEL, Type.I8, fnCall.expr.name)
+		src = Target(Storage.LABEL, Type.I8, lookupSymbol(None, scope, fnCall.expr, False).mangledName)
 	else:
-		exprToIR(fnCall.expr, fn, block)
+		exprToIR(scope, fnCall.expr, fn, block)
 		src = block[-1].dest.clone()
 	
 	fn.sp += 1
 	dest = Target(Storage.LOCAL, Type.I8, fn.sp)
 	
-	block.append(Call(src, args, dest))
+	block.append(Call(src, args, dest, fnCall.expr.resolvedType.cVarArgs))
 
-def valueRefToIR(expr, fn, block):
+def valueRefToIR(scope, expr, fn, block):
 	fn.sp += 1
 	
 	src = Target(Storage.LABEL, Type.I8, expr.name)
@@ -209,27 +247,15 @@ def valueRefToIR(expr, fn, block):
 	
 	block.append(Move(src, dest))
 
-def listToIr(exprs, fn, block):
+def listToIR(scope, exprs, fn, block):
 	for expr in exprs:
-		exprToIR(expr, fn, block)
+		exprToIR(scope, expr, fn, block)
 
-def eqToIr(eq, fn, block):
-	exprToIR(eq.l, fn, block)
+def addToIR(scope, eq, fn, block):
+	exprToIR(scope, eq.l, fn, block)
 	l = block[-1].dest.clone()
 	
-	exprToIR(eq.r, fn, block)
-	r = block[-1].dest.clone()
-	
-	fn.sp += 1
-	dest = Target(Storage.LOCAL, Type.I8, fn.sp)
-	
-	block.append(Eq(l, r, dest))
-
-def addToIr(eq, fn, block):
-	exprToIR(eq.l, fn, block)
-	l = block[-1].dest.clone()
-	
-	exprToIR(eq.r, fn, block)
+	exprToIR(scope, eq.r, fn, block)
 	r = block[-1].dest.clone()
 	
 	fn.sp += 1
@@ -237,11 +263,11 @@ def addToIr(eq, fn, block):
 	
 	block.append(Add(l, r, dest))
 
-def subToIr(eq, fn, block):
-	exprToIR(eq.l, fn, block)
+def subToIR(scope, eq, fn, block):
+	exprToIR(scope, eq.l, fn, block)
 	l = block[-1].dest.clone()
 	
-	exprToIR(eq.r, fn, block)
+	exprToIR(scope, eq.r, fn, block)
 	r = block[-1].dest.clone()
 	
 	fn.sp += 1
@@ -249,11 +275,11 @@ def subToIr(eq, fn, block):
 	
 	block.append(Sub(l, r, dest))
 
-def mulToIr(eq, fn, block):
-	exprToIR(eq.l, fn, block)
+def mulToIR(scope, eq, fn, block):
+	exprToIR(scope, eq.l, fn, block)
 	l = block[-1].dest.clone()
 	
-	exprToIR(eq.r, fn, block)
+	exprToIR(scope, eq.r, fn, block)
 	r = block[-1].dest.clone()
 	
 	fn.sp += 1
@@ -261,11 +287,11 @@ def mulToIr(eq, fn, block):
 	
 	block.append(Mul(l, r, dest))
 
-def divToIr(eq, fn, block):
-	exprToIR(eq.l, fn, block)
+def divToIR(scope, eq, fn, block):
+	exprToIR(scope, eq.l, fn, block)
 	l = block[-1].dest.clone()
 	
-	exprToIR(eq.r, fn, block)
+	exprToIR(scope, eq.r, fn, block)
 	r = block[-1].dest.clone()
 	
 	fn.sp += 1
@@ -273,43 +299,63 @@ def divToIr(eq, fn, block):
 	
 	block.append(Div(l, r, dest))
 
-def exprToIR(expr, fn, block):
+def cmpToIR(scope, op, fn, block):
+	exprToIR(scope, op.l, fn, block)
+	l = block[-1].dest.clone()
+	
+	exprToIR(scope, op.r, fn, block)
+	r = block[-1].dest.clone()
+	
+	fn.sp += 1
+	dest = Target(Storage.LOCAL, Type.I8, fn.sp)
+	
+	block.append(Cmp(l, r, op.op, dest))
+
+def exprToIR(scope, expr, fn, block):
 	if type(expr) == BoolLitAST:
-		boolLitToIR(expr, fn, block)
+		boolLitToIR(scope, expr, fn, block)
 	elif type(expr) == IntLitAST:
-		intLitToIR(expr, fn, block)
+		intLitToIR(scope, expr, fn, block)
 	elif type(expr) == StrLitAST:
-		strLitToIR(expr, fn, block)
+		strLitToIR(scope, expr, fn, block)
 	elif type(expr) == ValueRefAST:
-		valueRefToIR(expr, fn, block)
+		valueRefToIR(scope, expr, fn, block)
 	elif type(expr) == FnCallAST:
-		fnCallToIR(expr, fn, block)
+		fnCallToIR(scope, expr, fn, block)
 	elif type(expr) == LetAST:
-		letToIR(expr, fn, block)
+		letToIR(scope, expr, fn, block)
 	elif type(expr) == IfAST:
-		ifBlockToIR(expr, fn, block)
+		ifBlockToIR(scope, expr, fn, block)
+	elif type(expr) == WhileAST:
+		whileBlockToIR(scope, expr, fn, block)
 	elif type(expr) == ReturnAST:
-		returnToIR(expr, fn, block)
+		returnToIR(scope, expr, fn, block)
 	elif type(expr) == BlockAST:
-		listToIr(expr.exprs, fn, block)
+		listToIR(scope, expr.exprs, fn, block)
 	elif type(expr) == CoercionAST:
 		print('skipping coercion (unimplemented)')
-	elif type(expr) == InfixOpAST and expr.op == InfixOp.EQ:
-		eqToIr(expr, fn, block)
+		exprToIR(scope, expr.expr, fn, block)
+	elif type(expr) == AsgnAST:
+		asgnToIR(scope, expr, fn, block)
 	elif type(expr) == InfixOpAST and expr.op == InfixOp.PLUS:
-		addToIr(expr, fn, block)
+		addToIR(scope, expr, fn, block)
 	elif type(expr) == InfixOpAST and expr.op == InfixOp.MINUS:
-		subToIr(expr, fn, block)
+		subToIR(scope, expr, fn, block)
 	elif type(expr) == InfixOpAST and expr.op == InfixOp.TIMES:
-		mulToIr(expr, fn, block)
+		mulToIR(scope, expr, fn, block)
 	elif type(expr) == InfixOpAST and expr.op == InfixOp.DIV:
-		divToIr(expr, fn, block)
+		divToIR(scope, expr, fn, block)
+	elif type(expr) == InfixOpAST and \
+		(expr.op == InfixOp.GREATER or expr.op == InfixOp.GREATEREQ or \
+		expr.op == InfixOp.LESS or expr.op == InfixOp.LESSEQ or \
+		expr.op == InfixOp.EQ or expr.op == InfixOp.NEQ):
+		cmpToIR(scope, expr, fn, block)
 	else:
 		assert 0
 
-def blockToIR(astBlock, fn, block):
+def blockToIR(scope, astBlock, fn, block):
 	for expr in astBlock:
-		exprToIR(expr, fn, block)
+		exprToIR(scope, expr, fn, block)
 
 def blockToStr(irBlock, indentLevel = 1):
 	lines = ['\t' * (indentLevel - 1) + '{']
@@ -318,9 +364,10 @@ def blockToStr(irBlock, indentLevel = 1):
 	return '\n'.join(lines)
 
 class FnIR:
-	def __init__(self, name, paramNames):
+	def __init__(self, name, paramNames, cVarArgs):
 		self.name = name
 		self.paramNames = paramNames
+		self.cVarArgs = cVarArgs
 		self.block = []
 		self.sp = len(paramNames)
 		self.staticDefs = []
@@ -330,36 +377,39 @@ class FnIR:
 	def __str__(self):
 		return self.name + '()\n' + blockToStr(self.block)
 
-def fnToIR(fnDecl):
-	fn = FnIR(fnDecl.mangledName, [param.name for param in fnDecl.params])
-	blockToIR(fnDecl.body, fn, fn.block)
+def fnToIR(scope, fnDecl):
+	fn = FnIR(fnDecl.mangledName, [param.name for param in fnDecl.params], fnDecl.cVarArgs)
+	blockToIR(scope, fnDecl.body, fn, fn.block)
 	return fn
 
 def generateIR(mod):
+	for decl in mod.modDecls:
+		generateIR(decl)
+	
 	for decl in mod.fnDecls:
 		if decl.extern:
 			continue
-		ir = fnToIR(decl)
+		ir = fnToIR(mod, decl)
 		mod.symbolTable[decl.name].ir = ir
 
 
 ARG_REGS = ['rdi', 'rsi', 'rdx', 'rcx', 'r8', 'r9']
 
-def targetToOperand(target, fnIR):
+def targetToOperand(target, fnIR, offset=0):
 	if target.storage == Storage.LOCAL:
-		return '[rsp + {}]'.format((fnIR.sp - target.value)*8)
+		return '[rsp + {}]'.format((fnIR.sp - target.value)*8 + offset)
 	elif target.storage == Storage.STATIC:
 		return '{}__static__{}'.format(fnIR.name, target.value)
 	elif target.storage == Storage.IMM:
 		return str(target.value)
 	elif target.value in fnIR.paramNames:
-		return '[rsp + {}] ; param: {}'.format((fnIR.sp - fnIR.paramNames.index(target.value))*8, target.value)
+		return '[rsp + {}] ; param: {}'.format((fnIR.sp - fnIR.paramNames.index(target.value))*8 + offset, target.value)
 	elif target.value in fnIR.locals:
-		return '[rsp + {}] ; local: {}'.format((fnIR.sp - fnIR.locals[target.value])*8, target.value)
+		return '[rsp + {}] ; local: {}'.format((fnIR.sp + offset - fnIR.locals[target.value])*8 + offset, target.value)
 	else:
 		return target.value
 
-def irToAsm(instr, fnIR, mod):
+def irToAsm(instr, fnIR):
 	if type(instr) == Move:
 		return 'mov rax, {}\n\t\tmov {}, rax'.format(
 			targetToOperand(instr.src, fnIR),
@@ -368,15 +418,20 @@ def irToAsm(instr, fnIR, mod):
 		lines = []
 		for (i, arg) in enumerate(instr.args[0:len(ARG_REGS)]):
 			lines.append('mov {}, {}'.format(ARG_REGS[i], targetToOperand(arg, fnIR)))
-		for arg in reversed(instr.args[len(ARG_REGS):]):
-			lines.append('push qword {}'.format(targetToOperand(arg, fnIR)))
-		if len(instr.args[len(ARG_REGS):]) % 2 != 0:
-			lines.append('sub rsp, 8')
-		lines.append('call {}'.format(mod.symbolTable[instr.callee.value].mangledName))
-		for arg in instr.args[len(ARG_REGS):]:
-			lines.append('pop qword rax')
-		if len(instr.args[len(ARG_REGS):]) % 2 != 0:
-			lines.append('add rsp, 8')
+		stackArgs = instr.args[len(ARG_REGS):]
+		size = 8*len(stackArgs)
+		if size % 16 != 0:
+			size += 8
+		if len(stackArgs) > 0:
+			lines.append('sub rsp, {}'.format(size))
+			for (i, arg) in enumerate(stackArgs):
+				lines.append('mov rax, {}'.format(targetToOperand(arg, fnIR, size)))
+				lines.append('mov [rsp + {}], rax'.format(8*i))
+		if instr.cVarArgs:
+			lines.append('mov al, 0')
+		lines.append('call {}'.format(instr.callee.value))
+		if len(stackArgs) > 0:
+			lines.append('add rsp, {}'.format(size))
 		lines.append('mov {}, rax'.format(targetToOperand(instr.dest, fnIR)))
 		return '\n\t\t'.join(lines)
 	elif type(instr) == Ret:
@@ -387,19 +442,45 @@ def irToAsm(instr, fnIR, mod):
 		fnIR.labelsCount += 1
 		endLabel = '{}__endiflabel__{}'.format(fnIR.name, fnIR.labelsCount)
 		fnIR.labelsCount += 1
-		return 'mov rax, {}\n\t\tcmp rax, 0\n\t\tjz {}\n{}\t\tjmp {}\n\t\t{}:\n{}\t\t{}:'.format(
+		return 'mov rax, {}\n\t\tcmp rax, 0\n\t\tjz {}\n{}\t\tjmp {}\n\t{}:\n{}\t{}:'.format(
 			targetToOperand(instr.target, fnIR), 
 			elseLabel, 
-			irBlockToAsm(instr.ifBlock, fnIR, mod), 
+			irBlockToAsm(instr.ifBlock, fnIR), 
 			endLabel, 
 			elseLabel, 
-			irBlockToAsm(instr.elseBlock, fnIR, mod), 
+			irBlockToAsm(instr.elseBlock, fnIR), 
 			endLabel
 		)
-	elif type(instr) == Eq:
-		return 'mov rbx, 0\n\t\tmov rax, {}\n\t\tcmp rax, {}\n\t\tsetz bl\n\t\tmov {}, rbx'.format(
+	elif type(instr) == While:
+		startLabel = '{}__whilelabel__{}'.format(fnIR.name, fnIR.labelsCount)
+		endLabel = '{}__endwhilelabel__{}'.format(fnIR.name, fnIR.labelsCount)
+		fnIR.labelsCount += 1
+		result = '\n\t{}:\n{}\t\tmov rax, {}\n\t\tcmp rax, 0\n\t\tjz {}\n{}\t\tjmp {}\n\t{}:'.format(
+			startLabel,
+			irBlockToAsm(instr.condBlock, fnIR), 
+			targetToOperand(instr.target, fnIR), 
+			endLabel, 
+			irBlockToAsm(instr.block, fnIR), 
+			startLabel,
+			endLabel
+		)
+		return result
+	elif type(instr) == Cmp:
+		opcode = 'setz'
+		if instr.op == InfixOp.NEQ:
+			opcode = 'setnz'
+		elif instr.op == InfixOp.LESS:
+			opcode = 'setl'
+		elif instr.op == InfixOp.LESSEQ:
+			opcode = 'setle'
+		elif instr.op == InfixOp.GREATER:
+			opcode = 'setg'
+		elif instr.op == InfixOp.GREATEREQ:
+			opcode = 'setge'
+		return 'mov rbx, 0\n\t\tmov rax, {}\n\t\tcmp rax, {}\n\t\t{} bl\n\t\tmov {}, rbx'.format(
 			targetToOperand(instr.l, fnIR),
 			targetToOperand(instr.r, fnIR),
+			opcode,
 			targetToOperand(instr.dest, fnIR))
 	elif type(instr) == Add:
 		return 'mov rax, {}\n\t\tadd rax, {}\n\t\tmov {}, rax'.format(
@@ -424,48 +505,47 @@ def irToAsm(instr, fnIR, mod):
 	else:
 		assert 0
 
-def irBlockToAsm(irBlock, fnIR, mod):
+def irBlockToAsm(irBlock, fnIR):
 	lines = []
 	for instr in irBlock:
-		lines.append('\t\t' + irToAsm(instr, fnIR, mod) + '\n')
+		lines.append('\t\t' + irToAsm(instr, fnIR) + '\n')
 	return ''.join(lines)
 
-def generateAsm(mod):
-	externSymbols = []
-	fns = []
-	#statics = []
+def delcareExterns(mod, lines):	
+	for decl in mod.modDecls:
+		delcareExterns(decl, lines)
 	
 	for decl in mod.fnDecls:
 		if decl.extern:
-			externSymbols.append(decl)
-		else:
-			fns.append(decl)
+			lines.append('extern {}\n'.format(decl.mangledName))
+
+def declareFns(mod, lines):
+	for decl in mod.modDecls:
+		declareFns(decl, lines)
 	
-	lines = []
-	for decl in externSymbols:
-		lines.append('extern {}\n'.format(decl.mangledName))
+	for decl in mod.fnDecls:
+		if not decl.extern:
+			lines.append('global {}\n'.format(decl.mangledName))
+
+def defineStatics(mod, lines):
+	for decl in mod.modDecls:
+		defineStatics(decl, lines)
 	
-	lines.append('\nglobal _start\n')
-	for decl in fns:
-		lines.append('global {}\n'.format(decl.mangledName))
-	
-	lines.append('\nsection .data\n')
-	for decl in fns:
+	for decl in mod.fnDecls:
+		if decl.extern:
+			continue
+		
 		for (i, d) in enumerate(decl.ir.staticDefs):
 			lines.append('\t{}__static__{}: db {},0\n'.format(decl.ir.name, i, ','.join([str(b) for b in d])))
+
+def defineFns(mod, lines):
+	for decl in mod.modDecls:
+		defineFns(decl, lines)
 	
-	lines.extend(
-	[
-		'\nsection .text\n',
-		'\t_start:\n',
-		'\t\tsub rsp, 8\n',
-		'\t\tcall main\n',
-		'\t\tmov rax, 0x02000001\n',
-		'\t\tmov rdi, 0\n',
-		'\t\tsyscall\n'
-	])
-	
-	for decl in fns:
+	for decl in mod.fnDecls:
+		if decl.extern:
+			continue
+		
 		lines.append('\t{}:\n'.format(decl.ir.name))
 		stackSize = decl.ir.sp * 8
 		if stackSize % 16 == 0:
@@ -480,14 +560,41 @@ def generateAsm(mod):
 			else:
 				raise RuntimeError('unimplemented!')#lines.append('\t\tpush {}'.format(targetToOperand(arg, fnIR)))
 		
-		lines.append(irBlockToAsm(decl.ir.block, decl.ir, mod))
+		lines.append(irBlockToAsm(decl.ir.block, decl.ir))
 		
-		lines.append('\t\t{}__end:\n'.format(decl.ir.name))
+		lines.append('\t{}__end:\n'.format(decl.ir.name))
 		
 		if stackSize > 0:
 			lines.append('\t\tadd rsp, {}\n'.format(stackSize))
 		
 		lines.append('\t\tret\n')
+
+def generateAsm(mod):
+	lines = []
+	delcareExterns(mod, lines)
+	
+	if 'main' in mod.symbolTable:
+		lines.append('\nglobal _start\n')
+	
+	declareFns(mod, lines)
+	
+	lines.append('\nsection .data\n')
+	defineStatics(mod, lines)
+	
+	lines.append('\nsection .text\n')
+	
+	if 'main' in mod.symbolTable:
+		lines.extend(
+		[
+			'\t_start:\n',
+			'\t\tsub rsp, 8\n',
+			'\t\tcall {}\n'.format(mod.symbolTable['main'].mangledName),
+			'\t\tmov rax, 0x02000001\n',
+			'\t\tmov rdi, 0\n',
+			'\t\tsyscall\n'
+		])
+	
+	defineFns(mod, lines)
 	
 	return ''.join(lines)
 

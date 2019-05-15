@@ -1,7 +1,7 @@
 from .parser             import CConv, FnDeclAST, LetAST, FnCallAST, ReturnAST, IfAST, TypeRefAST, \
                                 StrLitAST, IntLitAST, BoolLitAST, TupleLitAST, ValueRefAST, \
 								InfixOpAST, FnCallAST, IfAST, CoercionAST, ModAST, ValueExprAST, \
-								BlockAST
+								BlockAST, AsgnAST, WhileAST
 from .                   import types
 from .types              import typesMatch
 from .err                import logError
@@ -13,7 +13,6 @@ def ffiAttr(decl, params):
 		raise RuntimeError('FFI attribute can only be applied to functions')
 	
 	decl.cconv = CConv.C
-	decl.mangledName = '_{}'.format(decl.name)
 
 builtinAttrs = {
 	'FFI': ffiAttr
@@ -39,7 +38,7 @@ def lookupSymbol(state, scope, symbolRef, inTypePosition):
 	
 	if symbol != None:
 		for name in path[1:]:
-			if type(symbol) != ModAST:
+			if state and type(symbol) != ModAST:
 				logError(state, symbolRef.span, '`{}` is not a module'.format(symbol.name))
 				symbol = None
 				break
@@ -48,21 +47,22 @@ def lookupSymbol(state, scope, symbolRef, inTypePosition):
 				return None
 			symbol = symbol.symbolTable[name]
 	
-	if inTypePosition:
-		if symbol == None:
-			logError(state, symbolRef.span, 'cannot resolve type `{}`'.format(symbolRef.name))
-		elif type(symbol) != types.ResolvedType:
-			logError(state, symbolRef.span, '`{}` is not a type'.format(symbolRef.name))
-			symbol = None
-	else:
-		if symbol == None:
-			logError(state, symbolRef.span, 'cannot resolve the symbol `{}`'.format(symbolRef.name))
-		elif type(symbol) == types.ResolvedType:
-			logError(state, symbolRef.span, 'found a type reference where a value was expected')
-			symbol = None
-		elif type(symbol) == ModAST:
-			logError(state, symbolRef.span, 'found a module name where a value was expected')
-			symbol = None
+	if state:
+		if inTypePosition:
+			if symbol == None:
+				logError(state, symbolRef.span, 'cannot resolve type `{}`'.format(symbolRef.name))
+			elif type(symbol) != types.ResolvedType:
+				logError(state, symbolRef.span, '`{}` is not a type'.format(symbolRef.name))
+				symbol = None
+		else:
+			if symbol == None:
+				logError(state, symbolRef.span, 'cannot resolve the symbol `{}`'.format(symbolRef.name))
+			elif type(symbol) == types.ResolvedType:
+				logError(state, symbolRef.span, 'found a type reference where a value was expected')
+				symbol = None
+			elif type(symbol) == ModAST:
+				logError(state, symbolRef.span, 'found a module name where a value was expected')
+				symbol = None
 	
 	return symbol
 
@@ -95,7 +95,8 @@ def resolveValueExprType(state, scope, expr):
 		else:
 			expr.resolvedType = types.ResolvedMultiIntType.fromValue(int(expr.value))
 	elif type(expr) == BlockAST:
-		typeCheckBlock(state, scope, expr.exprs)
+		expr.parentScope = scope
+		typeCheckBlock(state, expr, expr.exprs)
 		expr.resolvedType = getBlockType(expr.exprs)
 	elif type(expr) == TupleLitAST:
 		raise RuntimeError('unimplemented!')
@@ -154,7 +155,9 @@ def typeCheckInfixOp(state, scope, infixOp):
 	
 	opErr()
 
-def typeCheckFnSig(state, fnDecl):
+def typeCheckFnSig(state, scope, fnDecl):
+	fnDecl.parentScope = scope
+	
 	if fnDecl.returnType == None:
 		fnDecl.returnType = TypeRefAST('Void', 0, fnDecl.span)
 	
@@ -233,6 +236,25 @@ def typeCheckReturn(state, scope, retExpr):
 		logError(state, retExpr.expr.span, 'invalid return type (expected {}, found {})'
 			.format(scope.resolvedSymbolType.resolvedReturnType, retExpr.expr.resolvedType))
 
+def typeCheckAsgn(state, scope, asgnExpr):
+	resolveValueExprType(state, scope, asgnExpr.lvalue)
+	resolveValueExprType(state, scope, asgnExpr.rvalue)
+	
+	if not typesMatch(asgnExpr.lvalue.resolvedType, asgnExpr.rvalue.resolvedType):
+		logError(state, asgnExpr.expr.span, 'invalid types in assignment (expected {}, found {})'
+			.format(asgnExpr.lvalue.resolvedType, asgnExpr.rvalue.resolvedType))
+
+def typeCheckWhile(state, scope, whileExpr):
+	whileExpr.parentScope = scope
+	scope = whileExpr
+	
+	resolveValueExprType(state, scope, whileExpr.expr)
+	if whileExpr.expr.resolvedType != types.Bool:
+		logError(state, whileExpr.expr.span, 
+			'condition type must be Bool (found {})'.format(whileExpr.expr.resolvedType))
+	
+	typeCheckBlock(state, scope, whileExpr.block)
+
 def getBlockType(block):
 	if len(block) == 0:
 		return types.Void
@@ -244,6 +266,9 @@ def getBlockType(block):
 	return lastExpr.resolvedType
 
 def typeCheckIf(state, scope, ifExpr):
+	ifExpr.parentScope = scope
+	scope = ifExpr
+	
 	resolveValueExprType(state, scope, ifExpr.expr)
 	if ifExpr.expr.resolvedType != types.Bool:
 		logError(state, ifExpr.expr.span, 
@@ -279,6 +304,10 @@ def typeCheckBlock(state, scope, block):
 			typeCheckLet(state, scope, expr)
 		elif type(expr) == ReturnAST:
 			typeCheckReturn(state, scope, expr)
+		elif type(expr) == AsgnAST:
+			typeCheckAsgn(state, scope, expr)
+		elif type(expr) == WhileAST:
+			typeCheckWhile(state, scope, expr)
 		elif isinstance(expr, ValueExprAST):
 			resolveValueExprType(state, scope, expr)
 		else:
@@ -291,7 +320,27 @@ def typeCheckFnBody(state, fnDecl):
 	typeCheckBlock(state, fnDecl, fnDecl.body)
 	# TODO: escape analysis
 
-def typeCheckMod(state, mod):
+def mangleFnName(state, fnDecl):
+	if fnDecl.cconv == CConv.C:
+		fnDecl.mangledName = '_{}'.format(fnDecl.name)
+	else:
+		mangled = 'F{}{}'.format(len(fnDecl.name), fnDecl.name)
+		parent = fnDecl.parentScope
+		while parent:
+			if type(parent) == ModAST:
+				mangled = 'M{}{}{}'.format(len(parent.name), parent.name, mangled)
+			elif type(parent) == FnDeclAST:
+				mangled = 'F{}{}{}'.format(len(parent.name), parent.name, mangled)
+			else:
+				assert 0
+			
+			parent = parent.parentScope
+		
+		fnDecl.mangledName = mangled
+
+def typeCheckMod(state, scope, mod):
+	mod.parentScope = scope
+	
 	for decl in mod.importDecls:
 		invokeAttrs(state, decl)
 	
@@ -302,10 +351,11 @@ def typeCheckMod(state, mod):
 		invokeAttrs(state, decl)
 	
 	for decl in mod.fnDecls:
-		typeCheckFnSig(state, decl)
+		typeCheckFnSig(state, mod, decl)
+		mangleFnName(state, decl)
 	
 	for decl in mod.modDecls:
-		typeCheckMod(state, decl)
+		typeCheckMod(state, mod, decl)
 	
 	for decl in mod.fnDecls:
 		typeCheckFnBody(state, decl)
@@ -318,7 +368,7 @@ class AnalyzerState:
 def analyze(mod):
 	state = AnalyzerState(mod)
 	
-	typeCheckMod(state, mod)
+	typeCheckMod(state, None, mod)
 	
 	if state.failed:
 		exit(1)

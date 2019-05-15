@@ -93,6 +93,8 @@ def strBytes(s):
 			esc = False
 			if c == 'n':
 				result += '\n'
+			elif c == 'r':
+				result += '\r'
 			elif c == 't':
 				result += '\t'
 			elif c == '"':
@@ -130,8 +132,6 @@ class ModAST(ModLevelDeclAST):
 			self.symbolTable[builtin.name] = builtin
 		
 		for decl in decls:
-			decl.parentScope = self
-			
 			if type(decl) == FnDeclAST:
 				self.fnDecls.append(decl)
 			elif type(decl) == ModAST:
@@ -195,6 +195,20 @@ class TypeRefAST:
 		self.span = span
 		self.resolvedType = None
 
+class AsgnAST:
+	def __init__(self, lvalue, rvalue, span):
+		self.lvalue = lvalue
+		self.rvalue = rvalue
+		self.span = span
+
+class WhileAST:
+	def __init__(self, expr, block, span):
+		self.expr = expr
+		self.block = block
+		self.span = span
+		self.parentScope = None
+		self.symbolTable = {}
+
 class ValueExprAST:
 	def __init__(self):
 		self.resolvedType = None
@@ -229,6 +243,8 @@ class BlockAST(ValueExprAST):
 		super().__init__()
 		self.exprs = exprs
 		self.span = span
+		self.parentScope = None
+		self.symbolTable = {}
 
 class ValueRefAST(ValueExprAST):
 	def __init__(self, path, span):
@@ -267,6 +283,8 @@ class IfAST(ValueExprAST):
 		self.ifBlock = ifBlock
 		self.elseBlock = elseBlock
 		self.span = span
+		self.parentScope = None
+		self.symbolTable = {}
 
 
 #######################
@@ -629,6 +647,19 @@ def parseIf(state):
 	
 	return IfAST(expr, ifBlock.list, elseBlock.list if elseBlock else None, span)
 
+def parseWhile(state):
+	span = state.tok.span
+	state.advance()
+	state.skipSpace()
+	expr = parseValueExpr(state)
+	if expr == None:
+		return None
+	
+	block = parseBlock(state, parseFnBodyExpr)
+	span = Span.merge(span, block.span)
+	
+	return WhileAST(expr, block.list, span)
+
 def parseInfixOp(state, l):
 	op = state.tok.type
 	opSpan = state.tok.span
@@ -703,10 +734,11 @@ def parseValueExpr(state, precedence=0):
 	if expr == None:
 		return None
 	
-	state.skipSpace()
 	indentStack = len(state.indentLevels)
 	
 	while True:
+		state.skipSpace()
+		
 		if state.tok.type == TokenType.LPAREN:
 			expr = parseFnCall(state, expr)
 		elif state.tok.type == TokenType.AS:
@@ -718,6 +750,26 @@ def parseValueExpr(state, precedence=0):
 	
 	for _ in range(indentStack, len(state.indentLevels)):
 		state.popIndentLevel()
+	
+	return expr
+
+def parseValueExprOrAsgn(state):
+	expr = parseValueExpr(state)
+	if expr == None:
+		return None
+	
+	state.skipSpace()
+	if state.tok.type == TokenType.ASGN:
+		if type(expr) != ValueRefAST:
+			logError(state, state.tok.span, "invalid assignment target in assignment")
+		
+		state.advance()
+		state.skipSpace()
+		
+		lvalue = expr
+		rvalue = parseValueExpr(state)
+		
+		expr = AsgnAST(lvalue, rvalue, Span.merge(lvalue.span, rvalue.span))
 	
 	return expr
 
@@ -770,11 +822,13 @@ def parseLet(state):
 
 def parseFnBodyExpr(state):
 	if state.tok.type in (TokenType.NAME, TokenType.STRING, TokenType.INTEGER, TokenType.IF):
-		return parseValueExpr(state)
+		return parseValueExprOrAsgn(state)
 	elif state.tok.type == TokenType.RETURN:
 		return parseReturn(state)
 	elif state.tok.type == TokenType.LET:
 		return parseLet(state)
+	elif state.tok.type == TokenType.WHILE:
+		return parseWhile(state)
 	else:
 		logError(state, state.tok.span, 'expected expression, found {}'.format(state.tok.type.desc()))
 		state.skipUntil(TokenType.NEWLINE, TokenType.COMMA, TokenType.RBRACE)
@@ -881,7 +935,10 @@ def parseModule(state, doccomment):
 def parseTopLevelModule(state):
 	span = Span(state.source, 1, 1, len(state.source.lines)+1, len(state.source.lines[-1])+1)
 	fileName = path.basename(state.source.fileName)
-	name = re.match(r"(.*?)(?:\..*)?", fileName)[1]
+	name = re.match(r"^([^.]+)?", fileName)[1]
+	
+	if not re.match(r"^[a-zA-Z_][0-9a-zA-Z_]*$", name):
+		logError(state, Span(state.source, 1, 1, 1, 1), 'illegal module name: `{}`'.format(name))
 	
 	block = parseBlock(state, parseModLevelDecl, topLevelBlock=True)
 	return ModAST(state, None, None, block.list, Span.merge(span, block.span), name=name)

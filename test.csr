@@ -19,29 +19,38 @@ fn doTheThing(n: Int16) -> Int16 #=hello=#
 fn theMeaningOfLifeTheUniverseAndEverything() -> Int16 { return 42 }
 
 mod testMod
-	fn otherFn() -> Int32 { printf("asdf"), return getchar() }
+	fn otherFn() -> Int32 { printf("enter a char: "), return getchar() }
 
 #========================================================
 	This is the documentation for the `main` function, 
 	which is the entry point for the application
 ========================================================#
 fn main()
+	let null = 0 as Int64^
 	let xyz: Int64 = { printf("123\n"), 123 }
 	
 	doTheThing( doTheThing( theMeaningOfLifeTheUniverseAndEverything() ) )
-	printf("The time is: %d\nAnd here is the value of a local variable: %d\n", time(0 as Int64^), xyz)
+	printf("The time is: %d\nAnd here is the value of a local variable: %d\n", time(null), xyz)
 	
 	let mut c: Int32 = 
-		if true
+		#if true
 			testMod::otherFn()
-		else
-			"asdf", 3
+		#else
+			#"asdf", 3
 	
 	if c + 4 * 3 + 2 - 13 == 98
 		printf("You typed the letter 'a'.\n")
 	else if true
 		printf("You did not type the letter 'a'. You typed '%c'\n", c + 
 			10 * 2 - 11 * 2 + 2)
+	
+	let count = 0
+	while count <= 5
+		let t = time(null)
+		while time(null) == t
+		{}
+		printf("%d\n", 5-count)
+		count = count+1
 	
 	printf("%c%c%c%c%c%c%c!!\n",
 			103, 111, 111, 100,
