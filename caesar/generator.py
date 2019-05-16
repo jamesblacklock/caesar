@@ -1,7 +1,7 @@
 from enum                            import Enum
 from .parser                         import FnDeclAST, FnCallAST, ValueRefAST, StrLitAST, BlockAST, \
 	                                        IntLitAST, ReturnAST, LetAST, IfAST, InfixOpAST, InfixOp, \
-											CoercionAST, BoolLitAST, WhileAST, AsgnAST
+											CoercionAST, BoolLitAST, WhileAST, AsgnAST, DerefAST
 from .analyzer                       import lookupSymbol
 
 class Type(Enum):
@@ -45,9 +45,10 @@ class Instr:
 		return self.__str__()
 
 class Move(Instr):
-	def __init__(self, src, dest):
+	def __init__(self, src, dest, srcDeref=0):
 		self.src = src
 		self.dest = dest
+		self.srcDeref = srcDeref
 	
 	def __str__(self):
 		return 'move {} = {}'.format(self.dest, self.src)
@@ -72,8 +73,9 @@ class Ret(Instr):
 		return 'ret{}'.format(target)
 
 class IfElse(Instr):
-	def __init__(self, target, ifBlock, elseBlock):
+	def __init__(self, target, dest, ifBlock, elseBlock):
 		self.target = target
+		self.dest = dest
 		self.ifBlock = ifBlock
 		self.elseBlock = elseBlock
 	
@@ -177,15 +179,10 @@ def ifBlockToIR(scope, ifAst, fn, block):
 	if ifAst.elseBlock != None:
 		blockToIR(scope, ifAst.elseBlock, fn, elseBlock)
 	
-	block.append(IfElse(result, ifBlock, elseBlock))
-	
-	# right now if exprs always return 0
 	fn.sp += 1
-	
-	src = Target(Storage.IMM, Type.I8, "0")
 	dest = Target(Storage.LOCAL, Type.I8, fn.sp)
 	
-	block.append(Move(src, dest))
+	block.append(IfElse(result, dest, ifBlock, elseBlock))
 
 def whileBlockToIR(scope, whileAst, fn, block):
 	condBlock = []
@@ -238,6 +235,16 @@ def fnCallToIR(scope, fnCall, fn, block):
 	dest = Target(Storage.LOCAL, Type.I8, fn.sp)
 	
 	block.append(Call(src, args, dest, fnCall.expr.resolvedType.cVarArgs))
+
+def derefToIR(scope, expr, fn, block):
+	exprToIR(scope, expr.expr, fn, block)
+	
+	fn.sp += 1
+	
+	src = block[-1].dest
+	dest = Target(Storage.LOCAL, Type.I8, fn.sp)
+	
+	block.append(Move(src, dest, expr.derefCount))
 
 def valueRefToIR(scope, expr, fn, block):
 	fn.sp += 1
@@ -320,6 +327,8 @@ def exprToIR(scope, expr, fn, block):
 		strLitToIR(scope, expr, fn, block)
 	elif type(expr) == ValueRefAST:
 		valueRefToIR(scope, expr, fn, block)
+	elif type(expr) == DerefAST:
+		derefToIR(scope, expr, fn, block)
 	elif type(expr) == FnCallAST:
 		fnCallToIR(scope, expr, fn, block)
 	elif type(expr) == LetAST:
@@ -411,9 +420,14 @@ def targetToOperand(target, fnIR, offset=0):
 
 def irToAsm(instr, fnIR):
 	if type(instr) == Move:
-		return 'mov rax, {}\n\t\tmov {}, rax'.format(
-			targetToOperand(instr.src, fnIR),
-			targetToOperand(instr.dest, fnIR))
+		lines = []
+		lines.append('mov rax, {}'.format(targetToOperand(instr.src, fnIR)))
+		
+		for _ in range(0, instr.srcDeref):
+			lines.append('mov rbx, [rax]\n\t\tmov rax, rbx')
+		
+		lines.append('mov {}, rax'.format(targetToOperand(instr.dest, fnIR)))
+		return '\n\t\t'.join(lines)
 	elif type(instr) == Call:
 		lines = []
 		for (i, arg) in enumerate(instr.args[0:len(ARG_REGS)]):
@@ -442,14 +456,27 @@ def irToAsm(instr, fnIR):
 		fnIR.labelsCount += 1
 		endLabel = '{}__endiflabel__{}'.format(fnIR.name, fnIR.labelsCount)
 		fnIR.labelsCount += 1
-		return 'mov rax, {}\n\t\tcmp rax, 0\n\t\tjz {}\n{}\t\tjmp {}\n\t{}:\n{}\t{}:'.format(
+		
+		ifRetVal = ''
+		elseRetVal = ''
+		if len(instr.ifBlock) > 0:
+			ifRetVal = '\t\tmov rax, {} ; save if expr value\n'.format(
+				targetToOperand(instr.ifBlock[-1].dest, fnIR))
+		if instr.elseBlock and len(instr.elseBlock) > 0:
+			elseRetVal = '\t\tmov rax, {} ; save else expr value\n'.format(
+				targetToOperand(instr.elseBlock[-1].dest, fnIR))
+		
+		return 'mov rax, {}\n\t\tcmp rax, 0\n\t\tjz {}\n{}{}\t\tjmp {}\n\t{}:\n{}{}\t{}:\n\t\tmov {}, rax'.format(
 			targetToOperand(instr.target, fnIR), 
 			elseLabel, 
 			irBlockToAsm(instr.ifBlock, fnIR), 
+			ifRetVal, 
 			endLabel, 
 			elseLabel, 
 			irBlockToAsm(instr.elseBlock, fnIR), 
-			endLabel
+			elseRetVal, 
+			endLabel,
+			targetToOperand(instr.dest, fnIR)
 		)
 	elif type(instr) == While:
 		startLabel = '{}__whilelabel__{}'.format(fnIR.name, fnIR.labelsCount)

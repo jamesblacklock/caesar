@@ -262,6 +262,13 @@ class InfixOpAST(ValueExprAST):
 		self.span = span
 		self.opSpan = opSpan
 
+class DerefAST(ValueExprAST):
+	def __init__(self, expr, derefCount, span):
+		super().__init__()
+		self.expr = expr
+		self.derefCount = derefCount
+		self.span = span
+
 class CoercionAST(ValueExprAST):
 	def __init__(self, expr, typeRef, span):
 		super().__init__()
@@ -366,12 +373,11 @@ def expectType(state, *types):
 
 def parseAttrArgs(state):
 	def parseAttrArg(state):
-		if state.tok.type == TokenType.STRING:
-			arg = state.tok
-			state.advance()
-			return arg
-		else:
+		if expectType(state, TokenType.STRING, TokenType.INTEGER) == False:
 			return None
+		arg = state.tok
+		state.advance()
+		return arg
 	
 	return parseBlock(state, parseAttrArg, TokenType.COMMA, BlockMarkers.PAREN, True)
 
@@ -550,7 +556,7 @@ def parseBlock(state, parseItem, sepType=TokenType.COMMA,
 			if expectType(state, TokenType.INDENT, sepType, TokenType.NEWLINE, closeMarker) == False:
 				state.skipUntil(closeMarker)
 		else:
-			if expectType(state, TokenType.INDENT, sepType, TokenType.NEWLINE) == False:
+			if expectType(state, TokenType.INDENT, sepType, TokenType.NEWLINE, TokenType.EOF) == False:
 				state.skipUntil(TokenType.NEWLINE)
 		
 		if state.tok.type == sepType:
@@ -660,13 +666,43 @@ def parseWhile(state):
 	
 	return WhileAST(expr, block.list, span)
 
+VALUE_EXPR_TOKS = (
+	TokenType.NEWLINE,
+	TokenType.LBRACE,
+	TokenType.LPAREN,
+	TokenType.NAME,
+	TokenType.STRING,
+	TokenType.INTEGER,
+	TokenType.FALSE,
+	TokenType.TRUE,
+	TokenType.IF
+)
+
+def parseDeref(state, expr):
+	span = state.tok.span
+	derefCount = 0
+	
+	while state.tok.type == TokenType.CARET:
+		derefCount += 1
+		span = Span.merge(span, state.tok.span)
+		state.advance()
+	
+	return DerefAST(expr, derefCount, span)
+
 def parseInfixOp(state, l):
 	op = state.tok.type
 	opSpan = state.tok.span
 	
+	offset = state.offset
 	state.advance()
 	state.skipEmptyLines()
 	expectIndentOrIndentIncrease(state)
+	
+	if op == TokenType.CARET:
+		state.skipSpace()
+		if state.tok.type == TokenType.LPAREN or state.tok.type not in VALUE_EXPR_TOKS:
+			state.rollback(offset)
+			return parseDeref(state, l)
 	
 	r = parseValueExpr(state, INFIX_PRECEDENCE[op])
 	if r == None:

@@ -181,8 +181,7 @@ LOGIC_OPS = (
 	InfixOp.OR
 )
 
-PTR_OPS = (
-	InfixOp.PLUS,
+PTR_PTR_OPS = (
 	InfixOp.MINUS,
 	InfixOp.EQ,
 	InfixOp.NEQ,
@@ -190,6 +189,15 @@ PTR_OPS = (
 	InfixOp.LESS,
 	InfixOp.GREATEREQ,
 	InfixOp.LESSEQ
+)
+
+PTR_INT_OPS = (
+	InfixOp.PLUS,
+	InfixOp.MINUS
+)
+
+INT_PTR_OPS = (
+	InfixOp.PLUS
 )
 
 RNG_OPS = (
@@ -200,9 +208,12 @@ RNG_OPS = (
 class ResolvedType:
 	def __init__(self, name, byteSize, 
 		isFnType=False, isMultiIntType=False, isPtrType=False, 
-		isIntType=False, isOptionType=False):
+		isIntType=False, isOptionType=False, isVoidType=False,
+		isPrimitiveType=False):
 		self.name = name
 		self.byteSize = byteSize
+		self.isPrimitiveType = isPrimitiveType
+		self.isVoidType = isVoidType
 		self.isFnType = isFnType
 		self.isMultiIntType = isMultiIntType
 		self.isPtrType = isPtrType
@@ -233,26 +244,26 @@ PLATFORM_WORD_SIZE = 8
 class ResolvedPtrType(ResolvedType):
 	def __init__(self, baseType, indirectionLevel):
 		name = baseType.name + ('^' * indirectionLevel)
-		super().__init__(name, PLATFORM_WORD_SIZE, isPtrType=True)
+		super().__init__(name, PLATFORM_WORD_SIZE, isPtrType=True, isPrimitiveType=True)
 		self.baseType = baseType
 		self.indirectionLevel = indirectionLevel
 
-Void    = ResolvedType('Void',    0)
-Bool    = ResolvedType('Bool',    1)
-Byte    = ResolvedType('Byte',    1)
-Int8    = ResolvedType('Int8',    1, isIntType=True)
-UInt8   = ResolvedType('UInt8',   1, isIntType=True)
-Int16   = ResolvedType('Int16',   2, isIntType=True)
-UInt16  = ResolvedType('UInt16',  2, isIntType=True)
-Int32   = ResolvedType('Int32',   4, isIntType=True)
-UInt32  = ResolvedType('UInt32',  4, isIntType=True)
-Char    = ResolvedType('Char',    4)
-Int64   = ResolvedType('Int64',   8, isIntType=True)
-UInt64  = ResolvedType('UInt64',  8, isIntType=True)
-ISize   = ResolvedType('ISize',   PLATFORM_WORD_SIZE, isIntType=True)
-USize   = ResolvedType('USize',   PLATFORM_WORD_SIZE, isIntType=True)
-Float32 = ResolvedType('Float32', 4)
-Float64 = ResolvedType('Float64', 8)
+Void    = ResolvedType('Void',    0, isVoidType=True)
+Bool    = ResolvedType('Bool',    1, isPrimitiveType=True)
+Byte    = ResolvedType('Byte',    1, isPrimitiveType=True)
+Int8    = ResolvedType('Int8',    1, isPrimitiveType=True, isIntType=True)
+UInt8   = ResolvedType('UInt8',   1, isPrimitiveType=True, isIntType=True)
+Int16   = ResolvedType('Int16',   2, isPrimitiveType=True, isIntType=True)
+UInt16  = ResolvedType('UInt16',  2, isPrimitiveType=True, isIntType=True)
+Int32   = ResolvedType('Int32',   4, isPrimitiveType=True, isIntType=True)
+UInt32  = ResolvedType('UInt32',  4, isPrimitiveType=True, isIntType=True)
+Char    = ResolvedType('Char',    4, isPrimitiveType=True)
+Int64   = ResolvedType('Int64',   8, isPrimitiveType=True, isIntType=True)
+UInt64  = ResolvedType('UInt64',  8, isPrimitiveType=True, isIntType=True)
+ISize   = ResolvedType('ISize',   PLATFORM_WORD_SIZE, isPrimitiveType=True, isIntType=True)
+USize   = ResolvedType('USize',   PLATFORM_WORD_SIZE, isPrimitiveType=True, isIntType=True)
+Float32 = ResolvedType('Float32', 4, isPrimitiveType=True)
+Float64 = ResolvedType('Float64', 8, isPrimitiveType=True)
 
 BUILTIN_TYPES = [
 	Void,
@@ -291,7 +302,7 @@ USZ_MAX = U64_MAX
 
 class ResolvedMultiIntType(ResolvedType):
 	def __init__(self, possibleTypes):
-		super().__init__('integer', 0, isMultiIntType=True, isIntType=True)
+		super().__init__('integer', 0, isMultiIntType=True, isIntType=True, isPrimitiveType=True)
 		self.possibleTypes = possibleTypes
 	
 	def __str__(self):
@@ -336,8 +347,26 @@ class ResolvedMultiIntType(ResolvedType):
 		else:
 			return [t1] if t1 == t2 else []
 
-def typesMatch(expectedType, foundType):
-	if expectedType == None:
+def typesMatch(l, r):
+	if l == r:
+		return True
+	
+	if l.isPtrType and r.isPtrType and typesMatch(l.baseType, r.baseType):
+		return True
+	
+	if l.isIntType and r.isIntType and len(ResolvedMultiIntType.inCommon(l, r)) > 0:
+		return True
+	
+	if l.isOptionType and r.isOptionType and len(l.resolvedTypes) == len(r.resolvedTypes):
+		for t in l.resolvedTypes:
+			if t not in r.resolvedTypes:
+				return False
+		return True
+	
+	return False
+
+def canAssignFrom(expectedType, foundType):
+	if expectedType == None or foundType == None:
 		return True
 	
 	if expectedType.isMultiIntType:
@@ -359,7 +388,4 @@ def typesMatch(expectedType, foundType):
 		return expectedType is foundType
 
 def canCoerce(fromType, toType):
-	if (fromType.isPtrType or fromType.isIntType) and (toType.isPtrType or toType.isIntType):
-		return True
-	
-	return False
+	return fromType.isPrimitiveType and toType.isPrimitiveType

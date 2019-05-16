@@ -1,9 +1,9 @@
 from .parser             import CConv, FnDeclAST, LetAST, FnCallAST, ReturnAST, IfAST, TypeRefAST, \
                                 StrLitAST, IntLitAST, BoolLitAST, TupleLitAST, ValueRefAST, \
 								InfixOpAST, FnCallAST, IfAST, CoercionAST, ModAST, ValueExprAST, \
-								BlockAST, AsgnAST, WhileAST
+								BlockAST, AsgnAST, WhileAST, DerefAST
 from .                   import types
-from .types              import typesMatch
+from .types              import canAssignFrom, typesMatch
 from .err                import logError
 
 def ffiAttr(decl, params):
@@ -98,6 +98,8 @@ def resolveValueExprType(state, scope, expr):
 		expr.parentScope = scope
 		typeCheckBlock(state, expr, expr.exprs)
 		expr.resolvedType = getBlockType(expr.exprs)
+	elif type(expr) == DerefAST:
+		typeCheckDeref(state, scope, expr)
 	elif type(expr) == TupleLitAST:
 		raise RuntimeError('unimplemented!')
 	elif type(expr) == ValueRefAST:
@@ -125,6 +127,23 @@ def typeCheckValueRef(state, scope, valueRef):
 	symbol = lookupSymbol(state, scope, valueRef, False)
 	valueRef.resolvedType = symbol.resolvedSymbolType if symbol else None
 
+def typeCheckDeref(state, scope, deref):
+	resolveValueExprType(state, scope, deref.expr)
+	if deref.expr.resolvedType == None:
+		return
+	elif not deref.expr.resolvedType.isPtrType:
+		logError(state, deref.span, 'cannot dereference: not a pointer')
+	else:
+		indLevel = deref.expr.resolvedType.indirectionLevel
+		derefCount = deref.derefCount
+		baseType = deref.expr.resolvedType.baseType
+		if indLevel < derefCount:
+			logError(state, deref.span, 'dereferenced too many times (max for type is {})'.format(indLevel))
+		elif indLevel == derefCount:
+			deref.resolvedType = baseType
+		else:
+			deref.resolvedType = types.ResolvedPtrType(baseType, indLevel - derefCount)
+
 def typeCheckInfixOp(state, scope, infixOp):
 	opErr = lambda: \
 		logError(state, infixOp.opSpan, 'invalid operand types for operator `{}`'.format(infixOp.op.desc()))
@@ -135,7 +154,19 @@ def typeCheckInfixOp(state, scope, infixOp):
 	if not infixOp.l.resolvedType or not infixOp.r.resolvedType:
 		return
 	
-	if infixOp.l.resolvedType.isIntType and infixOp.r.resolvedType.isIntType:
+	if infixOp.l.resolvedType.isPtrType and infixOp.r.resolvedType.isIntType:
+		if infixOp.op in types.PTR_INT_OPS:
+			infixOp.resolvedType = infixOp.l.resolvedType
+			return
+	elif infixOp.l.resolvedType.isIntType and infixOp.r.resolvedType.isPtrType:
+		if infixOp.op in types.INT_PTR_OPS:
+			infixOp.resolvedType = infixOp.r.resolvedType
+			return
+	elif infixOp.l.resolvedType.isPtrType and infixOp.r.resolvedType.isPtrType:
+		if infixOp.op in types.PTR_PTR_OPS and typesMatch(infixOp.l.resolvedType, infixOp.r.resolvedType):
+			infixOp.resolvedType = infixOp.r.resolvedType
+			return
+	elif infixOp.l.resolvedType.isIntType and infixOp.r.resolvedType.isIntType:
 		lType = infixOp.l.resolvedType
 		rType = infixOp.r.resolvedType
 		
@@ -165,6 +196,7 @@ def typeCheckFnSig(state, scope, fnDecl):
 	
 	for param in fnDecl.params:
 		resolveTypeRefType(state, fnDecl, param.typeRef)
+		param.resolvedSymbolType = param.typeRef.resolvedType
 		if param.name in fnDecl.symbolTable:
 			logError(state, param.span, 'duplicate parameter name')
 		else:
@@ -195,7 +227,7 @@ def typeCheckLet(state, scope, letExpr):
 		resolveTypeRefType(state, scope, letExpr.typeRef)
 		letExpr.resolvedSymbolType = letExpr.typeRef.resolvedType
 		
-		if not typesMatch(letExpr.resolvedSymbolType, letExpr.expr.resolvedType):
+		if not canAssignFrom(letExpr.resolvedSymbolType, letExpr.expr.resolvedType):
 			logError(state, letExpr.expr.span, 'expected type {}, found {}'
 				.format(letExpr.resolvedSymbolType, letExpr.expr.resolvedType))
 	else:
@@ -223,7 +255,7 @@ def typeCheckFnCall(state, scope, fnCallExpr):
 		return
 	
 	for (expected, found) in zip(fnType.resolvedParamTypes, fnCallExpr.args):
-		if not typesMatch(expected, found.resolvedType):
+		if not canAssignFrom(expected, found.resolvedType):
 			logError(state, found.span, 'expected type {}, found {}'.format(expected, found.resolvedType))
 
 def typeCheckReturn(state, scope, retExpr):
@@ -232,7 +264,7 @@ def typeCheckReturn(state, scope, retExpr):
 		scope = scope.parentScope
 	
 	resolveValueExprType(state, scope, retExpr.expr)
-	if not typesMatch(scope.resolvedSymbolType.resolvedReturnType, retExpr.expr.resolvedType):
+	if not canAssignFrom(scope.resolvedSymbolType.resolvedReturnType, retExpr.expr.resolvedType):
 		logError(state, retExpr.expr.span, 'invalid return type (expected {}, found {})'
 			.format(scope.resolvedSymbolType.resolvedReturnType, retExpr.expr.resolvedType))
 
@@ -240,7 +272,7 @@ def typeCheckAsgn(state, scope, asgnExpr):
 	resolveValueExprType(state, scope, asgnExpr.lvalue)
 	resolveValueExprType(state, scope, asgnExpr.rvalue)
 	
-	if not typesMatch(asgnExpr.lvalue.resolvedType, asgnExpr.rvalue.resolvedType):
+	if not canAssignFrom(asgnExpr.lvalue.resolvedType, asgnExpr.rvalue.resolvedType):
 		logError(state, asgnExpr.expr.span, 'invalid types in assignment (expected {}, found {})'
 			.format(asgnExpr.lvalue.resolvedType, asgnExpr.rvalue.resolvedType))
 
@@ -280,8 +312,8 @@ def typeCheckIf(state, scope, ifExpr):
 	if ifExpr.elseBlock:
 		typeCheckBlock(state, scope, ifExpr.elseBlock)
 		elseResolvedType = getBlockType(ifExpr.elseBlock)
-		if not typesMatch(resolvedType, elseResolvedType):
-			if typesMatch(elseResolvedType, resolvedType):
+		if not canAssignFrom(resolvedType, elseResolvedType):
+			if canAssignFrom(elseResolvedType, resolvedType):
 				resolvedType = elseResolvedType
 			else:
 				resolvedType = types.ResolvedOptionType(resolvedType, elseResolvedType)

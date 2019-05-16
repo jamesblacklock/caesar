@@ -33,10 +33,10 @@ fn main()
 	printf("The time is: %d\nAnd here is the value of a local variable: %d\n", time(null), xyz)
 	
 	let mut c: Int32 = 
-		#if true
+		if true
 			testMod::otherFn()
-		#else
-			#"asdf", 3
+		else
+			"asdf", 3
 	
 	if c + 4 * 3 + 2 - 13 == 98
 		printf("You typed the letter 'a'.\n")

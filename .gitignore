@@ -3,5 +3,5 @@ __pycache__
 *.pyc
 .DS_Store
 .vscode
-test
-test.asm
+test*
+test*.asm
