@@ -7,3 +7,8 @@ Caesar is:
 - that allows straightforward manual memory management and provides a C FFI
 - but also provides memory safety guarantees
 - all while offering a modern and comfortable syntax
+
+	@FFI("C") extern printf(fmt: Byte^, ...)
+	
+	fn main()
+		printf("Hello World!\n")
