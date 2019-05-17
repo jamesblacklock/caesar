@@ -390,13 +390,6 @@ def expectType(state, *types):
 	else:
 		return True
 
-
-
-
-
-
-
-
 def permitLineBreak(state):
 	if state.skipEmptyLines():
 		return expectIndent(state)
@@ -886,9 +879,6 @@ def parseValueExpr(state, precedence=0):
 			expr = parseInfixOp(state, expr, spaceBeforeOp)
 		else:
 			break
-	
-	# if infixLines == 1:
-	# 	state.popIndentLevel()
 	
 	return expr
 
