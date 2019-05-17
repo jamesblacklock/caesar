@@ -9,9 +9,9 @@ Caesar is:
 - all while offering a modern and comfortable syntax
 
 Currently the compiler generates assembler targeting 64-bit macOS.
-The resulting assembler can be assembled with [NASM](https://www.nasm.us/).
+The resulting assembler can be assembled using [NASM](https://www.nasm.us/).
 
 	@FFI("C") extern printf(fmt: Byte^, ...)
 	
 	fn main()
-		printf("Hello World!\n")
+	    printf("Hello World!\n")
