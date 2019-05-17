@@ -160,11 +160,14 @@ ARITHMETIC_OPS = (
 )
 
 BITWISE_OPS = (
-	InfixOp.LSHIFT,
-	InfixOp.RSHIFT,
 	InfixOp.BITAND,
 	InfixOp.BITOR,
 	InfixOp.BITXOR
+)
+
+BITSHIFT_OPS = (
+	InfixOp.LSHIFT,
+	InfixOp.RSHIFT
 )
 
 CMP_OPS = (

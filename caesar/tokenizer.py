@@ -174,6 +174,8 @@ def lexOperator(state):
 		(')', TokenType.RPAREN),
 		('{', TokenType.LBRACE),
 		('}', TokenType.RBRACE),
+		('[', TokenType.LBRACK),
+		(']', TokenType.RBRACK),
 		(':', TokenType.COLON),
 		('^', TokenType.CARET),
 		(',', TokenType.COMMA),
@@ -285,7 +287,7 @@ def tokenize(source):
 			tok = lexComment(state)
 		elif state.char == '\n':
 			tok = lexNewline(state)
-		elif re.match(r"[!@():^,.\-+=*/<>;{}]", state.char):
+		elif re.match(r"[\[\]!@\(\):^,.\-+=*/<>;{}]", state.char):
 			tok = lexOperator(state)
 		elif re.match(r"\d", state.char):
 			tok = lexNumber(state)

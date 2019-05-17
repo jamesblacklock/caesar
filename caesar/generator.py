@@ -1,7 +1,8 @@
 from enum                            import Enum
 from .parser                         import FnDeclAST, FnCallAST, ValueRefAST, StrLitAST, BlockAST, \
 	                                        IntLitAST, ReturnAST, LetAST, IfAST, InfixOpAST, InfixOp, \
-											CoercionAST, BoolLitAST, WhileAST, AsgnAST, DerefAST
+											CoercionAST, BoolLitAST, WhileAST, AsgnAST, DerefAST, \
+											IndexOpAST
 from .analyzer                       import lookupSymbol
 
 class Type(Enum):
@@ -168,16 +169,35 @@ def asgnToIR(scope, asgn, fn, block):
 	
 	block.append(Move(src, dest))
 
+def indexToIR(scope, ind, fn, block):
+	exprToIR(scope, ind.expr, fn, block)
+	l = block[-1].dest.clone()
+	
+	exprToIR(scope, ind.index, fn, block)
+	r = block[-1].dest.clone()
+	
+	fn.sp += 1
+	dest = Target(Storage.LOCAL, Type.I8, fn.sp)
+	
+	block.append(Add(l, r, dest))
+	
+	fn.sp += 1
+	
+	src = block[-1].dest
+	dest = Target(Storage.LOCAL, Type.I8, fn.sp)
+	
+	block.append(Move(src, dest, 1))
+
 def ifBlockToIR(scope, ifAst, fn, block):
 	exprToIR(scope, ifAst.expr, fn, block)
 	result = block[-1].dest.clone()
 	
 	ifBlock = []
-	blockToIR(scope, ifAst.ifBlock, fn, ifBlock)
+	blockToIR(scope, ifAst.ifBlock.exprs, fn, ifBlock)
 	
 	elseBlock = []
 	if ifAst.elseBlock != None:
-		blockToIR(scope, ifAst.elseBlock, fn, elseBlock)
+		blockToIR(scope, ifAst.elseBlock.exprs, fn, elseBlock)
 	
 	fn.sp += 1
 	dest = Target(Storage.LOCAL, Type.I8, fn.sp)
@@ -190,7 +210,7 @@ def whileBlockToIR(scope, whileAst, fn, block):
 	result = condBlock[-1].dest.clone()
 	
 	whileBlock = []
-	blockToIR(scope, whileAst.block, fn, whileBlock)
+	blockToIR(scope, whileAst.block.exprs, fn, whileBlock)
 	block.append(While(result, condBlock, whileBlock))
 
 def boolLitToIR(scope, lit, fn, block):
@@ -346,6 +366,8 @@ def exprToIR(scope, expr, fn, block):
 		exprToIR(scope, expr.expr, fn, block)
 	elif type(expr) == AsgnAST:
 		asgnToIR(scope, expr, fn, block)
+	elif type(expr) == IndexOpAST:
+		indexToIR(scope, expr, fn, block)
 	elif type(expr) == InfixOpAST and expr.op == InfixOp.PLUS:
 		addToIR(scope, expr, fn, block)
 	elif type(expr) == InfixOpAST and expr.op == InfixOp.MINUS:
@@ -388,7 +410,7 @@ class FnIR:
 
 def fnToIR(scope, fnDecl):
 	fn = FnIR(fnDecl.mangledName, [param.name for param in fnDecl.params], fnDecl.cVarArgs)
-	blockToIR(scope, fnDecl.body, fn, fn.block)
+	blockToIR(scope, fnDecl.body.exprs, fn, fn.block)
 	return fn
 
 def generateIR(mod):
@@ -424,7 +446,7 @@ def irToAsm(instr, fnIR):
 		lines.append('mov rax, {}'.format(targetToOperand(instr.src, fnIR)))
 		
 		for _ in range(0, instr.srcDeref):
-			lines.append('mov rbx, [rax]\n\t\tmov rax, rbx')
+			lines.append('mov rcx, [rax]\n\t\tmov rax, rcx')
 		
 		lines.append('mov {}, rax'.format(targetToOperand(instr.dest, fnIR)))
 		return '\n\t\t'.join(lines)
@@ -504,7 +526,7 @@ def irToAsm(instr, fnIR):
 			opcode = 'setg'
 		elif instr.op == InfixOp.GREATEREQ:
 			opcode = 'setge'
-		return 'mov rbx, 0\n\t\tmov rax, {}\n\t\tcmp rax, {}\n\t\t{} bl\n\t\tmov {}, rbx'.format(
+		return 'xor rcx, rcx\n\t\tmov rax, {}\n\t\tcmp rax, {}\n\t\t{} cl\n\t\tmov {}, rcx'.format(
 			targetToOperand(instr.l, fnIR),
 			targetToOperand(instr.r, fnIR),
 			opcode,
@@ -520,12 +542,12 @@ def irToAsm(instr, fnIR):
 			targetToOperand(instr.r, fnIR),
 			targetToOperand(instr.dest, fnIR))
 	elif type(instr) == Mul:
-		return 'mov rax, {}\n\t\tmov rbx, {}\n\t\tmul rbx\n\t\tmov {}, rax'.format(
+		return 'mov rax, {}\n\t\tmov rcx, {}\n\t\tmul rcx\n\t\tmov {}, rax'.format(
 			targetToOperand(instr.l, fnIR),
 			targetToOperand(instr.r, fnIR),
 			targetToOperand(instr.dest, fnIR))
 	elif type(instr) == Div:
-		return 'mov rax, {}\n\t\tmov rbx, {}\n\t\tdiv rbx\n\t\tmov {}, rax'.format(
+		return 'mov rax, {}\n\t\tmov rcx, {}\n\t\tdiv rcx\n\t\tmov {}, rax'.format(
 			targetToOperand(instr.l, fnIR),
 			targetToOperand(instr.r, fnIR),
 			targetToOperand(instr.dest, fnIR))
@@ -585,7 +607,12 @@ def defineFns(mod, lines):
 				lines.append('\t\tmov [rsp + {}], {} ; param: {}\n'.format(
 					(decl.ir.sp - i)*8, ARG_REGS[i], param))
 			else:
-				raise RuntimeError('unimplemented!')#lines.append('\t\tpush {}'.format(targetToOperand(arg, fnIR)))
+				# the `+ 2` points back into the previous stack frame, behind the return address
+				stackOffset = i - len(ARG_REGS) + 2
+				lines.append('\t\tmov rax, [rsp + {}]\n'.format(
+					(decl.ir.sp + stackOffset)*8))
+				lines.append('\t\tmov [rsp + {}], rax ; param: {}\n'.format(
+					(decl.ir.sp - i)*8, param))
 		
 		lines.append(irBlockToAsm(decl.ir.block, decl.ir))
 		

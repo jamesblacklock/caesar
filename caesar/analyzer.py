@@ -1,7 +1,7 @@
 from .parser             import CConv, FnDeclAST, LetAST, FnCallAST, ReturnAST, IfAST, TypeRefAST, \
                                 StrLitAST, IntLitAST, BoolLitAST, TupleLitAST, ValueRefAST, \
 								InfixOpAST, FnCallAST, IfAST, CoercionAST, ModAST, ValueExprAST, \
-								BlockAST, AsgnAST, WhileAST, DerefAST
+								BlockAST, AsgnAST, WhileAST, DerefAST, IndexOpAST
 from .                   import types
 from .types              import canAssignFrom, typesMatch
 from .err                import logError
@@ -95,9 +95,7 @@ def resolveValueExprType(state, scope, expr):
 		else:
 			expr.resolvedType = types.ResolvedMultiIntType.fromValue(int(expr.value))
 	elif type(expr) == BlockAST:
-		expr.parentScope = scope
-		typeCheckBlock(state, expr, expr.exprs)
-		expr.resolvedType = getBlockType(expr.exprs)
+		typeCheckBlock(state, scope, expr)
 	elif type(expr) == DerefAST:
 		typeCheckDeref(state, scope, expr)
 	elif type(expr) == TupleLitAST:
@@ -108,6 +106,8 @@ def resolveValueExprType(state, scope, expr):
 		typeCheckInfixOp(state, scope, expr)
 	elif type(expr) == FnCallAST:
 		typeCheckFnCall(state, scope, expr)
+	elif type(expr) == IndexOpAST:
+		typeCheckIndex(state, scope, expr)
 	elif type(expr) == IfAST:
 		typeCheckIf(state, scope, expr)
 	elif type(expr) == CoercionAST:
@@ -173,7 +173,7 @@ def typeCheckInfixOp(state, scope, infixOp):
 		possibleTypes = types.ResolvedMultiIntType.inCommon(lType, rType)
 		
 		if len(possibleTypes) > 0:
-			if infixOp.op in types.ARITHMETIC_OPS:
+			if infixOp.op in types.ARITHMETIC_OPS or infixOp.op in types.BITWISE_OPS:
 				if len(possibleTypes) == 1:
 					infixOp.resolvedType = possibleTypes[0]
 					return
@@ -183,8 +183,22 @@ def typeCheckInfixOp(state, scope, infixOp):
 			elif infixOp.op in types.CMP_OPS:
 				infixOp.resolvedType = types.Bool
 				return
+		
+		if infixOp.op in types.BITSHIFT_OPS:
+			infixOp.resolvedType = lType
 	
 	opErr()
+
+def typeCheckIndex(state, scope, expr):
+	resolveValueExprType(state, scope, expr.expr)
+	resolveValueExprType(state, scope, expr.index)
+	
+	if not expr.expr.resolvedType.isPtrType:
+		logError(state, expr.expr.span, 
+			'base of index expression must be an pointer type (found {})'.format(expr.expr.resolvedType))
+	
+	if not expr.index.resolvedType.isIntType:
+		logError(state, expr.index.span, 'index must be an integer (found {})'.format(expr.index.resolvedType))
 
 def typeCheckFnSig(state, scope, fnDecl):
 	fnDecl.parentScope = scope
@@ -288,10 +302,10 @@ def typeCheckWhile(state, scope, whileExpr):
 	typeCheckBlock(state, scope, whileExpr.block)
 
 def getBlockType(block):
-	if len(block) == 0:
+	if len(block.exprs) == 0:
 		return types.Void
 	
-	lastExpr = block[-1]
+	lastExpr = block.exprs[-1]
 	if not isinstance(lastExpr, ValueExprAST):
 		return types.Void
 	
@@ -307,11 +321,11 @@ def typeCheckIf(state, scope, ifExpr):
 			'condition type must be Bool (found {})'.format(ifExpr.expr.resolvedType))
 	
 	typeCheckBlock(state, scope, ifExpr.ifBlock)
-	resolvedType = getBlockType(ifExpr.ifBlock)
+	resolvedType = ifExpr.ifBlock.resolvedType
 	
 	if ifExpr.elseBlock:
 		typeCheckBlock(state, scope, ifExpr.elseBlock)
-		elseResolvedType = getBlockType(ifExpr.elseBlock)
+		elseResolvedType = ifExpr.elseBlock.resolvedType
 		if not canAssignFrom(resolvedType, elseResolvedType):
 			if canAssignFrom(elseResolvedType, resolvedType):
 				resolvedType = elseResolvedType
@@ -331,7 +345,9 @@ def typeCheckCoercion(state, scope, asExpr):
 			.format(asExpr.expr.resolvedType, asExpr.typeRef.resolvedType))
 
 def typeCheckBlock(state, scope, block):
-	for expr in block:
+	block.parentScope = scope
+	
+	for expr in block.exprs:
 		if type(expr) == LetAST:
 			typeCheckLet(state, scope, expr)
 		elif type(expr) == ReturnAST:
@@ -344,6 +360,15 @@ def typeCheckBlock(state, scope, block):
 			resolveValueExprType(state, scope, expr)
 		else:
 			assert 0
+	
+	if len(block.exprs) == 0:
+		block.resolvedType = types.Void
+	else:
+		lastExpr = block.exprs[-1]
+		if not isinstance(lastExpr, ValueExprAST):
+			block.resolvedType = types.Void
+		else:
+			block.resolvedType = lastExpr.resolvedType
 
 def typeCheckFnBody(state, fnDecl):
 	if fnDecl.body == None:

@@ -1,0 +1,4 @@
+TODO:
+--doc comments with parent attachment (##! or #!= =#)
+--attributes with parent attachment (@!)
+--figure out how to effectively continue parsing after failure

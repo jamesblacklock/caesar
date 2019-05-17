@@ -16,6 +16,7 @@ class ParserState:
 		self.tokens            = tokens
 		self._offset           = 0
 		self.tok               = self.tokens[0]
+		self.nextTok           = self.tokens[1] if len(self.tokens) > 1 else self.tok
 		self.eof               = self.tok.type == TokenType.EOF
 		self.indentLevels      = [0]
 		self.failed            = False
@@ -27,6 +28,7 @@ class ParserState:
 		self._offset += 1
 		self.tok = self.tokens[self._offset]
 		self.eof = self.tok.type == TokenType.EOF
+		self.nextTok = self.tok if self.eof else self.tokens[self._offset+1]
 	
 	@property
 	def offset(self):
@@ -40,20 +42,24 @@ class ParserState:
 		return self.indentLevels.append(level)
 	
 	def popIndentLevel(self):
-		if len(self.indentLevels) < 2:
-			assert 0
+		assert len(self.indentLevels) > 1
 		return self.indentLevels.pop()
 	
 	def rollback(self, offset):
 		self._offset = offset
 		self.tok = self.tokens[self._offset]
 		self.eof = self.tok.type == TokenType.EOF
+		self.nextTok = self.tok if self.eof else self.tokens[self._offset+1]
 	
 	def skip(self, *types):
+		skipped = False
 		while self.tok.type in types:
 			self.advance()
+			skipped = True
+		return skipped
 	
 	def skipEmptyLines(self):
+		line = self.tok.span.startLine
 		while True:
 			self.skip(TokenType.NEWLINE, TokenType.SPACE, TokenType.COMMENT)
 			if self.tok.type == TokenType.INDENT:
@@ -64,16 +70,17 @@ class ParserState:
 				else:
 					self.rollback(offset)
 			break
+		return self.tok.span.startLine > line
 	
 	def skipSpace(self):
-		self.skip(TokenType.SPACE, TokenType.COMMENT)
-	
-	def skipAllSpace(self):
-		self.skip(TokenType.SPACE, TokenType.INDENT, TokenType.NEWLINE, TokenType.COMMENT)
+		return self.skip(TokenType.SPACE, TokenType.COMMENT)
 	
 	def skipUntil(self, *types):
+		skipped = False
 		while self.tok.type != TokenType.EOF and self.tok.type not in types:
 			self.advance()
+			skipped = True
+		return skipped
 
 #######################
 #  AST structs
@@ -239,10 +246,10 @@ class TupleLitAST(ValueExprAST):
 		self.span = span
 
 class BlockAST(ValueExprAST):
-	def __init__(self, exprs, span):
+	def __init__(self, block):
 		super().__init__()
-		self.exprs = exprs
-		self.span = span
+		self.exprs = block.list
+		self.span = block.span
 		self.parentScope = None
 		self.symbolTable = {}
 
@@ -261,6 +268,13 @@ class InfixOpAST(ValueExprAST):
 		self.op = op
 		self.span = span
 		self.opSpan = opSpan
+
+class IndexOpAST(ValueExprAST):
+	def __init__(self, expr, index, span):
+		super().__init__()
+		self.expr = expr
+		self.index = index
+		self.span = span
 
 class DerefAST(ValueExprAST):
 	def __init__(self, expr, derefCount, span):
@@ -299,13 +313,13 @@ class IfAST(ValueExprAST):
 #######################
 
 def expectIndent(state):
-	if state.tok.span.startColumn != 1:
-		return True
+	assert state.tok.span.startColumn == 1
 	
 	indentTok = None
 	if state.tok.type == TokenType.INDENT:
 		indentTok = state.tok
 		state.advance()
+		state.skipSpace()
 	
 	level = 0 if indentTok == None else len(indentTok.content)
 	if level != state.indentLevel:
@@ -327,13 +341,13 @@ def isIndentDecrease(state):
 	return level < state.indentLevel
 
 def expectIndentIncrease(state):
-	if state.tok.span.startColumn != 1:
-		return True
+	assert state.tok.span.startColumn == 1
 	
 	indentTok = None
 	if state.tok.type == TokenType.INDENT:
 		indentTok = state.tok
 		state.advance()
+		state.skipSpace()
 	
 	level = 0 if indentTok == None else len(indentTok.content)
 	if level <= state.indentLevel:
@@ -343,23 +357,23 @@ def expectIndentIncrease(state):
 		state.pushIndentLevel(level)
 		return True
 
-def expectIndentOrIndentIncrease(state):
-	if state.tok.span.startColumn != 1:
-		return True
+# def expectIndentOrIndentIncrease(state):
+# 	if state.tok.span.startColumn != 1:
+# 		return True
 	
-	indentTok = None
-	if state.tok.type == TokenType.INDENT:
-		indentTok = state.tok
-		state.advance()
+# 	indentTok = None
+# 	if state.tok.type == TokenType.INDENT:
+# 		indentTok = state.tok
+# 		state.advance()
 	
-	level = 0 if indentTok == None else len(indentTok.content)
-	if level < state.indentLevel:
-		logError(state, state.tok.span, 'expected indented block')
-		return False
-	else:
-		if level > state.indentLevel:
-			state.pushIndentLevel(level)
-		return True
+# 	level = 0 if indentTok == None else len(indentTok.content)
+# 	if level < state.indentLevel:
+# 		logError(state, state.tok.span, 'expected indented block')
+# 		return False
+# 	else:
+# 		if level > state.indentLevel:
+# 			state.pushIndentLevel(level)
+# 		return True
 
 def expectType(state, *types):
 	if state.tok.type not in types:
@@ -371,6 +385,29 @@ def expectType(state, *types):
 	else:
 		return True
 
+
+
+
+
+
+
+
+def permitLineBreak(state):
+	if state.skipEmptyLines():
+		return expectIndent(state)
+	return False
+
+def permitLineBreakIndent(state):
+	if state.skipEmptyLines():
+		return expectIndentIncrease(state)
+	return False
+
+def expectLineBreak(state):
+	if state.skipEmptyLines() == False:
+		logError(state, state.tok.span, 'expected line break, found {}'.format(state.tok.type.desc()))
+		return False
+	return expectIndent(state)
+
 def parseAttrArgs(state):
 	def parseAttrArg(state):
 		if expectType(state, TokenType.STRING, TokenType.INTEGER) == False:
@@ -379,7 +416,7 @@ def parseAttrArgs(state):
 		state.advance()
 		return arg
 	
-	return parseBlock(state, parseAttrArg, TokenType.COMMA, BlockMarkers.PAREN, True)
+	return parseBlock(state, parseAttrArg, BlockMarkers.PAREN, True)
 
 def parseAttrs(state):
 	attrs = []
@@ -389,27 +426,27 @@ def parseAttrs(state):
 		state.advance()
 		
 		if expectType(state, TokenType.NAME) == False:
-			state.skipUntil(TokenType.SPACE, TokenType.COMMENT, TokenType.NEWLINE)
-			state.skipSpace()
-		else:
-			span = Span.merge(span, state.tok.span)
-			name = state.tok.content
-			args = []
-			state.advance()
-			state.skipSpace()
-			
-			if state.tok.type == TokenType.NEWLINE:
-				state.skipEmptyLines()
-				expectIndent(state)
-			
-			if state.tok.type == TokenType.LPAREN:
-				block = parseAttrArgs(state)
-				args = block.list
-				span = Span.merge(span, block.span)
-			
-			attrs.append(AttrAST(name, args, span))
+			break
 		
-		state.skipEmptyLines()
+		span = Span.merge(span, state.tok.span)
+		name = state.tok.content
+		args = []
+		state.advance()
+		state.skipSpace()
+		
+		if state.tok.type == TokenType.NEWLINE:
+			state.skipEmptyLines()
+			expectIndent(state)
+		
+		if state.tok.type == TokenType.LPAREN:
+			block = parseAttrArgs(state)
+			args = block.list
+			span = Span.merge(span, block.span)
+		
+		attrs.append(AttrAST(name, args, span))
+		
+		if state.skipEmptyLines():
+			expectIndent(state)
 	
 	return attrs
 
@@ -436,38 +473,45 @@ def parseFnDeclParams(state):
 		if expectType(state, TokenType.COLON) == False:
 			return FnParamAST(name, None, span)
 		
+		Span.merge(span, state.tok.span)
+		
 		state.advance()
+		onOneLine = permitLineBreakIndent(state) == False
 		state.skipSpace()
 		
 		typeRef = parseTypeRef(state)
+		if typeRef:
+			Span.merge(span, typeRef.span)
 		
-		return FnParamAST(name, typeRef, Span.merge(span, state.tokens[state.offset-1].span))
+		if not onOneLine:
+			state.popIndentLevel()
+		
+		return FnParamAST(name, typeRef, span)
 	
-	return parseBlock(state, parseFnParam, TokenType.COMMA, BlockMarkers.PAREN, True)
+	return parseBlock(state, parseFnParam, BlockMarkers.PAREN, True)
 
 def parseFnDeclReturnType(state):
-	# span = state.tok.span
-	state.advance() # skip `->`
-	
-	# if state.tok.type == TokenType.NEWLINE:
-	# 	state.skipEmptyLines()
-	# 	expectIndentIncrease(state)
-	
+	state.advance()
+	onOneLine = permitLineBreakIndent(state) == False
 	state.skipSpace()
-	return parseTypeRef(state)
+	
+	typeRef = parseTypeRef(state)
+	
+	if not onOneLine:
+		state.popIndentLevel()
+	
+	return typeRef
 
 def parseCoercion(state, expr):
 	span = Span.merge(expr.span, state.tok.span)
 	state.advance() # skip `as`
-	
-	# if state.tok.type == TokenType.NEWLINE:
-	# 	state.skipEmptyLines()
-	# 	expectIndentIncrease(state)
-	
+	onOneLine = permitLineBreakIndent(state) == False
 	state.skipSpace()
+	
 	typeRef = parseTypeRef(state)
-	if typeRef == None:
-		return None
+	
+	if not onOneLine:
+		state.popIndentLevel()
 	
 	return CoercionAST(expr, typeRef, Span.merge(span, typeRef.span))
 
@@ -482,8 +526,10 @@ class Block:
 		self.span = span
 		self.trailingSeparator = trailingSeparator
 
-def parseBlock(state, parseItem, sepType=TokenType.COMMA, 
-	blockMarkers=BlockMarkers.BRACE, requireBlockMarkers=False, topLevelBlock=False):
+def parseBlock(state, parseItem, blockMarkers=BlockMarkers.BRACE, 
+	requireBlockMarkers=False, topLevelBlock=False):
+	
+	# set the marker token types
 	if blockMarkers == BlockMarkers.BRACE:
 		openMarker = TokenType.LBRACE
 		closeMarker = TokenType.RBRACE
@@ -494,103 +540,125 @@ def parseBlock(state, parseItem, sepType=TokenType.COMMA,
 		openMarker = TokenType.LPAREN
 		closeMarker = TokenType.RPAREN
 	
-	startLine = state.tok.span.startLine
+	
+	# advance to the open marker (if it exists)
+	state.skipSpace()
+	needsTerm = False
 	onOneLine = not topLevelBlock
-	
-	offset = state.offset
-	state.skipEmptyLines()
-	
-	if state.tok.type == TokenType.INDENT and state.tokens[state.offset+1].type == openMarker:
-		expectIndent(state)
-	
+	unindented = False
 	startSpan = endSpan = state.tok.span
 	
-	needsTerm = False
-	if state.tok.type == openMarker:
-		startLine = state.tok.span.startLine
-		needsTerm = True
-		state.advance()
-		state.skipEmptyLines()
-	elif requireBlockMarkers:
-		logError(state, state.tok.span, 'expected {}, found {}'.format(openMarker, state.tok.type.desc()))
+	if not topLevelBlock:
+		if state.tok.type == openMarker:
+			# open marker appears on the same line
+			needsTerm = True
+			state.advance()
+		elif state.skipEmptyLines():
+			if state.tok.type == openMarker or \
+				state.tok.type == TokenType.INDENT and state.nextTok.type == openMarker:
+				# open marker appears on the next line at the same indent level
+				needsTerm = True
+				expectIndent(state)
+				startSpan = endSpan = state.tok.span
+				state.advance() # move past open marker
+			else:
+				# no open marker present, just a newline-marked block
+				onOneLine = False
+				startSpan = endSpan = state.tok.span
+				expectIndentIncrease(state)
+		else:
+			# we found something other than a block here
+			if requireBlockMarkers:
+				assert expectType(state, openMarker) == False
+			else:
+				assert expectType(state, TokenType.NEWLINE, openMarker) == False
+			return Block([], startSpan, False)
+	
+	# if block marker is required, we should have found it by now
+	if requireBlockMarkers and not needsTerm:
+		assert expectType(state, openMarker) == False
 		state.skipUntil(TokenType.NEWLINE)
 		return Block([], startSpan, False)
 	
-	if not needsTerm and not topLevelBlock:
-		state.rollback(offset)
-		state.skipSpace()
-		if expectType(state, TokenType.NEWLINE):
-			state.skipEmptyLines()
-	
-	if onOneLine == True and startLine != state.tok.span.startLine:
-		onOneLine = False
-		if not needsTerm or state.tok.type != closeMarker:
-			expectIndentIncrease(state)
 	
 	trailingSeparator = False
 	list = []
 	while True:
+		# check to see if the block was terminated
+		offset = state.offset
+		if needsTerm:
+			if state.tok.type == closeMarker or state.tok.type == TokenType.EOF:
+				# close marker on the same line
+				expectType(state, closeMarker)
+				endSpan = state.tok.span
+				state.advance()
+				break
+			elif state.tok.type == TokenType.NEWLINE:
+				# maybe a close marker on the next line
+				state.skipEmptyLines()
+				if state.tok.type == closeMarker or \
+					state.tok.type == TokenType.INDENT and state.nextTok.type == closeMarker:
+					# close marker on next line confirmed!
+					state.popIndentLevel()
+					unindented = True
+					expectIndent(state)
+					endSpan = state.tok.span
+					state.advance()
+					break
+		else:
+			state.skipEmptyLines()
+			if isIndentDecrease(state) or state.tok.type == TokenType.EOF:
+				# decreased indent level on the next line or end of file
+				state.rollback(offset)
+				break
+		
+		# no close marker, rollback
+		state.rollback(offset)
+		
+		# check if we need to increase the indent level (only happens once in a block)
+		if state.skipEmptyLines():
+			if onOneLine:
+				onOneLine = False
+				expectIndentIncrease(state)
+			else:
+				expectIndent(state)
+		
+		# space cannot precede the first expression on a line unless the space is 
+		# preceded by a comment ( otherwise it would appear to be indentation)
 		if onOneLine or state.tok.type == TokenType.COMMENT:
 			state.skipSpace()
 		elif state.tok.type == TokenType.SPACE:
 			logError(state, state.tok.span, 'expected expression, found space')
 		
-		if needsTerm and state.tok.type == closeMarker or state.tok.type == TokenType.EOF:
-			if needsTerm: expectType(state, closeMarker)
-			endSpan = state.tok.span
-			state.advance()
-			break
-		
+		# parse an item in the block
 		trailingSeparator = False
 		item = parseItem(state)
 		if item == None:
-			skipUntilTypes = (sepType, TokenType.NEWLINE, closeMarker) if needsTerm else (sepType, TokenType.NEWLINE)
+			# if item parsing failed, try to skip to a sane place
+			skipUntilTypes = (TokenType.COMMA, TokenType.NEWLINE, closeMarker) \
+				if needsTerm else (TokenType.COMMA, TokenType.NEWLINE)
 			state.skipUntil(*skipUntilTypes)
 		else:
 			list.append(item)
 			endSpan = item.span
 		
+		# following the item we expect a comma or a close marker 
+		# (or newline/eof if the block needs no close marker)
 		state.skipSpace()
-		
 		if needsTerm:
-			if expectType(state, TokenType.INDENT, sepType, TokenType.NEWLINE, closeMarker) == False:
+			if expectType(state, TokenType.INDENT, TokenType.COMMA, TokenType.NEWLINE, closeMarker) == False:
 				state.skipUntil(closeMarker)
 		else:
-			if expectType(state, TokenType.INDENT, sepType, TokenType.NEWLINE, TokenType.EOF) == False:
+			if expectType(state, TokenType.INDENT, TokenType.COMMA, TokenType.NEWLINE, TokenType.EOF) == False:
 				state.skipUntil(TokenType.NEWLINE)
 		
-		if state.tok.type == sepType:
+		# skip the comma (it's just a separator)
+		if state.tok.type == TokenType.COMMA:
 			state.advance()
 			trailingSeparator = True
-		
-		offset = state.offset
-		state.skipEmptyLines()
-		if onOneLine and startLine != state.tok.span.startLine and state.tok.type == TokenType.INDENT:
-			expectIndentIncrease(state)
-			onOneLine = False
-		
-		if not onOneLine:
-			if needsTerm:
-				offset = state.offset
-				state.skip(TokenType.INDENT)
-				if state.tok.type == closeMarker:
-					endSpan = state.tok.span
-					state.rollback(offset)
-					state.popIndentLevel()
-					expectIndent(state)
-					state.advance()
-					break
-				
-				state.rollback(offset)
-				expectIndent(state)
-			elif isIndentDecrease(state):
-				state.popIndentLevel()
-				state.rollback(offset)
-				break
-			elif topLevelBlock and state.tok.type == TokenType.EOF:
-				break
-			else:
-				expectIndent(state)
+	
+	if not onOneLine and not unindented and not topLevelBlock:
+		state.popIndentLevel()
 	
 	return Block(list, Span.merge(startSpan, endSpan), trailingSeparator)
 
@@ -604,17 +672,15 @@ def parseTypeRef(state):
 		state.advance()
 		indirectionLevel = 0
 		
-		state.skipSpace()
 		while state.tok.type == TokenType.CARET:
 			lastTok = state.tok
 			indirectionLevel += 1
 			state.advance()
-			state.skipSpace()
 		
 		return TypeRefAST(typeName, indirectionLevel, Span.merge(span, lastTok.span))
 
 def parseFnCall(state, expr):
-	block = parseBlock(state, parseValueExpr, TokenType.COMMA, BlockMarkers.PAREN, True)
+	block = parseBlock(state, parseValueExpr, BlockMarkers.PAREN, True)
 	return FnCallAST(expr, block.list, Span.merge(expr.span, block.span))
 
 def parseMethodCall(state, l, r):
@@ -631,10 +697,11 @@ def parseIf(state):
 	if expr == None:
 		return None
 	
-	ifBlock = parseBlock(state, parseFnBodyExpr)
+	ifBlock = BlockAST(parseBlock(state, parseFnBodyExpr))
 	span = Span.merge(span, ifBlock.span)
 	elseBlock = None
 	
+	offset = state.offset
 	state.skipEmptyLines()
 	if state.tok.type == TokenType.ELSE or \
 		state.tok.type == TokenType.INDENT and state.tokens[state.offset+1].type == TokenType.ELSE:
@@ -645,13 +712,15 @@ def parseIf(state):
 		if state.tok.type == TokenType.IF:
 			tok = state.tok
 			elseIf = parseIf(state)
-			elseBlock = Block([elseIf], elseIf.span) if elseIf else Block([], tok.span)
+			elseBlock = BlockAST(Block([elseIf], elseIf.span) if elseIf else Block([], tok.span))
 		else:
-			elseBlock = parseBlock(state, parseFnBodyExpr)
+			elseBlock = BlockAST(parseBlock(state, parseFnBodyExpr))
 		
 		span = Span.merge(span, elseBlock.span)
+	else:
+		state.rollback(offset)
 	
-	return IfAST(expr, ifBlock.list, elseBlock.list if elseBlock else None, span)
+	return IfAST(expr, ifBlock, elseBlock, span)
 
 def parseWhile(state):
 	span = state.tok.span
@@ -664,7 +733,7 @@ def parseWhile(state):
 	block = parseBlock(state, parseFnBodyExpr)
 	span = Span.merge(span, block.span)
 	
-	return WhileAST(expr, block.list, span)
+	return WhileAST(expr, BlockAST(block), span)
 
 VALUE_EXPR_TOKS = (
 	TokenType.NEWLINE,
@@ -689,20 +758,35 @@ def parseDeref(state, expr):
 	
 	return DerefAST(expr, derefCount, span)
 
-def parseInfixOp(state, l):
+def parseIndex(state, expr):
+	span = state.tok.span
+	state.advance()
+	
+	index = parseValueExpr(state)
+	permitLineBreak(state)
+	if expectType(state, TokenType.RBRACK) == False:
+		return None
+	
+	span = Span.merge(span, state.tok.span)
+	state.advance()
+	
+	return IndexOpAST(expr, index, span)
+
+def parseInfixOp(state, l, spaceBeforeOp):
 	op = state.tok.type
 	opSpan = state.tok.span
 	
 	offset = state.offset
 	state.advance()
-	state.skipEmptyLines()
-	expectIndentOrIndentIncrease(state)
+	state.skipSpace()
 	
-	if op == TokenType.CARET:
-		state.skipSpace()
+	if not spaceBeforeOp and op == TokenType.CARET:
 		if state.tok.type == TokenType.LPAREN or state.tok.type not in VALUE_EXPR_TOKS:
 			state.rollback(offset)
 			return parseDeref(state, l)
+	
+	if state.skipEmptyLines() and expectIndentIncrease(state):
+		state.popIndentLevel()
 	
 	r = parseValueExpr(state, INFIX_PRECEDENCE[op])
 	if r == None:
@@ -717,10 +801,17 @@ def parseValueRef(state):
 	path = [state.tok.content]
 	span = state.tok.span
 	state.advance()
+	onOneLine = True
 	
 	while state.tok.type == TokenType.PATH:
 		span = Span.merge(span, state.tok.span)
 		state.advance()
+		
+		if onOneLine:
+			onOneLine = permitLineBreakIndent(state) == False
+		else:
+			permitLineBreak(state)
+		
 		if expectType(state, TokenType.NAME) == False:
 			break
 		
@@ -728,18 +819,21 @@ def parseValueRef(state):
 		span = Span.merge(span, state.tok.span)
 		state.advance()
 	
+	if not onOneLine:
+		state.popIndentLevel()
+	
 	return ValueRefAST(path, span)
 
 def parseValueExpr(state, precedence=0):
 	state.skipSpace()
 	if state.tok.type == TokenType.NEWLINE:
 		block = parseBlock(state, parseFnBodyExpr)
-		expr = BlockAST(block.list, block.span)
+		expr = BlockAST(block)
 	elif state.tok.type == TokenType.LBRACE:
 		block = parseBlock(state, parseFnBodyExpr, requireBlockMarkers=True)
-		expr = BlockAST(block.list, block.span)
+		expr = BlockAST(block)
 	elif state.tok.type == TokenType.LPAREN:
-		block = parseBlock(state, parseValueExpr, TokenType.COMMA, BlockMarkers.PAREN, True)
+		block = parseBlock(state, parseValueExpr, BlockMarkers.PAREN, True)
 		if len(block.list) == 1 and not block.trailingSeparator:
 			expr = block.list[0]
 			expr.span = block.span
@@ -770,22 +864,22 @@ def parseValueExpr(state, precedence=0):
 	if expr == None:
 		return None
 	
-	indentStack = len(state.indentLevels)
-	
 	while True:
-		state.skipSpace()
+		spaceBeforeOp = state.skipSpace()
 		
-		if state.tok.type == TokenType.LPAREN:
+		if state.tok.type == TokenType.LBRACK:
+			expr = parseIndex(state, expr)
+		elif state.tok.type == TokenType.LPAREN:
 			expr = parseFnCall(state, expr)
 		elif state.tok.type == TokenType.AS:
 			expr = parseCoercion(state, expr)
 		elif state.tok.type in INFIX_PRECEDENCE and INFIX_PRECEDENCE[state.tok.type] > precedence:
-			expr = parseInfixOp(state, expr)
+			expr = parseInfixOp(state, expr, spaceBeforeOp)
 		else:
 			break
 	
-	for _ in range(indentStack, len(state.indentLevels)):
-		state.popIndentLevel()
+	# if infixLines == 1:
+	# 	state.popIndentLevel()
 	
 	return expr
 
@@ -796,7 +890,7 @@ def parseValueExprOrAsgn(state):
 	
 	state.skipSpace()
 	if state.tok.type == TokenType.ASGN:
-		if type(expr) != ValueRefAST:
+		if type(expr) != ValueRefAST and type(expr) != DerefAST:
 			logError(state, state.tok.span, "invalid assignment target in assignment")
 		
 		state.advance()
@@ -815,7 +909,7 @@ def parseReturn(state):
 	state.skipSpace()
 	
 	expr = None
-	if state.tok.type != TokenType.COMMA and state.tok.type != TokenType.NEWLINE:
+	if state.tok.type not in (TokenType.COMMA, TokenType.NEWLINE, TokenType.EOF):
 		expr = parseValueExpr(state)
 		if expr != None:
 			span = Span.merge(span, expr.span)
@@ -846,6 +940,7 @@ def parseLet(state):
 		state.skipSpace()
 		typeRef = parseTypeRef(state)
 	
+	state.skipSpace()
 	expr = None
 	if state.tok.type == TokenType.ASGN:
 		span = Span.merge(span, state.tok.span)
@@ -867,18 +962,14 @@ def parseFnBodyExpr(state):
 		return parseWhile(state)
 	else:
 		logError(state, state.tok.span, 'expected expression, found {}'.format(state.tok.type.desc()))
-		state.skipUntil(TokenType.NEWLINE, TokenType.COMMA, TokenType.RBRACE)
 
 def parseFnDecl(state, doccomment, attrs, extern):
 	span = state.tok.span
 	startLine = state.tok.span.startLine
 	onOneLine = True
-	state.advance() # skip `fn`
 	
+	state.advance()
 	state.skipSpace()
-	if state.tok.type == TokenType.NEWLINE:
-		state.skipEmptyLines()
-		expectIndentIncrease(state)
 	
 	nameTok = None
 	if expectType(state, TokenType.NAME):
@@ -908,8 +999,8 @@ def parseFnDecl(state, doccomment, attrs, extern):
 	body = None
 	if not extern:
 		block = parseBlock(state, parseFnBodyExpr)
-		body = block.list
-		span = Span.merge(span, block.span)
+		body = BlockAST(block)
+		span = Span.merge(span, body.span)
 	
 	return FnDeclAST(doccomment, attrs, extern, nameTok, params, cVarArgs, returnType, body, span, cVarArgsSpan)
 
@@ -919,28 +1010,30 @@ def parseModLevelDecl(state):
 	if state.tok.type == TokenType.DOCCOMMENT:
 		startToken = doccomment = state.tok
 		state.advance()
-		state.skipEmptyLines()
-		expectIndent(state)
+		permitLineBreak(state)
 	
 	if state.tok.type == TokenType.MOD:
-		if startToken == None: startToken = state.tok
+		if startToken == None:
+			startToken = state.tok
 		modDecl = parseModule(state, doccomment)
 		if modDecl != None:
 			modDecl.span = Span.merge(startToken.span, modDecl.span)
-		
 		return modDecl
 	
 	attrs = []
 	if state.tok.type == TokenType.AT:
-		if startToken == None: startToken = state.tok
+		if startToken == None:
+			startToken = state.tok
 		attrs = parseAttrs(state)
+		permitLineBreak(state)
 	
 	extern = False
 	if state.tok.type == TokenType.EXTERN:
-		if startToken == None: startToken = state.tok
+		if startToken == None:
+			startToken = state.tok
 		extern = True
 		state.advance()
-		state.skipAllSpace()
+		permitLineBreak(state)
 	
 	if startToken == None: startToken = state.tok
 	
@@ -953,6 +1046,7 @@ def parseModLevelDecl(state):
 			fnDecl.span = Span.merge(startToken.span, fnDecl.span)
 		return fnDecl
 	else:
+		logError(state, state.tok.span, 'static variables at the module level are unimplemented')
 		return None
 
 def parseModule(state, doccomment):
@@ -969,7 +1063,6 @@ def parseModule(state, doccomment):
 	return ModAST(state, doccomment, nameTok, block.list, Span.merge(span, block.span))
 
 def parseTopLevelModule(state):
-	span = Span(state.source, 1, 1, len(state.source.lines)+1, len(state.source.lines[-1])+1)
 	fileName = path.basename(state.source.fileName)
 	name = re.match(r"^([^.]+)?", fileName)[1]
 	
@@ -977,7 +1070,7 @@ def parseTopLevelModule(state):
 		logError(state, Span(state.source, 1, 1, 1, 1), 'illegal module name: `{}`'.format(name))
 	
 	block = parseBlock(state, parseModLevelDecl, topLevelBlock=True)
-	return ModAST(state, None, None, block.list, Span.merge(span, block.span), name=name)
+	return ModAST(state, None, None, block.list, block.span, name)
 
 def parse(source, tokens):
 	state = ParserState(source, tokens)
