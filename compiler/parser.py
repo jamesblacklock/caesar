@@ -307,6 +307,11 @@ class IfAST(ValueExprAST):
 		self.parentScope = None
 		self.symbolTable = {}
 
+class VoidAST(ValueExprAST):
+	def __init__(self, span):
+		super().__init__()
+		self.span = span
+
 
 #######################
 #  Parser
@@ -744,7 +749,8 @@ VALUE_EXPR_TOKS = (
 	TokenType.INTEGER,
 	TokenType.FALSE,
 	TokenType.TRUE,
-	TokenType.IF
+	TokenType.IF,
+	TokenType.VOID
 )
 
 def parseDeref(state, expr):
@@ -839,6 +845,9 @@ def parseValueExpr(state, precedence=0):
 			expr.span = block.span
 		else:
 			expr = TupleLitAST(block.list, block.span)
+	elif state.tok.type == TokenType.VOID:
+		expr = VoidAST(state.tok.span)
+		state.advance()
 	elif state.tok.type == TokenType.NAME:
 		expr = parseValueRef(state)
 	elif state.tok.type == TokenType.STRING:
@@ -952,7 +961,7 @@ def parseLet(state):
 	return LetAST(mut, name, typeRef, expr, span)
 
 def parseFnBodyExpr(state):
-	if state.tok.type in (TokenType.NAME, TokenType.STRING, TokenType.INTEGER, TokenType.IF):
+	if state.tok.type in VALUE_EXPR_TOKS:
 		return parseValueExprOrAsgn(state)
 	elif state.tok.type == TokenType.RETURN:
 		return parseReturn(state)

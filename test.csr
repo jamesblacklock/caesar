@@ -50,7 +50,7 @@ fn main()
 	while count <= 5
 		let t = time(null)
 		while time(null) == t
-		{}
+			void
 		printf("%d\n", 5-count)
 		count = count+1
 	

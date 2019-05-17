@@ -1,7 +1,7 @@
 from .parser             import CConv, FnDeclAST, LetAST, FnCallAST, ReturnAST, IfAST, TypeRefAST, \
                                 StrLitAST, IntLitAST, BoolLitAST, TupleLitAST, ValueRefAST, \
 								InfixOpAST, FnCallAST, IfAST, CoercionAST, ModAST, ValueExprAST, \
-								BlockAST, AsgnAST, WhileAST, DerefAST, IndexOpAST
+								BlockAST, AsgnAST, WhileAST, DerefAST, IndexOpAST, VoidAST
 from .                   import types
 from .types              import canAssignFrom, typesMatch
 from .err                import logError
@@ -112,6 +112,8 @@ def resolveValueExprType(state, scope, expr):
 		typeCheckIf(state, scope, expr)
 	elif type(expr) == CoercionAST:
 		typeCheckCoercion(state, scope, expr)
+	elif type(expr) == VoidAST:
+		expr.resolvedType = types.Void
 	else:
 		assert 0
 
@@ -267,6 +269,12 @@ def typeCheckFnCall(state, scope, fnCallExpr):
 		logError(state, fnCallExpr.span, 
 			'function called with wrong number of arguments (expected {}, found {})'.format(len(fnType.resolvedParamTypes), len(fnCallExpr.args)))
 		return
+	
+	if fnType.cVarArgs and len(fnCallExpr.args) > len(fnType.resolvedParamTypes):
+		for arg in fnCallExpr.args[len(fnType.resolvedParamTypes):]:
+			if arg.resolvedType and not arg.resolvedType.isPrimitiveType:
+				logError(state, arg.span, 
+					'type {} cannot be used as a C variadic argument'.format(arg.resolvedType))
 	
 	for (expected, found) in zip(fnType.resolvedParamTypes, fnCallExpr.args):
 		if not canAssignFrom(expected, found.resolvedType):

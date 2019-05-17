@@ -255,6 +255,7 @@ def lexNameOrKeyword(state):
 		('while', TokenType.WHILE),
 		('for', TokenType.FOR),
 		('as', TokenType.AS),
+		('void', TokenType.VOID),
 		('true', TokenType.TRUE),
 		('false', TokenType.FALSE)
 	]

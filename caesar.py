@@ -2,11 +2,12 @@
 
 import sys
 
-from caesar.sourcefile                   import SourceFile
-from caesar.tokenizer                    import tokenize
-from caesar.parser                       import parse
-from caesar.analyzer                     import analyze
-from caesar.generator                    import generateIR, generateAsm
+from compiler.sourcefile                   import SourceFile
+from compiler.tokenizer                    import tokenize
+from compiler.parser                       import parse
+from compiler.analyzer                     import analyze
+from compiler.ir                           import generateIR
+from compiler.amd64                        import generateAsm
 
 def main(args):
 	if len(args) < 2 or len(args) > 3:

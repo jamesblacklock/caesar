@@ -56,6 +56,7 @@ class TokenType(Enum):
 	WHILE = 'WHILE'
 	FOR = 'FOR'
 	AS = 'AS'
+	VOID = 'VOID'
 	TRUE = 'TRUE'
 	FALSE = 'FALSE'
 	NAME = 'NAME',
@@ -171,6 +172,8 @@ class TokenType(Enum):
 			return '`for`'
 		elif self == TokenType.AS:
 			return '`as`'
+		elif self == TokenType.VOID:
+			return '`void`'
 		elif self == TokenType.TRUE:
 			return '`true`'
 		elif self == TokenType.FALSE:
