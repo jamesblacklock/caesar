@@ -16,5 +16,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 - asdf
 
-[Unreleased]: https://github.com/jamesblacklock/caesar/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/jamesblacklock/caesar/compare/v0.0.1...HEAD
 [0.0.1]: https://github.com/jamesblacklock/caesar/releases/tag/v0.0.1
