@@ -43,9 +43,6 @@ class ParserState:
 	def indentLevel(self):
 		return self.indentLevels[-1]
 		
-	def setIndentLevel(self, level):
-		self.indentLevels[-1] = level
-	
 	def pushIndentLevel(self, level):
 		self.indentLevels.append(level)
 	
@@ -152,24 +149,6 @@ def expectIndentIncrease(state):
 	else:
 		state.pushIndentLevel(level)
 		return True
-
-# def expectIndentOrIndentIncrease(state):
-# 	if state.tok.span.startColumn != 1:
-# 		return True
-	
-# 	indentTok = None
-# 	if state.tok.type == TokenType.INDENT:
-# 		indentTok = state.tok
-# 		state.advance()
-	
-# 	level = 0 if indentTok == None else len(indentTok.content)
-# 	if level < state.indentLevel:
-# 		logError(state, state.tok.span, 'expected indented block')
-# 		return False
-# 	else:
-# 		if level > state.indentLevel:
-# 			state.pushIndentLevel(level)
-# 		return True
 
 def expectType(state, *types):
 	if state.tok.type not in types:
@@ -333,7 +312,7 @@ def parseBlock(state, parseItem, blockMarkers=BlockMarkers.BRACE,
 	# advance to the open marker (if it exists)
 	state.skipSpace()
 	needsTerm = False
-	onOneLine = not topLevelBlock
+	indentedBlock = False
 	unindented = False
 	startSpan = endSpan = state.tok.span
 	
@@ -352,9 +331,10 @@ def parseBlock(state, parseItem, blockMarkers=BlockMarkers.BRACE,
 				state.advance() # move past open marker
 			else:
 				# no open marker present, just a newline-marked block
-				onOneLine = False
 				startSpan = endSpan = state.tok.span
-				expectIndentIncrease(state)
+				indentedBlock = expectIndentIncrease(state)
+				if not indentedBlock:
+					unindented = True
 		else:
 			# we found something other than a block here
 			if requireBlockMarkers:
@@ -372,7 +352,7 @@ def parseBlock(state, parseItem, blockMarkers=BlockMarkers.BRACE,
 	
 	trailingSeparator = False
 	list = []
-	while True:
+	while not unindented:
 		# check to see if the block was terminated
 		offset = state.offset
 		if needsTerm:
@@ -406,15 +386,17 @@ def parseBlock(state, parseItem, blockMarkers=BlockMarkers.BRACE,
 		
 		# check if we need to increase the indent level (only happens once in a block)
 		if state.skipEmptyLines():
-			if onOneLine:
-				onOneLine = False
-				expectIndentIncrease(state)
+			if not indentedBlock and not topLevelBlock:
+				indentedBlock = expectIndentIncrease(state)
+				if not indentedBlock:
+					unindented = True
+					break
 			else:
 				expectIndent(state)
 		
 		# space cannot precede the first expression on a line unless the space is 
-		# preceded by a comment ( otherwise it would appear to be indentation)
-		if onOneLine or state.tok.type == TokenType.COMMENT:
+		# preceded by a comment (otherwise it would appear to be indentation)
+		if not indentedBlock or state.tok.type == TokenType.COMMENT:
 			state.skipSpace()
 		elif state.tok.type == TokenType.SPACE:
 			logError(state, state.tok.span, 'expected expression, found space')
@@ -439,14 +421,14 @@ def parseBlock(state, parseItem, blockMarkers=BlockMarkers.BRACE,
 				state.skipUntil(closeMarker)
 		else:
 			if expectType(state, TokenType.INDENT, TokenType.COMMA, TokenType.NEWLINE, TokenType.EOF) == False:
-				state.skipUntil(TokenType.NEWLINE)
+				break
 		
 		# skip the comma (it's just a separator)
 		if state.tok.type == TokenType.COMMA:
 			state.advance()
 			trailingSeparator = True
 	
-	if not onOneLine and not unindented and not topLevelBlock:
+	if indentedBlock and not unindented:
 		state.popIndentLevel()
 	
 	return Block(list, Span.merge(startSpan, endSpan), trailingSeparator)

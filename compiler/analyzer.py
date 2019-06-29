@@ -6,7 +6,8 @@ from .ast                import CConv, FnDeclAST, LetAST, FnCallAST, ReturnAST, 
 								AddressAST
 from .                   import types
 from .types              import getValidAssignType, ResolvedType
-from .err                import logError
+from .err                import logError, logWarning
+from .span               import Span
 
 def ffiAttr(decl, params):
 	if len(params) != 1 or params[0].content != '"C"':
@@ -359,8 +360,11 @@ def typeCheckAsgn(state, scope, asgnExpr):
 	if assignType:
 		asgnExpr.rvalue.resolvedType = assignType
 	else:
-		logError(state, asgnExpr.expr.span, 'invalid types in assignment (expected {}, found {})'
+		logError(state, asgnExpr.rvalue.span, 'invalid types in assignment (expected {}, found {})'
 			.format(asgnExpr.lvalue.resolvedType, asgnExpr.rvalue.resolvedType))
+	
+	if not lookupSymbol(state, scope, asgnExpr.lvalue, False).mut:
+		logError(state, asgnExpr.lvalue.span, 'assignment target is not mutable')
 
 def typeCheckWhile(state, scope, whileExpr):
 	whileExpr.parentScope = scope
@@ -429,8 +433,13 @@ def typeCheckCoercion(state, scope, asExpr):
 
 def typeCheckBlock(state, scope, block, expectedType=None):
 	block.parentScope = scope
+	unreachableSpan = None
+	block.doesReturn = False
 	
 	for (i, expr) in enumerate(block.exprs):
+		if block.doesReturn:
+			unreachableSpan = Span.merge(unreachableSpan, expr.span) if unreachableSpan else expr.span
+		
 		if type(expr) == LetAST:
 			typeCheckLet(state, scope, expr)
 			block.doesReturn = expr.doesReturn
@@ -455,8 +464,10 @@ def typeCheckBlock(state, scope, block, expectedType=None):
 		if not isinstance(lastExpr, ValueExprAST):
 			block.resolvedType = types.Void
 		else:
-			resolveValueExprType(state, scope, lastExpr, expectedType)
 			block.resolvedType = lastExpr.resolvedType
+	
+	if unreachableSpan:
+		logWarning(state, unreachableSpan, 'unreachable code')
 
 def typeCheckFnBody(state, fnDecl):
 	if fnDecl.body == None:

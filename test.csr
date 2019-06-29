@@ -7,10 +7,7 @@ extern fn scanf(format: Byte&, ...) -> Int32
 @FFI("C")
 extern fn time(ret: Int64&) -> Int64
 
-@FFI
-(
-	"C"
-)
+@FFI("C")
 extern fn getchar() -> Int32
 
 fn doTheThing(n: Int16) -> Int16 #=hello=#
@@ -51,11 +48,11 @@ fn main()
 		printf("You did not type the letter 'a'. You typed '%c'\n", c + 
 			10 * 2 - 11 * 2 + 2)
 	
-	let mut n: Int32
+	let n: Int32
 	printf("count down from: ")
 	scanf("%d", n&)
 	
-	let count = 0
+	let mut count = 0
 	while count <= n
 		let t = time(null)
 		while time(null) == t
@@ -66,14 +63,6 @@ fn main()
 	printf("%c%c%c%c%c%c%c!!\n",
 			103, 111, 111, 100,
 			98, 121, 101)
-	
-	#=let b = 0b110000000
-	let d: UInt8 = b as UInt8
-	let e = b as UInt8
-	let f = b as UInt8
-	let g = b as UInt8
-	
-	printf("%d %u\n", 0b110000011 as UInt8, 0x13f000 as Int16 as UInt32)=#
 
 fn moreThanSixArgs(
 	a: Int8, b: Int32, c: Int32, d: Int32, 
