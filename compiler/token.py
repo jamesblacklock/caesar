@@ -28,7 +28,7 @@ class TokenType(Enum):
 	MODULO = 'MODULO'
 	PLUS = 'PLUS'
 	MINUS = 'MINUS'
-	BITAND = 'BITAND'
+	AMP = 'AMP'
 	PIPE = 'PIPE'
 	RNGCLOSED = 'RNGCLOSED'
 	RNGOPEN = 'RNGOPEN'
@@ -116,7 +116,7 @@ class TokenType(Enum):
 			return '`+`'
 		elif self == TokenType.MINUS:
 			return '`-`'
-		elif self == TokenType.BITAND:
+		elif self == TokenType.AMP:
 			return '`&`'
 		elif self == TokenType.PIPE:
 			return '`|`'

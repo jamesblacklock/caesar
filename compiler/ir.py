@@ -2,16 +2,61 @@ from enum                            import Enum
 from .parser                         import FnDeclAST, FnCallAST, ValueRefAST, StrLitAST, BlockAST, \
 	                                        IntLitAST, ReturnAST, LetAST, IfAST, InfixOpAST, InfixOp, \
 											CoercionAST, BoolLitAST, WhileAST, AsgnAST, DerefAST, \
-											IndexOpAST, VoidAST
+											IndexOpAST, VoidAST, AddressAST
 from .analyzer                       import lookupSymbol
+from .                               import types
 
-class Type(Enum):
-	I1 = 'i1'
-	I2 = 'i2'
-	I4 = 'i4'
-	I8 = 'i8'
-	F4 = 'f4'
-	F8 = 'f8'
+class FundamentalType:
+	def __init__(self, byteSize, isFloatType, isSigned=True):
+		self.byteSize = byteSize
+		self.isFloatType = isFloatType
+		self.isSigned = isSigned
+	
+	def __str__(self):
+		return '{}{}'.format('f' if self.isFloatType else 'i', self.byteSize * 8)
+	
+	@staticmethod
+	def fromResolvedType(resolvedType):
+		if resolvedType.isIntType or resolvedType.isPtrType or \
+			(resolvedType.isOptionType and resolvedType.byteSize <= 8):
+			if resolvedType.isSigned:
+				if resolvedType.byteSize == 1:
+					return I8
+				elif resolvedType.byteSize == 2:
+					return I16
+				elif resolvedType.byteSize == 4:
+					return I32
+				elif resolvedType.byteSize == 8:
+					return I64
+			else:
+				if resolvedType.byteSize == 1:
+					return U8
+				elif resolvedType.byteSize == 2:
+					return U16
+				elif resolvedType.byteSize == 4:
+					return U32
+				elif resolvedType.byteSize == 8:
+					return U64
+		elif resolvedType.isFloatType:
+			if resolvedType.byteSize == 4:
+				return F32
+			elif resolvedType.byteSize == 8:
+				return F64
+		
+		assert 0
+
+I8  = FundamentalType(1, False)
+U8  = FundamentalType(1, False, False)
+I16 = FundamentalType(2, False)
+U16 = FundamentalType(2, False, False)
+I32 = FundamentalType(4, False)
+U32 = FundamentalType(4, False, False)
+I64 = FundamentalType(8, False)
+U64 = FundamentalType(8, False, False)
+F32 = FundamentalType(4, True)
+F64 = FundamentalType(8, True)
+
+IPTR = U64 # platform dependent
 
 class Storage(Enum):
 	IMM = 'IMM'
@@ -33,12 +78,16 @@ class Target:
 	
 	def __str__(self):
 		prefix = '$' if self.storage == Storage.LOCAL else \
-			'&' if self.storage == Storage.STATIC else \
+			'&' if self.storage == Storage.STATIC or self.storage == Storage.LABEL else \
 			''
 		
-		return '{} {}{}'.format(self.type.value, prefix, self.value)
+		return '{} {}{}'.format(self.type, prefix, self.value)
 
 class Instr:
+	def __init__(self, ast, producesValue=False):
+		self.ast = ast
+		self.producesValue = producesValue
+	
 	def __str__(self):
 		return 'Instr'
 	
@@ -46,16 +95,37 @@ class Instr:
 		return self.__str__()
 
 class Move(Instr):
-	def __init__(self, src, dest, srcDeref=0):
+	def __init__(self, ast, src, dest, type, srcDeref=0):
+		super().__init__(ast, True)
+		if srcDeref == 0:
+			assert src.type.byteSize == dest.type.byteSize
+			assert src.type.byteSize == type.byteSize
+			assert src.type.isFloatType == dest.type.isFloatType
+			assert src.type.isFloatType == type.isFloatType
+		else:
+			assert src.type == IPTR
+		
 		self.src = src
 		self.dest = dest
+		self.type = type
 		self.srcDeref = srcDeref
 	
 	def __str__(self):
-		return 'move {} = {}'.format(self.dest, self.src)
+		return '{}{} = {}'.format('^' * self.srcDeref, self.dest, self.src)
+
+class Addr(Instr):
+	def __init__(self, ast, src, dest):
+		super().__init__(ast, True)
+		assert dest.type == IPTR
+		self.src = src
+		self.dest = dest
+	
+	def __str__(self):
+		return '{} = {}&'.format(self.dest, self.src)
 
 class Call(Instr):
-	def __init__(self, callee, args, dest, cVarArgs):
+	def __init__(self, ast, callee, args, dest, cVarArgs):
+		super().__init__(ast, True)
 		self.callee = callee
 		self.args = args
 		self.dest = dest
@@ -66,7 +136,8 @@ class Call(Instr):
 			self.dest, self.callee, ', '.join([str(arg) for arg in self.args]))
 
 class Ret(Instr):
-	def __init__(self, target):
+	def __init__(self, ast, target):
+		super().__init__(ast)
 		self.target = target
 	
 	def __str__(self):
@@ -74,7 +145,8 @@ class Ret(Instr):
 		return 'ret{}'.format(target)
 
 class IfElse(Instr):
-	def __init__(self, target, dest, ifBlock, elseBlock):
+	def __init__(self, ast, target, dest, ifBlock, elseBlock):
+		super().__init__(ast, dest != None)
 		self.target = target
 		self.dest = dest
 		self.ifBlock = ifBlock
@@ -85,60 +157,78 @@ class IfElse(Instr):
 		return 'if {}\n{}\telse\n{}'.format(self.target, blockToStr(self.ifBlock, 2), blockToStr(self.elseBlock, 2))
 
 class While(Instr):
-	def __init__(self, target, condBlock, block):
+	def __init__(self, ast, target, condBlock, block):
+		super().__init__(ast)
 		self.target = target
 		self.condBlock = condBlock
 		self.block = block
 	
 	def __str__(self):
 		target = '' if self.target == None else ' {}'.format(self.target)
-		return 'if {}\n{}\telse\n{}'.format(self.target, blockToStr(self.ifBlock, 2), blockToStr(self.elseBlock, 2))
+		return '{}\n\twhile {}\n{}{}'.format(blockToStr(self.condBlock, 2), self.target, blockToStr(self.block, 2), blockToStr(self.condBlock, 2))
 
-class Cmp(Instr):
-	def __init__(self, l, r, op, dest):
+class BinOp(Instr):
+	def __init__(self, ast, l, r, dest, type):
+		super().__init__(ast, True)
+		assert l.type.byteSize == r.type.byteSize
+		assert l.type.byteSize == type.byteSize
+		assert l.type.isFloatType == r.type.isFloatType
+		assert l.type.isFloatType == dest.type.isFloatType
+		assert l.type.isFloatType == type.isFloatType
+		
 		self.l = l
 		self.r = r
-		self.op = op
 		self.dest = dest
+		self.type = type
+
+class Cmp(BinOp):
+	def __init__(self, ast, l, r, op, dest, type):
+		super().__init__(ast, l, r, dest, type)
+		self.op = op
 	
 	def __str__(self):
-		return '{} = {} == {}'.format(self.dest, self.l, self.r)
+		return '{} = {} {} {}'.format(self.dest, self.l, self.op.desc(), self.r)
 
-class Add(Instr):
-	def __init__(self, l, r, dest):
-		self.l = l
-		self.r = r
-		self.dest = dest
+class Add(BinOp):
+	def __init__(self, ast, l, r, dest, type):
+		super().__init__(ast, l, r, dest, type)
+		assert l.type.byteSize == dest.type.byteSize
 	
 	def __str__(self):
 		return '{} = {} + {}'.format(self.dest, self.l, self.r)
 
-class Sub(Instr):
-	def __init__(self, l, r, dest):
-		self.l = l
-		self.r = r
-		self.dest = dest
+class Sub(BinOp):
+	def __init__(self, ast, l, r, dest, type):
+		super().__init__(ast, l, r, dest, type)
+		assert l.type.byteSize == dest.type.byteSize
 	
 	def __str__(self):
 		return '{} = {} - {}'.format(self.dest, self.l, self.r)
 
-class Mul(Instr):
-	def __init__(self, l, r, dest):
-		self.l = l
-		self.r = r
-		self.dest = dest
+class Mul(BinOp):
+	def __init__(self, ast, l, r, dest, type):
+		super().__init__(ast, l, r, dest, type)
+		assert l.type.byteSize == dest.type.byteSize
 	
 	def __str__(self):
 		return '{} = {} * {}'.format(self.dest, self.l, self.r)
 
-class Div(Instr):
-	def __init__(self, l, r, dest):
-		self.l = l
-		self.r = r
-		self.dest = dest
+class Div(BinOp):
+	def __init__(self, ast, l, r, dest, type):
+		super().__init__(ast, l, r, dest, type)
+		assert l.type.byteSize == dest.type.byteSize
 	
 	def __str__(self):
 		return '{} = {} / {}'.format(self.dest, self.l, self.r)
+
+class Coerce(Instr):
+	def __init__(self, ast, src, dest):
+		super().__init__(ast, True)
+		self.src = src
+		self.dest = dest
+	
+	def __str__(self):
+		return '{} = {} as {}'.format(self.dest, self.src, self.dest.type)
 
 def returnToIR(scope, ret, fn, block):
 	target = None
@@ -146,28 +236,28 @@ def returnToIR(scope, ret, fn, block):
 		exprToIR(scope, ret.expr, fn, block)
 		target = block[-1].dest.clone()
 	
-	block.append(Ret(target))
+	block.append(Ret(ret, target))
 
 def letToIR(scope, let, fn, block):
 	if let.expr == None:
-		src = Target(Storage.IMM, Type.I8, 0)
+		src = Target(Storage.IMM, FundamentalType.fromResolvedType(let.resolvedSymbolType), 0)
 	else:
 		exprToIR(scope, let.expr, fn, block)
 		src = block[-1].dest.clone()
 	
 	fn.sp += 1
-	dest = Target(Storage.LOCAL, Type.I8, fn.sp)
+	dest = Target(Storage.LOCAL, src.type, fn.sp)
 	fn.locals[let.name] = fn.sp
 	
-	block.append(Move(src, dest))
+	block.append(Move(let, src, dest, src.type))
 
 def asgnToIR(scope, asgn, fn, block):
 	exprToIR(scope, asgn.rvalue, fn, block)
 	src = block[-1].dest.clone()
 	
-	dest = Target(Storage.LOCAL, Type.I8, fn.locals[asgn.lvalue.name])
+	dest = Target(Storage.LOCAL, FundamentalType.fromResolvedType(asgn.rvalue.resolvedType), fn.locals[asgn.lvalue.name])
 	
-	block.append(Move(src, dest))
+	block.append(Move(asgn, src, dest, src.type))
 
 def indexToIR(scope, ind, fn, block):
 	exprToIR(scope, ind.expr, fn, block)
@@ -177,16 +267,16 @@ def indexToIR(scope, ind, fn, block):
 	r = block[-1].dest.clone()
 	
 	fn.sp += 1
-	dest = Target(Storage.LOCAL, Type.I8, fn.sp)
+	dest = Target(Storage.LOCAL, IPTR, fn.sp)
 	
-	block.append(Add(l, r, dest))
+	block.append(Add(ind, l, r, dest, IPTR))
 	
 	fn.sp += 1
 	
 	src = block[-1].dest
-	dest = Target(Storage.LOCAL, Type.I8, fn.sp)
+	dest = Target(Storage.LOCAL, FundamentalType.fromResolvedType(ind.expr.resolvedType.baseType), fn.sp)
 	
-	block.append(Move(src, dest, 1))
+	block.append(Move(ind, src, dest, 1))
 
 def ifBlockToIR(scope, ifAst, fn, block):
 	exprToIR(scope, ifAst.expr, fn, block)
@@ -199,10 +289,13 @@ def ifBlockToIR(scope, ifAst, fn, block):
 	if ifAst.elseBlock != None:
 		blockToIR(scope, ifAst.elseBlock.exprs, fn, elseBlock)
 	
-	fn.sp += 1
-	dest = Target(Storage.LOCAL, Type.I8, fn.sp)
+	if ifAst.resolvedType == types.Void:
+		dest = None
+	else:
+		fn.sp += 1
+		dest = Target(Storage.LOCAL, FundamentalType.fromResolvedType(ifAst.resolvedType), fn.sp)
 	
-	block.append(IfElse(result, dest, ifBlock, elseBlock))
+	block.append(IfElse(ifAst, result, dest, ifBlock, elseBlock))
 
 def whileBlockToIR(scope, whileAst, fn, block):
 	condBlock = []
@@ -211,33 +304,34 @@ def whileBlockToIR(scope, whileAst, fn, block):
 	
 	whileBlock = []
 	blockToIR(scope, whileAst.block.exprs, fn, whileBlock)
-	block.append(While(result, condBlock, whileBlock))
+	block.append(While(whileAst, result, condBlock, whileBlock))
 
 def boolLitToIR(scope, lit, fn, block):
 	fn.sp += 1
 	
-	src = Target(Storage.IMM, Type.I8, 1 if lit.value else 0)
-	dest = Target(Storage.LOCAL, Type.I8, fn.sp)
+	src = Target(Storage.IMM, I8, 1 if lit.value else 0)
+	dest = Target(Storage.LOCAL, I8, fn.sp)
 	
-	block.append(Move(src, dest))
+	block.append(Move(lit, src, dest, I8))
 
 def intLitToIR(scope, lit, fn, block):
 	fn.sp += 1
 	
-	src = Target(Storage.IMM, Type.I8, lit.value)
-	dest = Target(Storage.LOCAL, Type.I8, fn.sp)
+	type = FundamentalType.fromResolvedType(lit.resolvedType)
+	src = Target(Storage.IMM, type, lit.value)
+	dest = Target(Storage.LOCAL, type, fn.sp)
 	
-	block.append(Move(src, dest))
+	block.append(Move(lit, src, dest, type))
 
 def strLitToIR(scope, lit, fn, block):
 	addr = len(fn.staticDefs)
 	fn.staticDefs.append(lit.value)
 	fn.sp += 1
 	
-	src = Target(Storage.STATIC, Type.I8, addr)
-	dest = Target(Storage.LOCAL, Type.I8, fn.sp)
+	src = Target(Storage.STATIC, IPTR, addr)
+	dest = Target(Storage.LOCAL, IPTR, fn.sp)
 	
-	block.append(Move(src, dest))
+	block.append(Move(lit, src, dest, IPTR))
 
 def fnCallToIR(scope, fnCall, fn, block):
 	args = []
@@ -246,15 +340,15 @@ def fnCallToIR(scope, fnCall, fn, block):
 		args.append(block[-1].dest.clone())
 	
 	if type(fnCall.expr) == ValueRefAST:
-		src = Target(Storage.LABEL, Type.I8, lookupSymbol(None, scope, fnCall.expr, False).mangledName)
+		src = Target(Storage.LABEL, IPTR, lookupSymbol(None, scope, fnCall.expr, False).mangledName)
 	else:
 		exprToIR(scope, fnCall.expr, fn, block)
 		src = block[-1].dest.clone()
 	
 	fn.sp += 1
-	dest = Target(Storage.LOCAL, Type.I8, fn.sp)
+	dest = Target(Storage.LOCAL, IPTR, fn.sp)
 	
-	block.append(Call(src, args, dest, fnCall.expr.resolvedType.cVarArgs))
+	block.append(Call(fnCall, src, args, dest, fnCall.expr.resolvedType.cVarArgs))
 
 def derefToIR(scope, expr, fn, block):
 	exprToIR(scope, expr.expr, fn, block)
@@ -262,69 +356,70 @@ def derefToIR(scope, expr, fn, block):
 	fn.sp += 1
 	
 	src = block[-1].dest
-	dest = Target(Storage.LOCAL, Type.I8, fn.sp)
+	dest = Target(Storage.LOCAL, FundamentalType.fromResolvedType(expr.resolvedType), fn.sp)
 	
-	block.append(Move(src, dest, expr.derefCount))
+	block.append(Move(expr, src, dest, dest.type, expr.derefCount))
 
 def valueRefToIR(scope, expr, fn, block):
 	fn.sp += 1
 	
-	src = Target(Storage.LABEL, Type.I8, expr.name)
-	dest = Target(Storage.LOCAL, Type.I8, fn.sp)
+	type = FundamentalType.fromResolvedType(expr.resolvedType)
+	src = Target(Storage.LABEL, type, expr.name)
+	dest = Target(Storage.LOCAL, type, fn.sp)
 	
-	block.append(Move(src, dest))
+	block.append(Move(expr, src, dest, type))
 
 def listToIR(scope, exprs, fn, block):
 	for expr in exprs:
 		exprToIR(scope, expr, fn, block)
 
-def addToIR(scope, eq, fn, block):
-	exprToIR(scope, eq.l, fn, block)
+def addToIR(scope, op, fn, block):
+	exprToIR(scope, op.l, fn, block)
 	l = block[-1].dest.clone()
 	
-	exprToIR(scope, eq.r, fn, block)
+	exprToIR(scope, op.r, fn, block)
 	r = block[-1].dest.clone()
 	
 	fn.sp += 1
-	dest = Target(Storage.LOCAL, Type.I8, fn.sp)
+	dest = Target(Storage.LOCAL, l.type, fn.sp)
 	
-	block.append(Add(l, r, dest))
+	block.append(Add(op, l, r, dest, l.type))
 
-def subToIR(scope, eq, fn, block):
-	exprToIR(scope, eq.l, fn, block)
+def subToIR(scope, op, fn, block):
+	exprToIR(scope, op.l, fn, block)
 	l = block[-1].dest.clone()
 	
-	exprToIR(scope, eq.r, fn, block)
+	exprToIR(scope, op.r, fn, block)
 	r = block[-1].dest.clone()
 	
 	fn.sp += 1
-	dest = Target(Storage.LOCAL, Type.I8, fn.sp)
+	dest = Target(Storage.LOCAL, l.type, fn.sp)
 	
-	block.append(Sub(l, r, dest))
+	block.append(Sub(op, l, r, dest, l.type))
 
-def mulToIR(scope, eq, fn, block):
-	exprToIR(scope, eq.l, fn, block)
+def mulToIR(scope, op, fn, block):
+	exprToIR(scope, op.l, fn, block)
 	l = block[-1].dest.clone()
 	
-	exprToIR(scope, eq.r, fn, block)
+	exprToIR(scope, op.r, fn, block)
 	r = block[-1].dest.clone()
 	
 	fn.sp += 1
-	dest = Target(Storage.LOCAL, Type.I8, fn.sp)
+	dest = Target(Storage.LOCAL, l.type, fn.sp)
 	
-	block.append(Mul(l, r, dest))
+	block.append(Mul(op, l, r, dest, l.type))
 
-def divToIR(scope, eq, fn, block):
-	exprToIR(scope, eq.l, fn, block)
+def divToIR(scope, op, fn, block):
+	exprToIR(scope, op.l, fn, block)
 	l = block[-1].dest.clone()
 	
-	exprToIR(scope, eq.r, fn, block)
+	exprToIR(scope, op.r, fn, block)
 	r = block[-1].dest.clone()
 	
 	fn.sp += 1
-	dest = Target(Storage.LOCAL, Type.I8, fn.sp)
+	dest = Target(Storage.LOCAL, l.type, fn.sp)
 	
-	block.append(Div(l, r, dest))
+	block.append(Div(op, l, r, dest, l.type))
 
 def cmpToIR(scope, op, fn, block):
 	exprToIR(scope, op.l, fn, block)
@@ -334,9 +429,28 @@ def cmpToIR(scope, op, fn, block):
 	r = block[-1].dest.clone()
 	
 	fn.sp += 1
-	dest = Target(Storage.LOCAL, Type.I8, fn.sp)
+	dest = Target(Storage.LOCAL, I64, fn.sp)
 	
-	block.append(Cmp(l, r, op.op, dest))
+	block.append(Cmp(op, l, r, op.op, dest, l.type))
+
+def coercionToIR(scope, coercion, fn, block):
+	exprToIR(scope, coercion.expr, fn, block)
+	
+	fn.sp += 1
+	src = block[-1].dest.clone()
+	dest = Target(Storage.LOCAL, FundamentalType.fromResolvedType(coercion.typeRef.resolvedType), fn.sp)
+	block.append(Coerce(coercion, src, dest))
+
+def addressToIR(scope, addr, fn, block):
+	if type(addr.expr) != ValueRefAST:
+		assert 0
+	
+	src = Target(Storage.LABEL, FundamentalType.fromResolvedType(addr.expr.resolvedType), addr.expr.name)
+	
+	fn.sp += 1
+	dest = Target(Storage.LOCAL, IPTR, fn.sp)
+	
+	block.append(Addr(addr, src, dest))
 
 def exprToIR(scope, expr, fn, block):
 	if type(expr) == BoolLitAST:
@@ -349,6 +463,8 @@ def exprToIR(scope, expr, fn, block):
 		valueRefToIR(scope, expr, fn, block)
 	elif type(expr) == DerefAST:
 		derefToIR(scope, expr, fn, block)
+	elif type(expr) == AddressAST:
+		addressToIR(scope, expr, fn, block)
 	elif type(expr) == FnCallAST:
 		fnCallToIR(scope, expr, fn, block)
 	elif type(expr) == LetAST:
@@ -362,8 +478,7 @@ def exprToIR(scope, expr, fn, block):
 	elif type(expr) == BlockAST:
 		listToIR(scope, expr.exprs, fn, block)
 	elif type(expr) == CoercionAST:
-		print('skipping coercion (unimplemented)')
-		exprToIR(scope, expr.expr, fn, block)
+		coercionToIR(scope, expr, fn, block)
 	elif type(expr) == AsgnAST:
 		asgnToIR(scope, expr, fn, block)
 	elif type(expr) == IndexOpAST:

@@ -184,7 +184,7 @@ def lexOperator(state):
 		('%', TokenType.MODULO),
 		('+', TokenType.PLUS),
 		('-', TokenType.MINUS),
-		('&', TokenType.BITAND),
+		('&', TokenType.AMP),
 		('|', TokenType.PIPE),
 		('>', TokenType.GREATER),
 		('<', TokenType.LESS),
@@ -210,7 +210,15 @@ def lexNumber(state):
 			testState.done = True
 	
 	tok = lexToken(state, TokenType.INTEGER, test)
-	if not re.match(r"^[\d_]+(:?i8|u8|i16|u16|i32|u32|i64|u64|sz|usz)?$", tok.content):
+	
+	decInt = r"(:?[\d_]+)"
+	binInt = r"(:?0b[01_]+)"
+	hexInt = r"(:?0x[\da-fA-F_]+)"
+	suffix = r"(:?i8|u8|i16|u16|i32|u32|i64|u64|sz|usz)?"
+	regex  = r"^(:?{}|{}|{}){}$".format(
+		decInt, binInt, hexInt, suffix
+	)
+	if not re.match(regex, tok.content):
 		state.error = 'invalid suffix for integer literal'
 		state.errorToken = tok
 	return tok
@@ -288,7 +296,7 @@ def tokenize(source):
 			tok = lexComment(state)
 		elif state.char == '\n':
 			tok = lexNewline(state)
-		elif re.match(r"[\[\]!@\(\):^,.\-+=*/<>;{}]", state.char):
+		elif re.match(r"[\[\]!@\(\):^&,.\-+=*/<>|{}]", state.char):
 			tok = lexOperator(state)
 		elif re.match(r"\d", state.char):
 			tok = lexNumber(state)

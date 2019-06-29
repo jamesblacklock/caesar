@@ -1,37 +1,77 @@
-from .ir                                          import Move, Add, Call, Cmp, Div, Ret, IfElse, \
-	                                                     While, InfixOp, Sub, Mul, Storage
+from .ir                                         import Move, Addr, Add, Call, Cmp, Div, Ret, IfElse, \
+	                                                     While, InfixOp, Sub, Mul, Storage, Coerce, \
+                                                         I8, I16, I32, I64, U8, U16, U32, U64, IPTR
 
 
 ARG_REGS = ['rdi', 'rsi', 'rdx', 'rcx', 'r8', 'r9']
 
 def targetToOperand(target, fnIR, offset=0):
+	byteSize = target.type.byteSize
+	isFloat = target.type.isFloatType
+	
+	size = ''#None
+	# if byteSize == 1:
+	# 	size = 'byte '
+	# elif byteSize == 2:
+	# 	size = 'word '
+	# elif byteSize == 4:
+	# 	size = 'dword '
+	# elif byteSize == 8:
+	# 	size = 'qword '
+	# else:
+	# 	assert 0
+	
 	if target.storage == Storage.LOCAL:
-		return '[rsp + {}]'.format((fnIR.sp - target.value)*8 + offset)
+		return '{}[rsp + {}]'.format(size, (fnIR.sp - target.value)*8 + offset)
 	elif target.storage == Storage.STATIC:
-		return '{}__static__{}'.format(fnIR.name, target.value)
+		return '{}{}__static__{}'.format(size, fnIR.name, target.value)
 	elif target.storage == Storage.IMM:
-		return str(target.value)
+		return '{}{}'.format(size, target.value)
 	elif target.value in fnIR.paramNames:
-		return '[rsp + {}] ; param: {}'.format((fnIR.sp - fnIR.paramNames.index(target.value))*8 + offset, target.value)
+		return '{}[rsp + {}] ; param: {}'.format(size, (fnIR.sp - fnIR.paramNames.index(target.value))*8 + offset, target.value)
 	elif target.value in fnIR.locals:
-		return '[rsp + {}] ; local: {}'.format((fnIR.sp + offset - fnIR.locals[target.value])*8 + offset, target.value)
+		return '{}[rsp + {}] ; local: {}'.format(size, (fnIR.sp + offset - fnIR.locals[target.value])*8 + offset, target.value)
 	else:
 		return target.value
 
+def getReg(type, ind=0):
+	c = ['a', 'c']
+	
+	if type == I8 or type == U8:
+		return '{}l'.format(c[ind])
+	elif type == I16 or type == U16:
+		return '{}x'.format(c[ind])
+	elif type == I32 or type == U32:
+		return 'e{}x'.format(c[ind])
+	elif type == I64 or type == U64:
+		return 'r{}x'.format(c[ind])
+	else:
+		assert 0
+
 def irToAsm(instr, fnIR):
 	if type(instr) == Move:
+		reg = getReg(instr.dest.type)
 		lines = []
-		lines.append('mov rax, {}'.format(targetToOperand(instr.src, fnIR)))
+		lines.append('mov {}, {}'.format(reg, targetToOperand(instr.src, fnIR)))
 		
 		for _ in range(0, instr.srcDeref):
 			lines.append('mov rcx, [rax]\n\t\tmov rax, rcx')
 		
-		lines.append('mov {}, rax'.format(targetToOperand(instr.dest, fnIR)))
+		lines.append('mov {}, {}'.format(targetToOperand(instr.dest, fnIR), reg))
+		return '\n\t\t'.join(lines)
+	elif type(instr) == Addr:
+		reg = getReg(IPTR)
+		lines = []
+		lines.append('lea {}, {}'.format(reg, targetToOperand(instr.src, fnIR)))
+		lines.append('mov {}, {}'.format(targetToOperand(instr.dest, fnIR), reg))
 		return '\n\t\t'.join(lines)
 	elif type(instr) == Call:
+		reg = getReg(instr.dest.type)
 		lines = []
 		for (i, arg) in enumerate(instr.args[0:len(ARG_REGS)]):
-			lines.append('mov {}, {}'.format(ARG_REGS[i], targetToOperand(arg, fnIR)))
+			regType = I64 if arg.type.isSigned else U64
+			lines.append(coerce(arg, regType, fnIR))
+			lines.append('mov {}, {}'.format(ARG_REGS[i], getReg(regType)))
 		stackArgs = instr.args[len(ARG_REGS):]
 		size = 8*len(stackArgs)
 		if size % 16 != 0:
@@ -39,19 +79,22 @@ def irToAsm(instr, fnIR):
 		if len(stackArgs) > 0:
 			lines.append('sub rsp, {}'.format(size))
 			for (i, arg) in enumerate(stackArgs):
-				lines.append('mov rax, {}'.format(targetToOperand(arg, fnIR, size)))
-				lines.append('mov [rsp + {}], rax'.format(8*i))
+				regType = I64 if arg.type.isSigned else U64
+				lines.append(coerce(arg, regType, fnIR, size))
+				lines.append('mov [rsp + {}], {}'.format(8*i, getReg(regType)))
 		if instr.cVarArgs:
 			lines.append('mov al, 0')
 		lines.append('call {}'.format(instr.callee.value))
 		if len(stackArgs) > 0:
 			lines.append('add rsp, {}'.format(size))
-		lines.append('mov {}, rax'.format(targetToOperand(instr.dest, fnIR)))
+		lines.append('mov {}, {}'.format(targetToOperand(instr.dest, fnIR), reg))
 		return '\n\t\t'.join(lines)
 	elif type(instr) == Ret:
-		output = '' if instr.target == None else 'mov rax, {}\n\t\t'.format(targetToOperand(instr.target, fnIR))
+		output = '' if instr.target == None else 'mov {}, {}\n\t\t'.format(
+			getReg(instr.target.type), targetToOperand(instr.target, fnIR))
 		return '{}jmp {}__end'.format(output, fnIR.name)
 	elif type(instr) == IfElse:
+		reg = getReg(instr.target.type)
 		elseLabel = '{}__elselabel__{}'.format(fnIR.name, fnIR.labelsCount)
 		fnIR.labelsCount += 1
 		endLabel = '{}__endiflabel__{}'.format(fnIR.name, fnIR.labelsCount)
@@ -59,40 +102,46 @@ def irToAsm(instr, fnIR):
 		
 		ifRetVal = ''
 		elseRetVal = ''
-		if len(instr.ifBlock) > 0:
-			ifRetVal = '\t\tmov rax, {} ; save if expr value\n'.format(
-				targetToOperand(instr.ifBlock[-1].dest, fnIR))
-		if instr.elseBlock and len(instr.elseBlock) > 0:
-			elseRetVal = '\t\tmov rax, {} ; save else expr value\n'.format(
-				targetToOperand(instr.elseBlock[-1].dest, fnIR))
+		destReg = None
+		if instr.dest:
+			destReg = getReg(instr.dest.type)
+			if len(instr.ifBlock) > 0 and instr.ifBlock[-1].producesValue:
+				ifRetVal = '\t\tmov {}, {} ; save if expr value\n'.format(
+					destReg, targetToOperand(instr.ifBlock[-1].dest, fnIR))
+			if instr.elseBlock and len(instr.elseBlock) > 0 and instr.elseBlock[-1].producesValue:
+				elseRetVal = '\t\tmov {}, {} ; save else expr value\n'.format(
+					destReg, targetToOperand(instr.elseBlock[-1].dest, fnIR))
 		
-		return 'mov rax, {}\n\t\tcmp rax, 0\n\t\tjz {}\n{}{}\t\tjmp {}\n\t{}:\n{}{}\t{}:\n\t\tmov {}, rax'.format(
-			targetToOperand(instr.target, fnIR), 
-			elseLabel, 
-			irBlockToAsm(instr.ifBlock, fnIR), 
-			ifRetVal, 
-			endLabel, 
-			elseLabel, 
-			irBlockToAsm(instr.elseBlock, fnIR), 
-			elseRetVal, 
-			endLabel,
-			targetToOperand(instr.dest, fnIR)
-		)
+		lines = []
+		lines.append('mov {}, {}'.format(reg, targetToOperand(instr.target, fnIR)))
+		lines.append('cmp {}, 0'.format(reg))
+		lines.append('jz {}'.format(elseLabel))
+		lines.append('{}{}'.format(irBlockToAsm(instr.ifBlock, fnIR), ifRetVal))
+		lines.append('jmp {}'.format(endLabel))
+		lines.append('{}:\n{}{}\t{}:'.format(elseLabel, irBlockToAsm(instr.elseBlock, fnIR), elseRetVal, endLabel))
+		if instr.dest:
+			lines.append('mov {}, {}'.format(targetToOperand(instr.dest, fnIR), destReg))
+		return '\n\t\t'.join(lines)
 	elif type(instr) == While:
+		reg = getReg(instr.target.type)
 		startLabel = '{}__whilelabel__{}'.format(fnIR.name, fnIR.labelsCount)
 		endLabel = '{}__endwhilelabel__{}'.format(fnIR.name, fnIR.labelsCount)
 		fnIR.labelsCount += 1
-		result = '\n\t{}:\n{}\t\tmov rax, {}\n\t\tcmp rax, 0\n\t\tjz {}\n{}\t\tjmp {}\n\t{}:'.format(
+		result = '\n\t{}:\n{}\t\tmov {}, {}\n\t\tcmp {}, 0\n\t\tjz {}\n{}\t\tjmp {}\n\t{}:'.format(
 			startLabel,
 			irBlockToAsm(instr.condBlock, fnIR), 
+			reg, 
 			targetToOperand(instr.target, fnIR), 
+			reg, 
 			endLabel, 
 			irBlockToAsm(instr.block, fnIR), 
-			startLabel,
+			startLabel, 
 			endLabel
 		)
 		return result
 	elif type(instr) == Cmp:
+		reg = getReg(instr.l.type)
+		reg2 = getReg(instr.l.type, 1)
 		opcode = 'setz'
 		if instr.op == InfixOp.NEQ:
 			opcode = 'setnz'
@@ -104,38 +153,93 @@ def irToAsm(instr, fnIR):
 			opcode = 'setg'
 		elif instr.op == InfixOp.GREATEREQ:
 			opcode = 'setge'
-		return 'xor rcx, rcx\n\t\tmov rax, {}\n\t\tcmp rax, {}\n\t\t{} cl\n\t\tmov {}, rcx'.format(
+		return 'xor {}, {}\n\t\tmov {}, {}\n\t\tcmp {}, {}\n\t\t{} cl\n\t\tmov {}, {}'.format(
+			reg2,
+			reg2,
+			reg,
 			targetToOperand(instr.l, fnIR),
+			reg,
 			targetToOperand(instr.r, fnIR),
 			opcode,
-			targetToOperand(instr.dest, fnIR))
+			targetToOperand(instr.dest, fnIR),
+			reg2)
 	elif type(instr) == Add:
-		return 'mov rax, {}\n\t\tadd rax, {}\n\t\tmov {}, rax'.format(
+		reg = getReg(instr.l.type)
+		return 'mov {}, {}\n\t\tadd {}, {}\n\t\tmov {}, {}'.format(
+			reg,
 			targetToOperand(instr.l, fnIR),
+			reg,
 			targetToOperand(instr.r, fnIR),
-			targetToOperand(instr.dest, fnIR))
+			targetToOperand(instr.dest, fnIR),
+			reg)
 	elif type(instr) == Sub:
-		return 'mov rax, {}\n\t\tsub rax, {}\n\t\tmov {}, rax'.format(
+		reg = getReg(instr.l.type)
+		return 'mov {}, {}\n\t\tsub {}, {}\n\t\tmov {}, {}'.format(
+			reg,
 			targetToOperand(instr.l, fnIR),
+			reg,
 			targetToOperand(instr.r, fnIR),
-			targetToOperand(instr.dest, fnIR))
+			targetToOperand(instr.dest, fnIR),
+			reg)
 	elif type(instr) == Mul:
-		return 'mov rax, {}\n\t\tmov rcx, {}\n\t\tmul rcx\n\t\tmov {}, rax'.format(
+		reg = getReg(instr.l.type)
+		reg2 = getReg(instr.l.type, 1)
+		return 'mov {}, {}\n\t\tmov {}, {}\n\t\tmul {}\n\t\tmov {}, {}'.format(
+			reg,
 			targetToOperand(instr.l, fnIR),
+			reg2,
 			targetToOperand(instr.r, fnIR),
-			targetToOperand(instr.dest, fnIR))
+			reg2,
+			targetToOperand(instr.dest, fnIR),
+			reg)
 	elif type(instr) == Div:
-		return 'mov rax, {}\n\t\tmov rcx, {}\n\t\tdiv rcx\n\t\tmov {}, rax'.format(
+		reg = getReg(instr.l.type)
+		reg2 = getReg(instr.l.type, 1)
+		return 'mov {}, {}\n\t\tmov {}, {}\n\t\tdiv {}\n\t\tmov {}, {}'.format(
+			reg,
 			targetToOperand(instr.l, fnIR),
+			reg2,
 			targetToOperand(instr.r, fnIR),
-			targetToOperand(instr.dest, fnIR))
+			reg2,
+			targetToOperand(instr.dest, fnIR),
+			reg)
+	elif type(instr) == Coerce:
+		lines = []
+		lines.append(coerce(instr.src, instr.dest.type, fnIR))
+		lines.append('mov {}, {}'.format(targetToOperand(instr.dest, fnIR), getReg(instr.dest.type)))
+		return '\n\t\t'.join(lines)
 	else:
 		assert 0
+
+def coerce(src, destType, fnIR, offset=0, regInd=0):
+	if src.type.isFloatType == False and destType.isFloatType == False:
+		if src.type.byteSize < destType.byteSize:
+			if src.type.byteSize == 4:
+				reg = getReg(I64 if src.type.isSigned else I32, regInd)
+				opcode = 'movsxd' if src.type.isSigned else 'mov'
+				return '{} {}, dword {}'.format(
+					opcode, 
+					reg, 
+					targetToOperand(src, fnIR, offset))
+			else:
+				reg = getReg(destType, regInd)
+				opcode = 'movsx' if src.type.isSigned else 'movzx'
+				size = 'byte' if src.type.byteSize == 1 else 'word'
+				return '{} {}, {} {}'.format(
+					opcode, 
+					reg, 
+					size, 
+					targetToOperand(src, fnIR, offset))
+		else:
+			reg = getReg(src.type, regInd)
+			return 'mov {}, {}'.format(reg, targetToOperand(src, fnIR, offset))
+	else:
+		raise RuntimeError('unimplemented!')
 
 def irBlockToAsm(irBlock, fnIR):
 	lines = []
 	for instr in irBlock:
-		lines.append('\t\t' + irToAsm(instr, fnIR) + '\n')
+		lines.append('\t\t\n\t\t; {}\n\t\t'.format(str(instr).split('\n')[0]) + irToAsm(instr, fnIR) + '\n')
 	return ''.join(lines)
 
 def delcareExterns(mod, lines):	

@@ -1,10 +1,15 @@
 import re
-from os import path
-from enum import Enum
-from .token import TokenType, revealToken
-from .span import Span, revealSpan, AnsiColor
-from .types import BUILTIN_TYPES, InfixOp, INFIX_PRECEDENCE
-from .err import logError
+from os                  import path
+from enum                import Enum
+from .token              import TokenType, revealToken
+from .span               import Span, revealSpan, AnsiColor
+from .err                import logError
+from .ast                import CConv, FnDeclAST, LetAST, FnCallAST, ReturnAST, IfAST, TypeRefAST, \
+                                AttrAST, StrLitAST, IntLitAST, BoolLitAST, TupleLitAST, ValueRefAST, \
+                                InfixOpAST, FnCallAST, IfAST, CoercionAST, ModAST, ValueExprAST, \
+                                FnParamAST, BlockAST, AsgnAST, WhileAST, DerefAST, IndexOpAST, VoidAST, \
+                                CVarArgsParamAST, InfixOp, AddressAST, INFIX_PRECEDENCE
+from .types              import BUILTIN_TYPES
 
 #######################
 #  Parser state
@@ -37,9 +42,12 @@ class ParserState:
 	@property
 	def indentLevel(self):
 		return self.indentLevels[-1]
+		
+	def setIndentLevel(self, level):
+		self.indentLevels[-1] = level
 	
 	def pushIndentLevel(self, level):
-		return self.indentLevels.append(level)
+		self.indentLevels.append(level)
 	
 	def popIndentLevel(self):
 		assert len(self.indentLevels) > 1
@@ -65,7 +73,7 @@ class ParserState:
 			if self.tok.type == TokenType.INDENT:
 				offset = self.offset
 				self.skip(TokenType.INDENT, TokenType.SPACE, TokenType.COMMENT)
-				if self.tok.type == TokenType.NEWLINE:
+				if self.tok.type == TokenType.NEWLINE or self.tok.type == TokenType.EOF:
 					continue
 				else:
 					self.rollback(offset)
@@ -82,236 +90,6 @@ class ParserState:
 			skipped = True
 		return skipped
 
-#######################
-#  AST structs
-#######################
-
-class CConv(Enum):
-	CAESAR = 'CAESAR'
-	C = 'C'
-
-def strBytes(s):
-	result = ''
-	esc = False
-	for c in s[1:-1]:
-		if c == '\\':
-			esc = True
-		elif esc:
-			esc = False
-			if c == 'n':
-				result += '\n'
-			elif c == 'r':
-				result += '\r'
-			elif c == 't':
-				result += '\t'
-			elif c == '"':
-				result += c
-			else:
-				result += '\\' + c
-		else:
-			result += c
-	
-	return bytes(result, 'utf-8')
-
-class ModLevelDeclAST:
-	def __init__(self, doccomment, attrs, extern, nameTok, span):
-		self.span = span
-		self.nameTok = nameTok
-		self.name = nameTok.content if nameTok else None
-		self.mangledName = self.name
-		self.doccomment = doccomment
-		self.attrs = attrs
-		self.extern = extern
-		self.parentScope = None
-
-class ModAST(ModLevelDeclAST):
-	def __init__(self, state, doccomment, nameTok, decls, span, name=None):
-		super().__init__(doccomment, None, False, nameTok, span)
-		if name: self.name = name
-		self.span = span
-		self.importDecls = []
-		self.fnDecls = []
-		self.modDecls = []
-		self.staticDecls = []
-		self.symbolTable = {}
-		
-		for builtin in BUILTIN_TYPES:
-			self.symbolTable[builtin.name] = builtin
-		
-		for decl in decls:
-			if type(decl) == FnDeclAST:
-				self.fnDecls.append(decl)
-			elif type(decl) == ModAST:
-				self.modDecls.append(decl)
-			else:
-				raise RuntimeError('unimplemented!')
-			
-			if decl.name in self.symbolTable:
-				logError(state, decl.nameTok.span, 'cannot redeclare `{}` as a different symbol'.format(decl.name))
-			else:
-				self.symbolTable[decl.name] = decl
-
-class AttrAST:
-	def __init__(self, name, args, span):
-		self.span = span
-		self.name = name
-		self.args = args
-
-class FnDeclAST(ModLevelDeclAST):
-	def __init__(self, doccomment, attrs, extern, nameTok, params, cVarArgs, returnType, body, span, cVarArgsSpan):
-		super().__init__(doccomment, attrs, extern, nameTok, span)
-		self.params = params
-		self.cVarArgs = cVarArgs
-		self.cVarArgsSpan = cVarArgsSpan
-		self.returnType = returnType
-		self.body = body
-		self.cconv = CConv.CAESAR
-		self.symbolTable = {}
-		self.resolvedSymbolType = None
-
-class FnParamAST:
-	def __init__(self, name, typeRef, span):
-		self.name = name
-		self.typeRef = typeRef
-		self.span = span
-		self.resolvedSymbolType = None
-
-class CVarArgsParamAST:
-	def __init__(self, span):
-		self.span = span
-
-class ReturnAST:
-	def __init__(self, expr, span):
-		self.expr = expr
-		self.span = span
-
-class LetAST:
-	def __init__(self, mut, name, typeRef, expr, span):
-		self.mut = mut
-		self.name = name
-		self.typeRef = typeRef
-		self.expr = expr
-		self.span = span
-		self.resolvedSymbolType = None
-
-class TypeRefAST:
-	def __init__(self, name, indirectionLevel, span):
-		self.name = name
-		self.path = [name]
-		self.indirectionLevel = indirectionLevel
-		self.span = span
-		self.resolvedType = None
-
-class AsgnAST:
-	def __init__(self, lvalue, rvalue, span):
-		self.lvalue = lvalue
-		self.rvalue = rvalue
-		self.span = span
-
-class WhileAST:
-	def __init__(self, expr, block, span):
-		self.expr = expr
-		self.block = block
-		self.span = span
-		self.parentScope = None
-		self.symbolTable = {}
-
-class ValueExprAST:
-	def __init__(self):
-		self.resolvedType = None
-
-class StrLitAST(ValueExprAST):
-	def __init__(self, value, span):
-		super().__init__()
-		self.value = strBytes(value)
-		self.span = span
-
-class BoolLitAST(ValueExprAST):
-	def __init__(self, value, span):
-		super().__init__()
-		self.value = value
-		self.span = span
-
-class IntLitAST(ValueExprAST):
-	def __init__(self, value, suffix, span):
-		super().__init__()
-		self.value = value
-		self.suffix = suffix
-		self.span = span
-
-class TupleLitAST(ValueExprAST):
-	def __init__(self, values, span):
-		super().__init__()
-		self.values = values
-		self.span = span
-
-class BlockAST(ValueExprAST):
-	def __init__(self, block):
-		super().__init__()
-		self.exprs = block.list
-		self.span = block.span
-		self.parentScope = None
-		self.symbolTable = {}
-
-class ValueRefAST(ValueExprAST):
-	def __init__(self, path, span):
-		super().__init__()
-		self.path = path
-		self.name = path[-1]
-		self.span = span
-
-class InfixOpAST(ValueExprAST):
-	def __init__(self, l, r, op, span, opSpan):
-		super().__init__()
-		self.l = l
-		self.r = r
-		self.op = op
-		self.span = span
-		self.opSpan = opSpan
-
-class IndexOpAST(ValueExprAST):
-	def __init__(self, expr, index, span):
-		super().__init__()
-		self.expr = expr
-		self.index = index
-		self.span = span
-
-class DerefAST(ValueExprAST):
-	def __init__(self, expr, derefCount, span):
-		super().__init__()
-		self.expr = expr
-		self.derefCount = derefCount
-		self.span = span
-
-class CoercionAST(ValueExprAST):
-	def __init__(self, expr, typeRef, span):
-		super().__init__()
-		self.expr = expr
-		self.typeRef = typeRef
-		self.span = span
-
-class FnCallAST(ValueExprAST):
-	def __init__(self, expr, args, span):
-		super().__init__()
-		self.expr = expr
-		self.args = args
-		self.span = span
-
-class IfAST(ValueExprAST):
-	def __init__(self, expr, ifBlock, elseBlock, span):
-		super().__init__()
-		self.expr = expr
-		self.ifBlock = ifBlock
-		self.elseBlock = elseBlock
-		self.span = span
-		self.parentScope = None
-		self.symbolTable = {}
-
-class VoidAST(ValueExprAST):
-	def __init__(self, span):
-		super().__init__()
-		self.span = span
-
 
 #######################
 #  Parser
@@ -324,7 +102,8 @@ def expectIndent(state):
 	if state.tok.type == TokenType.INDENT:
 		indentTok = state.tok
 		state.advance()
-		state.skipSpace()
+		if state.tok.type == TokenType.COMMENT:
+			state.skipSpace()
 	
 	level = 0 if indentTok == None else len(indentTok.content)
 	if level != state.indentLevel:
@@ -333,6 +112,17 @@ def expectIndent(state):
 		return False
 	
 	return True
+
+def isIndentIncrease(state):
+	if state.tok.span.startColumn != 1:
+		return False
+	
+	indentTok = None
+	if state.tok.type == TokenType.INDENT:
+		indentTok = state.tok
+	
+	level = 0 if indentTok == None else len(indentTok.content)
+	return level > state.indentLevel
 
 def isIndentDecrease(state):
 	if state.tok.span.startColumn != 1:
@@ -352,7 +142,8 @@ def expectIndentIncrease(state):
 	if state.tok.type == TokenType.INDENT:
 		indentTok = state.tok
 		state.advance()
-		state.skipSpace()
+		if state.tok.type == TokenType.COMMENT:
+			state.skipSpace()
 	
 	level = 0 if indentTok == None else len(indentTok.content)
 	if level <= state.indentLevel:
@@ -670,9 +461,9 @@ def parseTypeRef(state):
 		state.advance()
 		indirectionLevel = 0
 		
-		while state.tok.type == TokenType.CARET:
+		while state.tok.type == TokenType.AMP or state.tok.type == TokenType.AND:
 			lastTok = state.tok
-			indirectionLevel += 1
+			indirectionLevel += 1 if state.tok.type == TokenType.AMP else 2
 			state.advance()
 		
 		return TypeRefAST(typeName, indirectionLevel, Span.merge(span, lastTok.span))
@@ -703,7 +494,8 @@ def parseIf(state):
 	state.skipEmptyLines()
 	if state.tok.type == TokenType.ELSE or \
 		state.tok.type == TokenType.INDENT and state.tokens[state.offset+1].type == TokenType.ELSE:
-		expectIndent(state)
+		if state.tok.type == TokenType.INDENT:
+			expectIndent(state)
 		state.advance()
 		state.skipSpace()
 		
@@ -754,8 +546,19 @@ def parseDeref(state, expr):
 		derefCount += 1
 		span = Span.merge(span, state.tok.span)
 		state.advance()
+		state.skipSpace()
 	
 	return DerefAST(expr, derefCount, span)
+
+def parseAddress(state, expr):
+	span = Span.merge(state.tok.span, state.tok.span)
+	state.advance()
+	state.skipSpace()
+	
+	if type(expr) != ValueRefAST:
+		logError(state, span, 'taking address of a temporary is not yet implemented')
+	
+	return AddressAST(expr, span)
 
 def parseIndex(state, expr):
 	span = state.tok.span
@@ -771,7 +574,7 @@ def parseIndex(state, expr):
 	
 	return IndexOpAST(expr, index, span)
 
-def parseInfixOp(state, l, spaceBeforeOp):
+def parseInfixOp(state, l, mustIndent):
 	op = state.tok.type
 	opSpan = state.tok.span
 	
@@ -779,13 +582,33 @@ def parseInfixOp(state, l, spaceBeforeOp):
 	state.advance()
 	state.skipSpace()
 	
-	if not spaceBeforeOp and op == TokenType.CARET:
-		if state.tok.type == TokenType.LPAREN or state.tok.type not in VALUE_EXPR_TOKS:
-			state.rollback(offset)
-			return parseDeref(state, l)
+	eol = False
 	
-	if state.skipEmptyLines() and expectIndentIncrease(state):
-		state.popIndentLevel()
+	if op == TokenType.CARET or op == TokenType.AMP:
+		isUnary = False
+		
+		if state.tok.type == TokenType.NEWLINE:
+			eol = True
+			state.skipEmptyLines()
+			if not isIndentIncrease(state):
+				isUnary = True
+		elif state.tok.type == TokenType.LPAREN or state.tok.type not in VALUE_EXPR_TOKS:
+			isUnary = True
+		
+		if isUnary:
+			state.rollback(offset)
+			if op == TokenType.CARET:
+				return parseDeref(state, l)
+			else:
+				return parseAddress(state, l)
+	else:
+		eol = state.skipEmptyLines()
+	
+	if eol:
+		if mustIndent or isIndentIncrease(state):
+			expectIndentIncrease(state)
+		else:
+			expectIndent(state)
 	
 	r = parseValueExpr(state, INFIX_PRECEDENCE[op])
 	if r == None:
@@ -824,7 +647,6 @@ def parseValueRef(state):
 	return ValueRefAST(path, span)
 
 def parseValueExpr(state, precedence=0):
-	state.skipSpace()
 	if state.tok.type == TokenType.NEWLINE:
 		block = parseBlock(state, parseFnBodyExpr)
 		expr = BlockAST(block)
@@ -847,10 +669,7 @@ def parseValueExpr(state, precedence=0):
 		expr = StrLitAST(state.tok.content, state.tok.span)
 		state.advance()
 	elif state.tok.type == TokenType.INTEGER:
-		matches = re.match(r"(^[\d_]+)(:?i8|u8|i16|u16|i32|u32|i64|u64|sz|usz)?$", state.tok.content)
-		value = matches[1].replace('_', '')
-		suffix = matches[2]
-		expr = IntLitAST(value, suffix, state.tok.span)
+		expr = IntLitAST(state.tok.content, state.tok.span)
 		state.advance()
 	elif state.tok.type == TokenType.FALSE or state.tok.type == TokenType.TRUE:
 		value = state.tok.type == TokenType.TRUE
@@ -866,8 +685,10 @@ def parseValueExpr(state, precedence=0):
 	if expr == None:
 		return None
 	
+	indentsCount = len(state.indentLevels)
+	
 	while True:
-		spaceBeforeOp = state.skipSpace()
+		state.skipSpace()
 		
 		if state.tok.type == TokenType.LBRACK:
 			expr = parseIndex(state, expr)
@@ -876,9 +697,12 @@ def parseValueExpr(state, precedence=0):
 		elif state.tok.type == TokenType.AS:
 			expr = parseCoercion(state, expr)
 		elif state.tok.type in INFIX_PRECEDENCE and INFIX_PRECEDENCE[state.tok.type] > precedence:
-			expr = parseInfixOp(state, expr, spaceBeforeOp)
+			expr = parseInfixOp(state, expr, expr.span.startLine == expr.span.endLine)
 		else:
 			break
+	
+	while indentsCount < len(state.indentLevels):
+		state.popIndentLevel()
 	
 	return expr
 
@@ -908,7 +732,7 @@ def parseReturn(state):
 	state.skipSpace()
 	
 	expr = None
-	if state.tok.type not in (TokenType.COMMA, TokenType.NEWLINE, TokenType.EOF):
+	if state.tok.type not in (TokenType.COMMA, TokenType.RBRACE, TokenType.NEWLINE, TokenType.EOF):
 		expr = parseValueExpr(state)
 		if expr != None:
 			span = Span.merge(span, expr.span)
@@ -930,6 +754,7 @@ def parseLet(state):
 		return None
 	
 	name = state.tok.content
+	span = Span.merge(span, state.tok.span)
 	state.advance()
 	state.skipSpace()
 	
@@ -938,15 +763,21 @@ def parseLet(state):
 		state.advance()
 		state.skipSpace()
 		typeRef = parseTypeRef(state)
+		if typeRef != None:
+			span = Span.merge(span, typeRef.span)
 	
 	state.skipSpace()
 	expr = None
 	if state.tok.type == TokenType.ASGN:
 		span = Span.merge(span, state.tok.span)
 		state.advance()
+		state.skipSpace()
 		expr = parseValueExpr(state)
 		if expr != None:
 			span = Span.merge(span, expr.span)
+	
+	if typeRef == None and expr == None:
+		logError(state, span, '`let` binding requires either an explicit type or a value to assign')
 	
 	return LetAST(mut, name, typeRef, expr, span)
 
@@ -1048,6 +879,10 @@ def parseModLevelDecl(state):
 		logError(state, state.tok.span, 'static variables at the module level are unimplemented')
 		return None
 
+def addBuiltinsToModule(modAST):
+	for builtin in BUILTIN_TYPES:
+		modAST.symbolTable[builtin.name] = builtin
+
 def parseModule(state, doccomment):
 	span = state.tok.span
 	state.advance()
@@ -1059,7 +894,9 @@ def parseModule(state, doccomment):
 		state.advance()
 	
 	block = parseBlock(state, parseModLevelDecl)
-	return ModAST(state, doccomment, nameTok, block.list, Span.merge(span, block.span))
+	modAST = ModAST(state, doccomment, nameTok, block.list, Span.merge(span, block.span))
+	addBuiltinsToModule(modAST)
+	return modAST
 
 def parseTopLevelModule(state):
 	fileName = path.basename(state.source.fileName)
@@ -1069,13 +906,15 @@ def parseTopLevelModule(state):
 		logError(state, Span(state.source, 1, 1, 1, 1), 'illegal module name: `{}`'.format(name))
 	
 	block = parseBlock(state, parseModLevelDecl, topLevelBlock=True)
-	return ModAST(state, None, None, block.list, block.span, name)
+	modAST = ModAST(state, None, None, block.list, block.span, name)
+	addBuiltinsToModule(modAST)
+	return modAST
 
 def parse(source, tokens):
 	state = ParserState(source, tokens)
-	mod = parseTopLevelModule(state)
+	modAST = parseTopLevelModule(state)
 	
 	if state.failed:
 		exit(1)
 	
-	return mod
+	return modAST
