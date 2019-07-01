@@ -1,11 +1,11 @@
-name: "org.caesar-os"
+name: "org.caesar-lang"
 version: "0.0.1-SNAPHOT"
 author: "James Blacklock <jamesblacklock@protonmail.com> (http://jamesblacklock.net)"
-description: "Caesar OS"
-homepage: "https://caesar-os.org/"
+description: "Compiler for the Caesar programming language"
+homepage: "https://caesar-lang.org/"
 repository:
 	type: "git"
-	url: "https://caesar-os.org/repo/caesar-os.git"
-license: "MIT"
-include: [ "src/*" ]
-dependencies: [	"org.caesar-os.dep1", "org.caesar-os.dep2" ]
+	url: "https://github.com/jamesblacklock/caesar.git"
+license: "LGPLv2"
+include: ["src/*"]
+dependencies: []

@@ -11,7 +11,7 @@ Caesar is:
 Currently the compiler generates assembler targeting 64-bit macOS.
 The resulting assembly files can be assembled using [NASM](https://www.nasm.us/).
 
-	@FFI("C") extern printf(fmt: Byte^, ...): Int32
+	@FFI("C") extern printf(fmt: Byte&, ...): Int32
 	
 	fn main()
 	    printf("Hello World!\n")
