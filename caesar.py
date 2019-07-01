@@ -14,16 +14,20 @@ from compiler.amd64                        import generateAsm
 
 def main(args):
 	parser = argparse.ArgumentParser(description='Compiler for the Caesar programming language')
-	parser.add_argument('--repl',                                        action='store_true', default=False, help='start the compiler as a REPL interpreter')
-	parser.add_argument('--bin',   nargs='?', metavar='FILE_NAME',       action='store',      default=False, help='name of binary to emit')
-	parser.add_argument('--dylib', nargs='?', metavar='FILE_NAME',       action='store',      default=False, help='name of dynamic lib to emit')
-	parser.add_argument('--lib',   nargs='?', metavar='FILE_NAME',       action='store',      default=False, help='name of static lib to emit')
-	parser.add_argument('--obj',   nargs='*', metavar='FILE_NAME',       action='store',      default=False, help='generate object file(s) as output')
-	parser.add_argument('--asm',   nargs='*', metavar='FILE_NAME',       action='store',      default=False, help='generate assembly file(s) as output')
-	parser.add_argument('--run',   nargs='*', metavar='PROGRAM_ARGS',    action='store',      default=False, help='execute the program immediately after compilation')
-	parser.add_argument('input',   nargs='*', metavar='INPUT_FILE_NAME', action='store',      default=None,  help='file names to compile')
+	parser.add_argument('--repl',                                              action='store_true', default=False, help='start the compiler as a REPL interpreter')
+	parser.add_argument('--bin',   '-b', nargs='?', metavar='FILE_NAME',       action='store',      default=False, help='name of binary to emit')
+	parser.add_argument('--dylib', '-d', nargs='?', metavar='FILE_NAME',       action='store',      default=False, help='name of dynamic lib to emit')
+	parser.add_argument('--lib',   '-l', nargs='?', metavar='FILE_NAME',       action='store',      default=False, help='name of static lib to emit')
+	parser.add_argument('--obj',   '-o', nargs='*', metavar='FILE_NAME',       action='store',      default=False, help='generate object file(s) as output')
+	parser.add_argument('--asm',   '-s', nargs='*', metavar='FILE_NAME',       action='store',      default=False, help='generate assembly file(s) as output')
+	parser.add_argument('--run',   '-r', nargs='*', metavar='PROGRAM_ARGS',    action='store',      default=False, help='execute the program immediately after compilation')
+	parser.add_argument('input',         nargs='*', metavar='INPUT_FILE_NAME', action='store',      default=None,  help='file names to compile')
 	
 	args = parser.parse_args(args[1:])
+	
+	if not args.input and args.run != False and not (args.bin or args.dylib or args.lib or args.obj or args.asm):
+		args.input = args.run[:1]
+		args.run = args.run[1:]
 	
 	binFileName = None
 	if args.bin != False:
@@ -35,7 +39,7 @@ def main(args):
 		binFileName = args.bin
 		args.bin = True
 	else:
-		binFileName = '/tmp/caesar_tmp_{}.o'.format(str(uuid.uuid1()))
+		binFileName = '/tmp/caesar_tmp_{}'.format(str(uuid.uuid1()))
 	
 	libFileName = None
 	if args.lib != False:
