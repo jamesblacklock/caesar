@@ -14,26 +14,88 @@ from compiler.amd64                        import generateAsm
 
 def main(args):
 	parser = argparse.ArgumentParser(description='Compiler for the Caesar programming language')
-	parser.add_argument('--repl',                                              action='store_true', default=False, help='start the compiler as a REPL interpreter')
-	parser.add_argument('--bin',   '-b', nargs='?', metavar='FILE_NAME',       action='store',      default=False, help='name of binary to emit')
-	parser.add_argument('--dylib', '-d', nargs='?', metavar='FILE_NAME',       action='store',      default=False, help='name of dynamic lib to emit')
-	parser.add_argument('--lib',   '-l', nargs='?', metavar='FILE_NAME',       action='store',      default=False, help='name of static lib to emit')
-	parser.add_argument('--obj',   '-o', nargs='*', metavar='FILE_NAME',       action='store',      default=False, help='generate object file(s) as output')
-	parser.add_argument('--asm',   '-s', nargs='*', metavar='FILE_NAME',       action='store',      default=False, help='generate assembly file(s) as output')
-	parser.add_argument('--run',   '-r', nargs='*', metavar='PROGRAM_ARGS',    action='store',      default=False, help='execute the program immediately after compilation')
-	parser.add_argument('input',         nargs='*', metavar='INPUT_FILE_NAME', action='store',      default=None,  help='file names to compile')
+	parser.add_argument(
+		'--repl',                                              
+		action='store_true',
+		default=False,
+		help='start the compiler as a REPL interpreter')
+	parser.add_argument(
+		'--bin',
+		'-b',
+		nargs='?',
+		metavar='FILE_NAME',
+		action='store',
+		default=False,
+		help='name of binary to emit')
+	parser.add_argument(
+		'--dylib',
+		'-d',
+		nargs='?',
+		metavar='FILE_NAME',
+		action='store',
+		default=False,
+		help='name of dynamic lib to emit')
+	parser.add_argument(
+		'--lib',
+		'-l',
+		nargs='?',
+		metavar='FILE_NAME',
+		action='store',
+		default=False,
+		help='name of static lib to emit')
+	parser.add_argument(
+		'--obj',
+		'-o',
+		nargs='*',
+		metavar='FILE_NAME',
+		action='store',
+		default=False,
+		help='generate object file(s) as output')
+	parser.add_argument(
+		'--asm',
+		'-s',
+		nargs='*',
+		metavar='FILE_NAME',
+		action='store',
+		default=False,
+		help='generate assembly file(s) as output')
+	parser.add_argument(
+		'--run',
+		'-r',
+		nargs='*',
+		metavar='PROGRAM_ARGS',
+		action='store',
+		default=False,
+		help='execute the program immediately after compilation')
+	parser.add_argument('input',
+		nargs='*',
+		metavar='INPUT_FILE_NAME', 
+		action='store',
+		default=None, 
+		help='file names to compile')
 	
 	args = parser.parse_args(args[1:])
 	
-	if not args.input and args.run != False and not (args.bin or args.dylib or args.lib or args.obj or args.asm):
-		args.input = args.run[:1]
-		args.run = args.run[1:]
+	if not args.input:
+		if args.run != False and not (args.bin or args.dylib or args.lib):
+			args.input = args.run[:1]
+			args.run   = args.run[1:]
+		elif args.bin != False and not (args.run or args.dylib or args.lib):
+			args.input = [args.bin]
+			args.bin   = None
+		elif args.lib != False and not (args.run or args.dylib or args.bin):
+			args.input = [args.lib]
+			args.lib   = None
+		elif args.dylib != False and not (args.run or args.bin or args.lib):
+			args.input = [args.dylib]
+			args.dylib = None
 	
 	binFileName = None
 	if args.bin != False:
 		if args.bin == None:
 			if len(args.input) != 1:
-				print('Error: cannot infer output file name for binary. Please provide a file name as an argument to `--bin`')
+				print('Error: cannot infer output file name for binary. ' + 
+					'Please provide a file name as an argument to `--bin`')
 				exit(1)
 			args.bin = os.path.splitext(args.input[0])[0]
 		binFileName = args.bin
@@ -45,7 +107,8 @@ def main(args):
 	if args.lib != False:
 		if args.lib == None:
 			if len(args.input) != 1:
-				print('Error: cannot infer output file name for library. Please provide a file name as an argument to `--lib`')
+				print('Error: cannot infer output file name for library. ' + 
+					'Please provide a file name as an argument to `--lib`')
 				exit(1)
 			args.lib = os.path.splitext(args.input[0])[0] + '.lib'
 		libFileName = args.lib
@@ -57,7 +120,8 @@ def main(args):
 	if args.dylib != False:
 		if args.dylib == None:
 			if len(args.input) != 1:
-				print('Error: cannot infer output file name for DLL. Please provide a file name as an argument to `--dylib`')
+				print('Error: cannot infer output file name for DLL. ' + 
+					'Please provide a file name as an argument to `--dylib`')
 				exit(1)
 			args.dylib = os.path.splitext(args.input[0])[0] + '.dylib'
 		dylibFileName = args.dylib
@@ -141,8 +205,8 @@ def main(args):
 	
 	try:
 		if args.bin or args.run:
-			os.system('ld -e _start -macosx_version_min 10.8 -arch x86_64 {} -lc -lSystem -no_pie -o {}'.format(
-				' '.join(objFileNames), binFileName))
+			os.system('ld -e _start -macosx_version_min 10.8 -arch x86_64 {} -lc -lSystem -no_pie -o {}'
+				.format(' '.join(objFileNames), binFileName))
 		
 		if args.run:
 			os.system('{} {}'.format(binFileName, ' '.join(runArgs)))
