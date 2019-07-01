@@ -1,10 +1,10 @@
-@FFI("C") extern fn fopen(fileName: Byte^, mode: Byte^) -> USize
+@FFI("C") extern fn fopen(fileName: Byte&, mode: Byte&) -> USize
 @FFI("C") extern fn fclose(fp: USize)
-@FFI("C") extern fn fprintf(fp: USize, fmt: Byte^, ...) -> Int32
-@FFI("C") extern fn printf(fmt: Byte^, ...) -> Int32
+@FFI("C") extern fn fprintf(fp: USize, fmt: Byte&, ...) -> Int32
+@FFI("C") extern fn printf(fmt: Byte&, ...) -> Int32
 @FFI("C") extern fn exit(code: Int32)
 
-fn main(argc: UInt64, argv: Byte^^)
+fn main(argc: UInt64, argv: Byte&&)
 	if argc != 2
 		printf("Usage: %s <file name>\n", argv^)
 		exit(1)

@@ -43,6 +43,7 @@ class TokenType(Enum):
 	ASGN = 'ASGN'
 	SEMICOLON = 'SEMICOLON'
 	INTEGER = 'INTEGER'
+	FLOAT = 'FLOAT'
 	STRING = 'STRING'
 	EXTERN = 'EXTERN'
 	FN = 'FN'
@@ -144,6 +145,8 @@ class TokenType(Enum):
 			return '`=`'
 		elif self == TokenType.SEMICOLON:
 			return '`;`'
+		elif self == TokenType.FLOAT:
+			return 'float literal'
 		elif self == TokenType.INTEGER:
 			return 'integer literal'
 		elif self == TokenType.STRING:

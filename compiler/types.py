@@ -66,8 +66,8 @@ Int64   = ResolvedType('Int64',   8, isPrimitiveType=True, isIntType=True, isSig
 UInt64  = ResolvedType('UInt64',  8, isPrimitiveType=True, isIntType=True)
 ISize   = ResolvedType('ISize',   PLATFORM_WORD_SIZE, isPrimitiveType=True, isIntType=True, isSigned=True)
 USize   = ResolvedType('USize',   PLATFORM_WORD_SIZE, isPrimitiveType=True, isIntType=True)
-Float32 = ResolvedType('Float32', 4, isPrimitiveType=True)
-Float64 = ResolvedType('Float64', 8, isPrimitiveType=True)
+Float32 = ResolvedType('Float32', 4, isPrimitiveType=True, isFloatType=True)
+Float64 = ResolvedType('Float64', 8, isPrimitiveType=True, isFloatType=True)
 
 BUILTIN_TYPES = [
 	Void,
@@ -159,7 +159,12 @@ def getValidAssignType(expectedType, foundType, allowVoidCercion=False):
 		return None
 
 def canCoerce(fromType, toType):
-	return fromType and toType and fromType.isPrimitiveType and toType.isPrimitiveType
+	if fromType and toType and fromType.isPrimitiveType and toType.isPrimitiveType:
+		return True
+	elif toType == Void:
+		return True
+	else:
+		return False
 
 def hasDefiniteType(ast):
 	if type(ast) == IntLitAST and (ast.suffix == None) and \

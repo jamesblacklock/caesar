@@ -2,7 +2,7 @@ from enum                            import Enum
 from .parser                         import FnDeclAST, FnCallAST, ValueRefAST, StrLitAST, BlockAST, \
 	                                        IntLitAST, ReturnAST, LetAST, IfAST, InfixOpAST, InfixOp, \
 											CoercionAST, BoolLitAST, WhileAST, AsgnAST, DerefAST, \
-											IndexOpAST, VoidAST, AddressAST
+											IndexOpAST, VoidAST, AddressAST, FloatLitAST
 from .analyzer                       import lookupSymbol
 from .                               import types
 
@@ -18,7 +18,8 @@ class FundamentalType:
 	@staticmethod
 	def fromResolvedType(resolvedType):
 		if resolvedType.isIntType or resolvedType.isPtrType or \
-			(resolvedType.isOptionType and resolvedType.byteSize <= 8):
+			(resolvedType.isOptionType and resolvedType.byteSize <= 8) or \
+			resolvedType == types.Byte or resolvedType == types.Bool or resolvedType == types.Char:
 			if resolvedType.isSigned:
 				if resolvedType.byteSize == 1:
 					return I8
@@ -243,7 +244,12 @@ def letToIR(scope, let, fn, block):
 		src = Target(Storage.IMM, FundamentalType.fromResolvedType(let.resolvedSymbolType), 0)
 	else:
 		exprToIR(scope, let.expr, fn, block)
+		if let.expr.resolvedType == types.Void:
+			return
 		src = block[-1].dest.clone()
+	
+	if let.resolvedSymbolType == types.Void:
+		return
 	
 	fn.sp += 1
 	dest = Target(Storage.LOCAL, src.type, fn.sp)
@@ -253,6 +259,10 @@ def letToIR(scope, let, fn, block):
 
 def asgnToIR(scope, asgn, fn, block):
 	exprToIR(scope, asgn.rvalue, fn, block)
+	
+	if asgn.rvalue.resolvedType == types.Void:
+		return
+	
 	src = block[-1].dest.clone()
 	
 	dest = Target(Storage.LOCAL, FundamentalType.fromResolvedType(asgn.rvalue.resolvedType), fn.locals[asgn.lvalue.name])
@@ -274,9 +284,9 @@ def indexToIR(scope, ind, fn, block):
 	fn.sp += 1
 	
 	src = block[-1].dest
-	dest = Target(Storage.LOCAL, FundamentalType.fromResolvedType(ind.expr.resolvedType.baseType), fn.sp)
+	dest = Target(Storage.LOCAL, FundamentalType.fromResolvedType(ind.resolvedType), fn.sp)
 	
-	block.append(Move(ind, src, dest, 1))
+	block.append(Move(ind, src, dest, dest.type, 1))
 
 def ifBlockToIR(scope, ifAst, fn, block):
 	exprToIR(scope, ifAst.expr, fn, block)
@@ -315,6 +325,15 @@ def boolLitToIR(scope, lit, fn, block):
 	block.append(Move(lit, src, dest, I8))
 
 def intLitToIR(scope, lit, fn, block):
+	fn.sp += 1
+	
+	type = FundamentalType.fromResolvedType(lit.resolvedType)
+	src = Target(Storage.IMM, type, lit.value)
+	dest = Target(Storage.LOCAL, type, fn.sp)
+	
+	block.append(Move(lit, src, dest, type))
+
+def floatLitToIR(scope, lit, fn, block):
 	fn.sp += 1
 	
 	type = FundamentalType.fromResolvedType(lit.resolvedType)
@@ -436,6 +455,9 @@ def cmpToIR(scope, op, fn, block):
 def coercionToIR(scope, coercion, fn, block):
 	exprToIR(scope, coercion.expr, fn, block)
 	
+	if coercion.typeRef.resolvedType == types.Void:
+		return
+	
 	fn.sp += 1
 	src = block[-1].dest.clone()
 	dest = Target(Storage.LOCAL, FundamentalType.fromResolvedType(coercion.typeRef.resolvedType), fn.sp)
@@ -457,6 +479,8 @@ def exprToIR(scope, expr, fn, block):
 		boolLitToIR(scope, expr, fn, block)
 	elif type(expr) == IntLitAST:
 		intLitToIR(scope, expr, fn, block)
+	elif type(expr) == FloatLitAST:
+		floatLitToIR(scope, expr, fn, block)
 	elif type(expr) == StrLitAST:
 		strLitToIR(scope, expr, fn, block)
 	elif type(expr) == ValueRefAST:

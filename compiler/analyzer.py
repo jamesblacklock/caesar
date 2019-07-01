@@ -3,7 +3,7 @@ from .ast                import CConv, FnDeclAST, LetAST, FnCallAST, ReturnAST, 
                                 StrLitAST, IntLitAST, BoolLitAST, TupleLitAST, ValueRefAST, \
 								InfixOpAST, FnCallAST, IfAST, CoercionAST, ModAST, ValueExprAST, \
 								BlockAST, AsgnAST, WhileAST, DerefAST, IndexOpAST, VoidAST, \
-								AddressAST
+								AddressAST, FloatLitAST
 from .                   import types
 from .types              import getValidAssignType, ResolvedType
 from .err                import logError, logWarning
@@ -76,6 +76,8 @@ def resolveValueExprType(state, scope, expr, expectedType=None):
 		expr.resolvedType = types.Bool
 	elif type(expr) == IntLitAST:
 		typeCheckIntLit(state, scope, expr, expectedType)
+	elif type(expr) == FloatLitAST:
+		typeCheckFloatLit(state, scope, expr, expectedType)
 	elif type(expr) == BlockAST:
 		typeCheckBlock(state, scope, expr, expectedType)
 	elif type(expr) == DerefAST:
@@ -141,15 +143,28 @@ def typeCheckIntLit(state, scope, lit, expectedType):
 		lit.resolvedType = expectedType
 	elif types.canAccommodate(types.Int32, lit.value):
 		lit.resolvedType = types.Int32
-	elif types.canAccommodate(types.Int64, lit.value):
+	elif types.canAccommodate(types.Int64, lit.value) or lit.value < 0:
 		lit.resolvedType = types.Int64
-	elif types.canAccommodate(types.UInt64, lit.value):
-		lit.resolvedType = types.UInt64
 	else:
-		assert 0 #lit.resolvedType = types.LiteralIntType.fromValue(int(lit.value))
+		lit.resolvedType = types.UInt64
 	
-	if not types.canAccommodate(lit.resolvedType, int(lit.value)):
+	if not types.canAccommodate(lit.resolvedType, lit.value):
 		logError(state, lit.span, 'integer value out of range for type {}'.format(lit.resolvedType))
+
+def typeCheckFloatLit(state, scope, lit, expectedType):
+	if lit.suffix == 'f32':
+		lit.resolvedType = types.Float32
+	elif lit.suffix == 'f64':
+		lit.resolvedType = types.Float64
+	elif expectedType and expectedType.isFloatType:
+		lit.resolvedType = expectedType
+	else:# elif types.canAccommodate(types.Float32, lit.value):
+		lit.resolvedType = types.Float32
+	# else:
+	# 	lit.resolvedType = types.Float64
+	
+	# if not types.canAccommodate(lit.resolvedType, lit.value):
+	# 	logError(state, lit.span, 'flaoting point value out of range for type {}'.format(lit.resolvedType))
 
 def typeCheckAddress(state, scope, addr, expectedType):
 	resolveValueExprType(state, scope, addr.expr, expectedType)
@@ -242,7 +257,7 @@ def typeCheckInfixOp(state, scope, infixOp, expectedType):
 
 def typeCheckIndex(state, scope, expr):
 	resolveValueExprType(state, scope, expr.expr)
-	resolveValueExprType(state, scope, expr.index)
+	resolveValueExprType(state, scope, expr.index, types.ISize)
 	
 	if not expr.expr.resolvedType.isPtrType:
 		logError(state, expr.expr.span, 

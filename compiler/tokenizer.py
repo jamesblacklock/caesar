@@ -21,10 +21,15 @@ class LexerState:
 		self.error = None
 		self.errorToken = None
 		self.indentMode = None
+		self.failed = False
 	
 	@property
 	def char(self):
 		return self.content[self.offset] if self.offset < len(self.content) else ''
+	
+	@property
+	def nextChar(self):
+		return self.content[self.offset+1] if self.offset+1 < len(self.content) else ''
 	
 	def advance(self, count=1):
 		for i in range(0, count):
@@ -65,7 +70,8 @@ def lexToken(state, type, test=singleCharTest, testState=None, advance=0):
 		endColumn = state.column
 		state.advance()
 	
-	tok = Token(Span(state.source, startLine, startColumn, endLine, endColumn), type, state.content[contentStart:state.offset])
+	tok = Token(Span(state.source, startLine, startColumn, endLine, endColumn), 
+		type, state.content[contentStart:state.offset])
 	
 	if not testState.done:
 		state.error = 'found unexpected <end-of-file> while parsing'
@@ -206,21 +212,44 @@ def lexOperator(state):
 
 def lexNumber(state):
 	def test(state, testState):
-		if not re.match(r"[\d_a-zA-Z]", state.char):
-			testState.done = True
+		if state.char == '.':
+			testState.isFloat = True
+		
+		if testState.isFloat and (state.char == 'e' or state.char == 'E' or \
+			state.char == 'p' or state.char == 'P'):
+			testState.expectExponent = True
+		elif not re.match(r"[\d_a-zA-Z.]", state.char):
+			if testState.expectExponent and (state.char == '+' or state.char == '-'):
+				pass
+			else:
+				testState.done = True
 	
-	tok = lexToken(state, TokenType.INTEGER, test)
+	testState = TestState()
+	testState.isFloat = False
+	testState.expectExponent = False
+	tok = lexToken(state, TokenType.INTEGER, test, testState)
 	
-	decInt = r"(:?[\d_]+)"
-	binInt = r"(:?0b[01_]+)"
-	hexInt = r"(:?0x[\da-fA-F_]+)"
-	suffix = r"(:?i8|u8|i16|u16|i32|u32|i64|u64|sz|usz)?"
-	regex  = r"^(:?{}|{}|{}){}$".format(
-		decInt, binInt, hexInt, suffix
-	)
-	if not re.match(regex, tok.content):
-		state.error = 'invalid suffix for integer literal'
-		state.errorToken = tok
+	if re.match(r".*\.", tok.content):
+		decFloat = r"([\d_]*\.[\d_]*)([eE][\-+]?[\d_]+)?"
+		hexFloat = r"0x([\da-fA-F_]*\.[\da-fA-F_]*)([pP][\-+]?[\d_]+)?"
+		suffix   = r"(f32|f64)?"
+		regex    = r"^({}|{}){}$".format(decFloat, hexFloat, suffix)
+		
+		if not re.match(regex, tok.content):
+			state.error = 'invalid floating point literal'
+			state.errorToken = tok
+		
+		tok.type = TokenType.FLOAT
+	else:
+		decInt = r"([\d_]+)"
+		binInt = r"(0b[01_]+)"
+		hexInt = r"(0x[\da-fA-F_]+)"
+		suffix = r"(i8|u8|i16|u16|i32|u32|i64|u64|sz|usz)?"
+		regex  = r"^({}|{}|{}){}$".format(decInt, binInt, hexInt, suffix)
+		if not re.match(regex, tok.content):
+			state.error = 'invalid integer literal'
+			state.errorToken = tok
+	
 	return tok
 
 def lexString(state):
@@ -296,10 +325,10 @@ def tokenize(source):
 			tok = lexComment(state)
 		elif state.char == '\n':
 			tok = lexNewline(state)
+		elif re.match(r"\d", state.char) or state.char == '.' and re.match(r"\d", state.nextChar):
+			tok = lexNumber(state)
 		elif re.match(r"[\[\]!@\(\):^&,.\-+=*/<>|{}]", state.char):
 			tok = lexOperator(state)
-		elif re.match(r"\d", state.char):
-			tok = lexNumber(state)
 		elif state.char == '"':
 			tok = lexString(state)
 		elif re.match(r"[a-zA-Z_]", state.char):
@@ -309,10 +338,13 @@ def tokenize(source):
 		
 		if state.error:
 			logError(state, state.errorToken.span, state.error)
-			exit(1)
+			state.error = None
 		
 		tok.offset = len(tokens)
 		tokens.append(tok)
+	
+	if state.failed:
+		exit(1)
 	
 	tokens.append(Token(Span(source, state.line, state.column, state.line, state.column), 
 		TokenType.EOF, '', len(tokens)))

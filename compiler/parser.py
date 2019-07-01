@@ -5,10 +5,11 @@ from .token              import TokenType, revealToken
 from .span               import Span, revealSpan, AnsiColor
 from .err                import logError
 from .ast                import CConv, FnDeclAST, LetAST, FnCallAST, ReturnAST, IfAST, TypeRefAST, \
-                                AttrAST, StrLitAST, IntLitAST, BoolLitAST, TupleLitAST, ValueRefAST, \
-                                InfixOpAST, FnCallAST, IfAST, CoercionAST, ModAST, ValueExprAST, \
-                                FnParamAST, BlockAST, AsgnAST, WhileAST, DerefAST, IndexOpAST, VoidAST, \
-                                CVarArgsParamAST, InfixOp, AddressAST, INFIX_PRECEDENCE
+                                AttrAST, StrLitAST, IntLitAST, FloatLitAST, BoolLitAST, TupleLitAST, \
+                                ValueRefAST, InfixOpAST, FnCallAST, IfAST, CoercionAST, ModAST, \
+                                ValueExprAST, FnParamAST, BlockAST, AsgnAST, WhileAST, DerefAST, \
+                                IndexOpAST, VoidAST, CVarArgsParamAST, InfixOp, AddressAST, \
+                                INFIX_PRECEDENCE
 from .types              import BUILTIN_TYPES
 
 #######################
@@ -514,6 +515,9 @@ VALUE_EXPR_TOKS = (
 	TokenType.NAME,
 	TokenType.STRING,
 	TokenType.INTEGER,
+	TokenType.FLOAT,
+	TokenType.PLUS,
+	TokenType.MINUS,
 	TokenType.FALSE,
 	TokenType.TRUE,
 	TokenType.IF,
@@ -628,6 +632,24 @@ def parseValueRef(state):
 	
 	return ValueRefAST(path, span)
 
+def parseSign(state):
+	negate = state.tok.type == TokenType.MINUS
+	span = state.tok.span
+	state.advance()
+	state.skipSpace()
+	expr = None
+	
+	if state.tok.type == TokenType.INTEGER:
+		expr = IntLitAST(state.tok.content, negate, Span.merge(span, state.tok.span))
+		state.advance()
+	elif state.tok.type == TokenType.FLOAT:
+		expr = FloatLitAST(state.tok.content, negate, Span.merge(span, state.tok.span))
+		state.advance()
+	else:
+		assert 0
+	
+	return expr
+
 def parseValueExpr(state, precedence=0):
 	if state.tok.type == TokenType.NEWLINE:
 		block = parseBlock(state, parseFnBodyExpr)
@@ -650,8 +672,13 @@ def parseValueExpr(state, precedence=0):
 	elif state.tok.type == TokenType.STRING:
 		expr = StrLitAST(state.tok.content, state.tok.span)
 		state.advance()
+	elif state.tok.type == TokenType.PLUS or state.tok.type == TokenType.MINUS:
+		expr = parseSign(state)
 	elif state.tok.type == TokenType.INTEGER:
-		expr = IntLitAST(state.tok.content, state.tok.span)
+		expr = IntLitAST(state.tok.content, False, state.tok.span)
+		state.advance()
+	elif state.tok.type == TokenType.FLOAT:
+		expr = FloatLitAST(state.tok.content, False, state.tok.span)
 		state.advance()
 	elif state.tok.type == TokenType.FALSE or state.tok.type == TokenType.TRUE:
 		value = state.tok.type == TokenType.TRUE

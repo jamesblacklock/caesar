@@ -1,6 +1,8 @@
+import ctypes
 from .ir                                         import Move, Addr, Add, Call, Cmp, Div, Ret, IfElse, \
 	                                                     While, InfixOp, Sub, Mul, Storage, Coerce, \
-                                                         I8, I16, I32, I64, U8, U16, U32, U64, IPTR
+                                                         I8, I16, I32, I64, U8, U16, U32, U64, IPTR, \
+                                                         F32, F64
 
 
 ARG_REGS = ['rdi', 'rsi', 'rdx', 'rcx', 'r8', 'r9']
@@ -26,7 +28,13 @@ def targetToOperand(target, fnIR, offset=0):
 	elif target.storage == Storage.STATIC:
 		return '{}{}__static__{}'.format(size, fnIR.name, target.value)
 	elif target.storage == Storage.IMM:
-		return '{}{}'.format(size, target.value)
+		value = target.value
+		if target.type.isFloatType:
+			if target.type.byteSize == 4:
+				value = hex(ctypes.c_uint32.from_buffer(ctypes.c_float(value)).value)
+			else:
+				value = hex(ctypes.c_uint64.from_buffer(ctypes.c_double(value)).value)
+		return '{}{}'.format(size, value)
 	elif target.value in fnIR.paramNames:
 		return '{}[rsp + {}] ; param: {}'.format(size, (fnIR.sp - fnIR.paramNames.index(target.value))*8 + offset, target.value)
 	elif target.value in fnIR.locals:
@@ -35,16 +43,18 @@ def targetToOperand(target, fnIR, offset=0):
 		return target.value
 
 def getReg(type, ind=0):
-	c = ['a', 'c']
+	intReg = ['a', 'c']
 	
 	if type == I8 or type == U8:
-		return '{}l'.format(c[ind])
+		return '{}l'.format(intReg[ind])
 	elif type == I16 or type == U16:
-		return '{}x'.format(c[ind])
+		return '{}x'.format(intReg[ind])
 	elif type == I32 or type == U32:
-		return 'e{}x'.format(c[ind])
+		return 'e{}x'.format(intReg[ind])
 	elif type == I64 or type == U64:
-		return 'r{}x'.format(c[ind])
+		return 'r{}x'.format(intReg[ind])
+	elif type == F32 or type == F64:
+		return 'xmm{}'.format(ind)
 	else:
 		assert 0
 
@@ -52,12 +62,30 @@ def irToAsm(instr, fnIR):
 	if type(instr) == Move:
 		reg = getReg(instr.dest.type)
 		lines = []
-		lines.append('mov {}, {}'.format(reg, targetToOperand(instr.src, fnIR)))
 		
-		for _ in range(0, instr.srcDeref):
-			lines.append('mov rcx, [rax]\n\t\tmov rax, rcx')
+		if not instr.dest.type.isFloatType:
+			lines.append('mov {}, {}'.format(reg, targetToOperand(instr.src, fnIR)))
+			
+			for _ in range(0, instr.srcDeref):
+				lines.append('mov rcx, [rax]\n\t\tmov rax, rcx')
+			
+			lines.append('mov {}, {}'.format(targetToOperand(instr.dest, fnIR), reg))
+		else:
+			assert 0
+			# src = targetToOperand(instr.src, fnIR)
+			# opcode = 'movss' if instr.src.type.byteSize == 4 else 'movsd'
+			
+			# if instr.srcDeref:
+			# 	lines.append('mov rax, {}'.format(reg, src))
+				
+			# 	for _ in range(0, instr.srcDeref-1):
+			# 		lines.append('mov rcx, [rax]\n\t\tmov rax, rcx')
+				
+			# 	src = '[rax]'
+			
+			# lines.append('{} {}, {}'.format(opcode, reg, src))
+			# lines.append('{} {}, {}'.format(opcode, targetToOperand(instr.dest, fnIR), reg))
 		
-		lines.append('mov {}, {}'.format(targetToOperand(instr.dest, fnIR), reg))
 		return '\n\t\t'.join(lines)
 	elif type(instr) == Addr:
 		reg = getReg(IPTR)

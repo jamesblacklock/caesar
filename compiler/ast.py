@@ -357,7 +357,7 @@ class BoolLitAST(ValueExprAST):
 		self.span = span
 
 class IntLitAST(ValueExprAST):
-	def __init__(self, strValue, span):
+	def __init__(self, strValue, negate, span):
 		super().__init__()
 		matches = re.match(r"^(0b|0x)?(.+?)(i8|u8|i16|u16|i32|u32|i64|u64|sz|usz)?$", strValue)
 		
@@ -368,7 +368,24 @@ class IntLitAST(ValueExprAST):
 		value = int(matches[2].replace('_', ''), base)
 		suffix = matches[3]
 		
-		self.value = value
+		self.value = -value if negate else value
+		self.suffix = suffix
+		self.span = span
+
+class FloatLitAST(ValueExprAST):
+	def __init__(self, strValue, negate, span):
+		super().__init__()
+		matches = re.match(r"^(0x)?(.+?)(f32|f64)?$", strValue)
+		valueStr = matches[2].replace('_', '').lower()
+		
+		if matches[1]:
+			value = float.fromhex(valueStr)
+		else:
+			value = float(valueStr)
+		
+		suffix = matches[3]
+		
+		self.value = -value if negate else value
 		self.suffix = suffix
 		self.span = span
 
