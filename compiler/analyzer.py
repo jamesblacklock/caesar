@@ -334,7 +334,8 @@ def typeCheckFnCall(state, scope, fnCallExpr):
 	if len(fnCallExpr.args) < len(fnType.resolvedParamTypes) or \
 		not fnType.cVarArgs and len(fnCallExpr.args) > len(fnType.resolvedParamTypes):
 		logError(state, fnCallExpr.span, 
-			'function called with wrong number of arguments (expected {}, found {})'.format(len(fnType.resolvedParamTypes), len(fnCallExpr.args)))
+			'function called with wrong number of arguments (expected {}, found {})'
+				.format(len(fnType.resolvedParamTypes), len(fnCallExpr.args)))
 		return
 	
 	for (expected, arg) in zip(fnType.resolvedParamTypes, fnCallExpr.args):

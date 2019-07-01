@@ -1,7 +1,7 @@
 import re
 from os                  import path
 from enum                import Enum
-from .token              import TokenType, revealToken
+from .token              import TokenType
 from .span               import Span, revealSpan, AnsiColor
 from .err                import logError
 from .ast                import CConv, FnDeclAST, LetAST, FnCallAST, ReturnAST, IfAST, TypeRefAST, \
@@ -11,10 +11,6 @@ from .ast                import CConv, FnDeclAST, LetAST, FnCallAST, ReturnAST, 
                                 IndexOpAST, VoidAST, CVarArgsParamAST, InfixOp, AddressAST, \
                                 INFIX_PRECEDENCE
 from .types              import BUILTIN_TYPES
-
-#######################
-#  Parser state
-#######################
 
 class ParserState:
 	def __init__(self, source, tokens):
@@ -87,11 +83,6 @@ class ParserState:
 			self.advance()
 			skipped = True
 		return skipped
-
-
-#######################
-#  Parser
-#######################
 
 def expectIndent(state):
 	assert state.tok.span.startColumn == 1
