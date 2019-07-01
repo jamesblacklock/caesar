@@ -1,3 +1,5 @@
+#! /usr/local/bin/python3 ./caesar.py --run
+
 @FFI("C")
 extern fn printf(format: Byte&, ...) -> Int32
 

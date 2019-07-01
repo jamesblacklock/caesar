@@ -1,5 +1,6 @@
 import re
 from enum import Enum
+from .span import Span
 from .token import *
 from .err import logError
 
