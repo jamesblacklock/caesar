@@ -43,7 +43,7 @@ def targetToOperand(target, fnIR, offset=0):
 		return target.value
 
 def getReg(type, ind=0):
-	intReg = ['a', 'c']
+	intReg = ['a', 'c', 'd']
 	
 	if type == I8 or type == U8:
 		return '{}l'.format(intReg[ind])
@@ -64,12 +64,20 @@ def irToAsm(instr, fnIR):
 		lines = []
 		
 		if not instr.dest.type.isFloatType:
-			lines.append('mov {}, {}'.format(reg, targetToOperand(instr.src, fnIR)))
+			if instr.srcDeref:
+				lines.append('lea rax, {}'.format(targetToOperand(instr.src, fnIR)))
+				for _ in range(0, instr.srcDeref):
+					lines.append('mov rcx, [rax]\n\t\tmov rax, rcx')
+				
+				lines.append('mov {}, [rax]'.format(reg))
+			else:
+				lines.append('mov {}, {}'.format(reg, targetToOperand(instr.src, fnIR)))
 			
-			for _ in range(0, instr.srcDeref):
-				lines.append('mov rcx, [rax]\n\t\tmov rax, rcx')
+			lines.append('lea rdx, {}'.format(targetToOperand(instr.dest, fnIR)))
+			for _ in range(0, instr.destDeref):
+				lines.append('mov rcx, [rdx]\n\t\tmov rdx, rcx')
 			
-			lines.append('mov {}, {}'.format(targetToOperand(instr.dest, fnIR), reg))
+			lines.append('mov [rdx], {}'.format(reg))
 		else:
 			assert 0
 			# src = targetToOperand(instr.src, fnIR)

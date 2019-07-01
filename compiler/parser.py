@@ -698,6 +698,10 @@ def parseValueExpr(state, precedence=0):
 			expr = parseCoercion(state, expr)
 		elif state.tok.type in INFIX_PRECEDENCE and INFIX_PRECEDENCE[state.tok.type] > precedence:
 			expr = parseInfixOp(state, expr, expr.span.startLine == expr.span.endLine)
+		elif state.tok.type == TokenType.CARET:
+			expr = parseDeref(state, expr)
+		elif state.tok.type == TokenType.AMP:
+			expr = parseAddress(state, expr)
 		else:
 			break
 	
@@ -713,7 +717,7 @@ def parseValueExprOrAsgn(state):
 	
 	state.skipSpace()
 	if state.tok.type == TokenType.ASGN:
-		if type(expr) != ValueRefAST and type(expr) != DerefAST:
+		if type(expr) != ValueRefAST and type(expr) != DerefAST and type(expr) != IndexOpAST:
 			logError(state, state.tok.span, "invalid assignment target in assignment")
 		
 		state.advance()

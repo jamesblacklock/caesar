@@ -96,7 +96,7 @@ class Instr:
 		return self.__str__()
 
 class Move(Instr):
-	def __init__(self, ast, src, dest, type, srcDeref=0):
+	def __init__(self, ast, src, dest, type, srcDeref=0, destDeref=0):
 		super().__init__(ast, True)
 		if srcDeref == 0:
 			assert src.type.byteSize == dest.type.byteSize
@@ -110,6 +110,7 @@ class Move(Instr):
 		self.dest = dest
 		self.type = type
 		self.srcDeref = srcDeref
+		self.destDeref = destDeref
 	
 	def __str__(self):
 		return '{}{} = {}'.format('^' * self.srcDeref, self.dest, self.src)
@@ -265,9 +266,15 @@ def asgnToIR(scope, asgn, fn, block):
 	
 	src = block[-1].dest.clone()
 	
-	dest = Target(Storage.LOCAL, FundamentalType.fromResolvedType(asgn.rvalue.resolvedType), fn.locals[asgn.lvalue.name])
+	targetSymbol = asgn.lvalue
+	destDeref = 0
+	if type(targetSymbol) == DerefAST:
+		destDeref = targetSymbol.derefCount
+		targetSymbol = targetSymbol.expr
 	
-	block.append(Move(asgn, src, dest, src.type))
+	dest = Target(Storage.LOCAL, FundamentalType.fromResolvedType(asgn.rvalue.resolvedType), fn.locals[targetSymbol.name])
+	
+	block.append(Move(asgn, src, dest, src.type, 0, destDeref))
 
 def indexToIR(scope, ind, fn, block):
 	exprToIR(scope, ind.expr, fn, block)

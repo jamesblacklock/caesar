@@ -299,7 +299,7 @@ def lexNameOrKeyword(state):
 	]
 	
 	for (kw, type) in keywords:
-		slice = state.content[state.offset:min(state.offset+len(kw), len(state.content)-1)]
+		slice = state.content[state.offset:min(state.offset+len(kw), len(state.content))]
 		nextChar = state.content[state.offset+len(kw)] if state.offset+len(kw) < len(state.content) else ''
 		if slice == kw and not re.match(r"[a-zA-Z0-9_]", nextChar):
 			testState = TestState()

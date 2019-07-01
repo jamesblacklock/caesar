@@ -202,7 +202,7 @@ PTR_INT_OPS = (
 )
 
 INT_PTR_OPS = (
-	InfixOp.PLUS
+	InfixOp.PLUS,
 )
 
 RNG_OPS = (

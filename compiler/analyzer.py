@@ -198,7 +198,9 @@ def typeCheckDeref(state, scope, deref):
 
 def typeCheckInfixOp(state, scope, infixOp, expectedType):
 	opErr = lambda: \
-		logError(state, infixOp.opSpan, 'invalid operand types for operator `{}`'.format(infixOp.op.desc()))
+		logError(state, infixOp.opSpan, 
+			'invalid operand types for operator `{}` ({} and {})'
+				.format(infixOp.op.desc(), infixOp.l.resolvedType, infixOp.r.resolvedType))
 	
 	lIndefinite = not types.hasDefiniteType(infixOp.l)
 	rIndefinite = not types.hasDefiniteType(infixOp.r)
@@ -370,7 +372,7 @@ def typeCheckReturn(state, scope, retExpr):
 
 def typeCheckAsgn(state, scope, asgnExpr):
 	resolveValueExprType(state, scope, asgnExpr.lvalue)
-	resolveValueExprType(state, scope, asgnExpr.rvalue)
+	resolveValueExprType(state, scope, asgnExpr.rvalue, asgnExpr.lvalue.resolvedType)
 	
 	assignType = getValidAssignType(asgnExpr.lvalue.resolvedType, asgnExpr.rvalue.resolvedType)
 	if assignType:
@@ -379,15 +381,21 @@ def typeCheckAsgn(state, scope, asgnExpr):
 		logError(state, asgnExpr.rvalue.span, 'invalid types in assignment (expected {}, found {})'
 			.format(asgnExpr.lvalue.resolvedType, asgnExpr.rvalue.resolvedType))
 	
-	if not lookupSymbol(state, scope, asgnExpr.lvalue, False).mut:
-		logError(state, asgnExpr.lvalue.span, 'assignment target is not mutable')
+	symbol = asgnExpr.lvalue
+	if type(symbol) == DerefAST:
+		symbol = symbol.expr
+	if type(symbol) != ValueRefAST:
+		assert 0
+	
+	if not lookupSymbol(state, scope, symbol, False).mut:
+		logError(state, symbol.span, 'assignment target is not mutable')
 
 def typeCheckWhile(state, scope, whileExpr):
 	whileExpr.parentScope = scope
 	scope = whileExpr
 	
 	resolveValueExprType(state, scope, whileExpr.expr)
-	if whileExpr.expr.resolvedType != types.Bool:
+	if whileExpr.expr.resolvedType and whileExpr.expr.resolvedType != types.Bool:
 		logError(state, whileExpr.expr.span, 
 			'condition type must be Bool (found {})'.format(whileExpr.expr.resolvedType))
 	
@@ -408,7 +416,7 @@ def typeCheckIf(state, scope, ifExpr, expectedType):
 	scope = ifExpr
 	
 	resolveValueExprType(state, scope, ifExpr.expr)
-	if ifExpr.expr.resolvedType != types.Bool:
+	if ifExpr.expr.resolvedType and ifExpr.expr.resolvedType != types.Bool:
 		logError(state, ifExpr.expr.span, 
 			'condition type must be Bool (found {})'.format(ifExpr.expr.resolvedType))
 	
