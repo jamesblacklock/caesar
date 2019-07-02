@@ -204,25 +204,50 @@ def typeCheckInfixOp(state, scope, infixOp, implicitType):
 	
 	lIndefinite = not types.hasDefiniteType(infixOp.l)
 	rIndefinite = not types.hasDefiniteType(infixOp.r)
-	if lIndefinite or rIndefinite:
-		if not lIndefinite:
-			resolveValueExprType(state, scope, infixOp.l, implicitType)
-			resolveValueExprType(state, scope, infixOp.r, infixOp.l.resolvedType)
-		elif not rIndefinite:
-			resolveValueExprType(state, scope, infixOp.r, implicitType)
-			resolveValueExprType(state, scope, infixOp.l, infixOp.r.resolvedType)
-		elif types.canAccommodate(types.Int32, infixOp.l.value) and types.canAccommodate(types.Int32, infixOp.r.value):
-			resolveValueExprType(state, scope, infixOp.r, types.Int32)
-			resolveValueExprType(state, scope, infixOp.l, types.Int32)
-		elif types.canAccommodate(types.Int64, infixOp.l.value) and types.canAccommodate(types.Int64, infixOp.r.value):
-			resolveValueExprType(state, scope, infixOp.r, types.Int64)
-			resolveValueExprType(state, scope, infixOp.l, types.Int64)
+	if lIndefinite and rIndefinite:
+		if type(infixOp.l) == IntLitAST and type(infixOp.r) == IntLitAST:
+			if types.canAccommodate(types.Int32, infixOp.l.value) and \
+				types.canAccommodate(types.Int32, infixOp.r.value):
+				resolveValueExprType(state, scope, infixOp.r, types.Int32)
+				resolveValueExprType(state, scope, infixOp.l, types.Int32)
+			elif types.canAccommodate(types.Int64, infixOp.l.value) and \
+				types.canAccommodate(types.Int64, infixOp.r.value):
+				resolveValueExprType(state, scope, infixOp.r, types.Int64)
+				resolveValueExprType(state, scope, infixOp.l, types.Int64)
+			else:
+				resolveValueExprType(state, scope, infixOp.r, types.UInt64)
+				resolveValueExprType(state, scope, infixOp.l, types.UInt64)
 		else:
-			resolveValueExprType(state, scope, infixOp.r, types.UInt64)
-			resolveValueExprType(state, scope, infixOp.l, types.UInt64)
-	else:
-		resolveValueExprType(state, scope, infixOp.r, implicitType)
+			assert 0
+	elif rIndefinite:
 		resolveValueExprType(state, scope, infixOp.l, implicitType)
+		if type(infixOp.r) == IntLitAST:
+			if infixOp.l.resolvedType.isPtrType:
+				if infixOp.op in ast.PTR_INT_OPS:
+					resolveValueExprType(state, scope, infixOp.r, types.ISize if infixOp.r.value < 0 else types.USize)
+				else:
+					opErr()
+					return
+			else:
+				resolveValueExprType(state, scope, infixOp.r, infixOp.l.resolvedType)
+		else:
+			assert 0
+	elif lIndefinite:
+		resolveValueExprType(state, scope, infixOp.r, implicitType)
+		if type(infixOp.l) == IntLitAST:
+			if infixOp.r.resolvedType.isPtrType:
+				if infixOp.op in ast.PTR_INT_OPS:
+					resolveValueExprType(state, scope, infixOp.l, types.ISize if infixOp.l.value < 0 else types.USize)
+				else:
+					opErr()
+					return
+			else:
+				resolveValueExprType(state, scope, infixOp.l, infixOp.r.resolvedType)
+		else:
+			assert 0
+	else:
+		resolveValueExprType(state, scope, infixOp.l, implicitType)
+		resolveValueExprType(state, scope, infixOp.r, implicitType)
 	
 	if not infixOp.l.resolvedType or not infixOp.r.resolvedType:
 		return
@@ -232,11 +257,11 @@ def typeCheckInfixOp(state, scope, infixOp, implicitType):
 			infixOp.resolvedType = types.Bool
 			return
 	elif infixOp.l.resolvedType.isPtrType and infixOp.r.resolvedType.isIntType:
-		if infixOp.op in ast.PTR_INT_OPS:
+		if infixOp.op in ast.PTR_INT_OPS and infixOp.r.resolvedType.byteSize == types.USize.byteSize:
 			infixOp.resolvedType = infixOp.l.resolvedType
 			return
 	elif infixOp.l.resolvedType.isIntType and infixOp.r.resolvedType.isPtrType:
-		if infixOp.op in ast.INT_PTR_OPS:
+		if infixOp.op in ast.INT_PTR_OPS and infixOp.l.resolvedType.byteSize == types.USize.byteSize:
 			infixOp.resolvedType = infixOp.r.resolvedType
 			return
 	elif infixOp.l.resolvedType.isPtrType and infixOp.r.resolvedType.isPtrType:

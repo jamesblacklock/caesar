@@ -153,6 +153,9 @@ def getValidAssignType(expectedType, foundType, allowVoidCercion=False):
 			return expectedType
 		else:
 			return foundType in expectedType.resolvedTypes
+	elif expectedType.isIntType and foundType.isIntType and \
+		expectedType.byteSize == foundType.byteSize and expectedType.isSigned == foundType.isSigned:
+		return expectedType
 	elif expectedType is foundType:
 		return expectedType
 	else:

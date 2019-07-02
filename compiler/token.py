@@ -29,7 +29,6 @@ class TokenType(Enum):
 	MINUS = 'MINUS'
 	AMP = 'AMP'
 	PIPE = 'PIPE'
-	RNGCLOSED = 'RNGCLOSED'
 	RNGOPEN = 'RNGOPEN'
 	EQ = 'EQ'
 	NEQ = 'NEQ'
@@ -44,6 +43,7 @@ class TokenType(Enum):
 	INTEGER = 'INTEGER'
 	FLOAT = 'FLOAT'
 	STRING = 'STRING'
+	CHAR = 'CHAR'
 	EXTERN = 'EXTERN'
 	FN = 'FN'
 	MOD = 'MOD'
@@ -128,10 +128,8 @@ class TokenType(Enum):
 			return '`&`'
 		elif self == TokenType.PIPE:
 			return '`|`'
-		elif self == TokenType.RNGCLOSED:
-			return '`..<`'
 		elif self == TokenType.RNGOPEN:
-			return '`..=`'
+			return '`..<`'
 		elif self == TokenType.EQ:
 			return '`==`'
 		elif self == TokenType.NEQ:
@@ -158,6 +156,8 @@ class TokenType(Enum):
 			return 'integer literal'
 		elif self == TokenType.STRING:
 			return 'string literal'
+		elif self == TokenType.CHAR:
+			return 'character literal'
 		elif self == TokenType.EXTERN:
 			return '`extern`'
 		elif self == TokenType.FN:

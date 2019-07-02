@@ -163,8 +163,7 @@ def lexOperator(state):
 	operators = \
 	[
 		('...', TokenType.ELLIPSIS),
-		('..<', TokenType.RNGCLOSED),
-		('..=', TokenType.RNGOPEN),
+		('..<', TokenType.RNGOPEN),
 		('>=', TokenType.GREATEREQ),
 		('<=', TokenType.LESSEQ),
 		('&&', TokenType.AND),
@@ -214,7 +213,11 @@ def lexOperator(state):
 def lexNumber(state):
 	def test(state, testState):
 		if state.char == '.':
-			testState.isFloat = True
+			if state.nextChar == '.':
+				testState.done = True
+				return
+			else:
+				testState.isFloat = True
 		
 		if testState.isFloat and (state.char == 'e' or state.char == 'E' or \
 			state.char == 'p' or state.char == 'P'):
@@ -268,6 +271,22 @@ def lexString(state):
 	testState.foundClosingQuote = False
 	testState.esc = False
 	return lexToken(state, TokenType.STRING, test, testState, advance=1)
+
+def lexChar(state):
+	def test(state, testState):
+		if testState.foundClosingQuote:
+			testState.done = True
+		if state.char == '\\':
+			testState.esc = True
+		else:
+			if state.char == '\'' and not testState.esc:
+				testState.foundClosingQuote = True
+			testState.esc = False
+	
+	testState = TestState()
+	testState.foundClosingQuote = False
+	testState.esc = False
+	return lexToken(state, TokenType.CHAR, test, testState, advance=1)
 
 def lexNameOrKeyword(state):
 	def keywordTest(state, testState):
@@ -340,6 +359,8 @@ def tokenize(source):
 			tok = lexOperator(state)
 		elif state.char == '"':
 			tok = lexString(state)
+		elif state.char == '\'':
+			tok = lexChar(state)
 		elif re.match(r"[a-zA-Z_]", state.char):
 			tok = lexNameOrKeyword(state)
 		else:

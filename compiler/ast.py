@@ -25,7 +25,7 @@ INFIX_PRECEDENCE = {
 	TokenType.AMP:       500, 
 	TokenType.PIPE:      500, 
 	TokenType.CARET:     500, 
-	TokenType.RNGCLOSED: 400, 
+	TokenType.ELLIPSIS: 400, 
 	TokenType.RNGOPEN:   400, 
 	TokenType.EQ:        300, 
 	TokenType.NEQ:       300, 
@@ -84,9 +84,9 @@ class InfixOp(Enum):
 		elif self == InfixOp.BITXOR:
 			return '^'
 		elif self == InfixOp.RNGCLOSED:
-			return '..='
+			return '...'
 		elif self == InfixOp.RNGOPEN:
-			return '..='
+			return '..<'
 		elif self == InfixOp.EQ:
 			return '=='
 		elif self == InfixOp.NEQ:
@@ -130,7 +130,7 @@ class InfixOp(Enum):
 			return InfixOp.BITOR
 		elif type == TokenType.CARET:
 			return InfixOp.BITXOR
-		elif type == TokenType.RNGCLOSED:
+		elif type == TokenType.ELLIPSIS:
 			return InfixOp.RNGCLOSED
 		elif type == TokenType.RNGOPEN:
 			return InfixOp.RNGOPEN
