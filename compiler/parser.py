@@ -551,13 +551,13 @@ def parseIndex(state, expr):
 	
 	return IndexOpAST(expr, index, span)
 
-def parseInfixOp(state, l, mustIndent):
+def parseInfixOp(state, l, mustIndent, spaceAroundOp):
 	op = state.tok.type
 	opSpan = state.tok.span
 	
 	offset = state.offset
 	state.advance()
-	state.skipSpace()
+	spaceAroundOp = state.skipSpace() or spaceAroundOp
 	
 	eol = False
 	
@@ -569,7 +569,8 @@ def parseInfixOp(state, l, mustIndent):
 			state.skipEmptyLines()
 			if not isIndentIncrease(state):
 				isUnary = True
-		elif state.tok.type == TokenType.LPAREN or state.tok.type not in VALUE_EXPR_TOKS:
+		elif (not spaceAroundOp and state.tok.type == TokenType.LPAREN) \
+			or state.tok.type not in VALUE_EXPR_TOKS:
 			isUnary = True
 		
 		if isUnary:
@@ -688,7 +689,7 @@ def parseValueExpr(state, precedence=0):
 	indentsCount = len(state.indentLevels)
 	
 	while True:
-		state.skipSpace()
+		spaceBeforeOp = state.skipSpace()
 		
 		if state.tok.type == TokenType.LBRACK:
 			expr = parseIndex(state, expr)
@@ -697,7 +698,7 @@ def parseValueExpr(state, precedence=0):
 		elif state.tok.type == TokenType.AS:
 			expr = parseCoercion(state, expr)
 		elif state.tok.type in INFIX_PRECEDENCE and INFIX_PRECEDENCE[state.tok.type] > precedence:
-			expr = parseInfixOp(state, expr, expr.span.startLine == expr.span.endLine)
+			expr = parseInfixOp(state, expr, expr.span.startLine == expr.span.endLine, spaceBeforeOp)
 		elif state.tok.type == TokenType.CARET:
 			expr = parseDeref(state, expr)
 		elif state.tok.type == TokenType.AMP:
