@@ -46,16 +46,14 @@ def main(args):
 	parser.add_argument(
 		'--obj',
 		'-o',
-		nargs='*',
-		metavar='FILE_NAME',
-		action='store',
+		action='store_true',
 		default=False,
 		help='generate object file(s) as output')
 	parser.add_argument(
 		'--asm',
 		'-s',
 		nargs='*',
-		metavar='FILE_NAME',
+		metavar='INPUT_FILE_NAME', 
 		action='store',
 		default=False,
 		help='generate assembly file(s) as output')
@@ -67,37 +65,52 @@ def main(args):
 		action='store',
 		default=False,
 		help='execute the program immediately after compilation')
-	parser.add_argument('input',
+	parser.add_argument(
+		'--sources',
+		'-f',
 		nargs='*',
 		metavar='INPUT_FILE_NAME', 
 		action='store',
-		default=None, 
+		default=[], 
+		help='file names to compile')
+	parser.add_argument(
+		'moreSources',
+		nargs='*',
+		metavar='INPUT_FILE_NAME', 
+		action='store',
+		default=[], 
 		help='file names to compile')
 	
 	args = parser.parse_args(args[1:])
 	
-	if not args.input:
-		if args.run != False and not (args.bin or args.dylib or args.lib):
-			args.input = args.run[:1]
-			args.run   = args.run[1:]
-		elif args.bin != False and not (args.run or args.dylib or args.lib):
-			args.input = [args.bin]
-			args.bin   = None
-		elif args.lib != False and not (args.run or args.dylib or args.bin):
-			args.input = [args.lib]
-			args.lib   = None
-		elif args.dylib != False and not (args.run or args.bin or args.lib):
-			args.input = [args.dylib]
-			args.dylib = None
+	if args.asm != False:
+		args.sources.extend(args.asm)
+		args.asm = True
+	
+	args.sources.extend(args.moreSources)
+	
+	if not args.sources:
+		if args.run != False:
+			args.sources = args.run[:1]
+			args.run     = args.run[1:]
+		elif args.bin != False:
+			args.sources = args.bin and [args.bin]
+			args.bin     = None
+		elif args.lib != False:
+			args.sources = args.lib and [args.lib]
+			args.lib     = None
+		elif args.dylib != False:
+			args.sources = args.dylib and [args.dylib]
+			args.dylib   = None
 	
 	binFileName = None
 	if args.bin != False:
 		if args.bin == None:
-			if len(args.input) != 1:
+			if len(args.sources) != 1:
 				print('Error: cannot infer output file name for binary. ' + 
 					'Please provide a file name as an argument to `--bin`')
 				exit(1)
-			args.bin = os.path.splitext(args.input[0])[0]
+			args.bin = os.path.splitext(args.sources[0])[0]
 		binFileName = args.bin
 		args.bin = True
 	else:
@@ -106,52 +119,32 @@ def main(args):
 	libFileName = None
 	if args.lib != False:
 		if args.lib == None:
-			if len(args.input) != 1:
+			if len(args.sources) != 1:
 				print('Error: cannot infer output file name for library. ' + 
 					'Please provide a file name as an argument to `--lib`')
 				exit(1)
-			args.lib = os.path.splitext(args.input[0])[0] + '.lib'
+			args.lib = os.path.splitext(args.sources[0])[0] + '.lib'
 		libFileName = args.lib
 		args.lib = True
-	else:
-		libFileName = '/tmp/caesar_tmp_{}.lib'.format(str(uuid.uuid1()))
 	
 	dyLibFileName = None
 	if args.dylib != False:
 		if args.dylib == None:
-			if len(args.input) != 1:
+			if len(args.sources) != 1:
 				print('Error: cannot infer output file name for DLL. ' + 
 					'Please provide a file name as an argument to `--dylib`')
 				exit(1)
-			args.dylib = os.path.splitext(args.input[0])[0] + '.dylib'
+			args.dylib = os.path.splitext(args.sources[0])[0] + '.dylib'
 		dylibFileName = args.dylib
 		args.dylib = True
-	else:
-		dylibFileName = '/tmp/caesar_tmp_{}.dylib'.format(str(uuid.uuid1()))
 	
 	asmFileNames = None
 	if args.asm != False:
-		if len(args.asm) > len(args.input):
-			print('Error: found too many arguments to `--asm` (expected up to {}, found {})'
-				.format(len(args.input), len(args.asm)))
-			exit(1)
-		asmFileNames = args.asm
-		for f in args.input[len(args.asm):]:
-			asmFileNames.append(os.path.splitext(f)[0] + '.asm')
+		asmFileNames = [os.path.splitext(f)[0] + '.asm' for f in args.sources]
 	else:
-		asmFileNames = ['/tmp/caesar_tmp_{}.asm'.format(str(uuid.uuid1())) for _ in args.input]
+		asmFileNames = ['/tmp/caesar_tmp_{}.asm'.format(str(uuid.uuid1())) for _ in args.sources]
 	
-	objFileNames = None
-	if args.obj != False:
-		if len(args.obj) > len(args.input):
-			print('Error: found too many arguments to `--obj` (expected up to {}, found {})'
-				.format(len(args.input), len(args.obj)))
-			exit(1)
-		objFileNames = args.obj
-		for f in args.input[len(args.obj):]:
-			objFileNames.append(os.path.splitext(f)[0] + '.o')
-	else:
-		objFileNames = ['/tmp/caesar_tmp_{}.o'.format(str(uuid.uuid1())) for _ in args.input]
+	objFileNames = [os.path.splitext(f)[0] + '.o' for f in args.sources]
 	
 	runArgs = args.run or []
 	args.run = not args.run == False
@@ -159,16 +152,20 @@ def main(args):
 	if args.repl:
 		if args.run or args.bin or args.dylib or args.lib or args.obj or args.asm:
 			print('Error: the following arguments may not be used in REPL mode:')
-			print('\t--run, --bin, --dylib, --lib, --obj, --asm')
+			print('  --run, --bin, --dylib, --lib, --obj, --asm')
 			exit(1)
-		elif args.input:
+		elif args.sources:
 			print('Error: input file names are not allowed in REPL mode')
 			exit(1)
 	elif not (args.run or args.bin or args.dylib or args.lib or args.obj or args.asm):
 			print('Error: no output method selected. Expected one or more of:')
-			print('\t--run, --bin, --dylib, --lib, --obj, --asm')
+			print('  --run, --bin, --dylib, --lib, --obj, --asm')
 			exit(1)
-	elif not args.input:
+	elif args.run + args.bin + args.dylib + args.lib > 1:
+			print('Error: can only select one of:')
+			print('  --run, --bin, --dylib, --lib')
+			exit(1)
+	elif not args.sources:
 		print('Error: no input files supplied')
 		exit(1)
 	
@@ -179,7 +176,7 @@ def main(args):
 		print('Error: output methods `--lib` and `--dylib` are currently unimplemented')
 		exit(1)
 	
-	for (i, fileName) in enumerate(args.input):
+	for (i, fileName) in enumerate(args.sources):
 		try:
 			source = SourceFile(fileName)
 		except Exception as e:
@@ -204,16 +201,21 @@ def main(args):
 			exit(1)
 	
 	try:
+		if not args.asm and (args.obj or args.bin or args.lib or args.dylib or args.run):
+			for f in asmFileNames:
+				os.remove(f)
+		
 		if args.bin or args.run:
 			os.system('ld -e _start -macosx_version_min 10.8 -arch x86_64 {} -lc -lSystem -no_pie -o {}'
 				.format(' '.join(objFileNames), binFileName))
 		
+		if args.run and not args.obj:
+			for f in objFileNames:
+				os.remove(f)
+		
 		if args.run:
 			os.system('{} {}'.format(binFileName, ' '.join(runArgs)))
-		
-		if not args.asm and (args.obj or args.bin or args.lib or args.dylib or args.run):
-			for f in asmFileNames:
-				os.remove(f)
+			os.remove(binFileName)
 	except Exception as e:
 		print(e)
 		exit(1)
