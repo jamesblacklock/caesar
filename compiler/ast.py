@@ -339,6 +339,14 @@ class WhileAST:
 		self.parentScope = None
 		self.symbolTable = {}
 
+class BreakAST:
+	def __init__(self, span):
+		self.span = span
+
+class ContinueAST:
+	def __init__(self, span):
+		self.span = span
+
 class ValueExprAST:
 	def __init__(self):
 		self.resolvedType = None
@@ -368,6 +376,7 @@ class IntLitAST(ValueExprAST):
 		value = int(matches[2].replace('_', ''), base)
 		suffix = matches[3]
 		
+		self.base = base
 		self.value = -value if negate else value
 		self.suffix = suffix
 		self.span = span

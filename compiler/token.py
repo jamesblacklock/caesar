@@ -55,6 +55,14 @@ class TokenType(Enum):
 	ELSE = 'ELSE'
 	WHILE = 'WHILE'
 	FOR = 'FOR'
+	CONTINUE = 'CONTINUE'
+	BREAK = 'BREAK'
+	LOOP = 'LOOP'
+	ENUM = 'ENUM'
+	PUB = 'PUB'
+	UNION = 'UNION'
+	CONST = 'CONST'
+	MATCH = 'MATCH'
 	AS = 'AS'
 	VOID = 'VOID'
 	TRUE = 'TRUE'
@@ -172,6 +180,22 @@ class TokenType(Enum):
 			return '`while`'
 		elif self == TokenType.FOR:
 			return '`for`'
+		elif self == TokenType.BREAK:
+			return '`break`'
+		elif self == TokenType.CONTINUE:
+			return '`continue`'
+		elif self == TokenType.LOOP:
+			return '`loop`'
+		elif self == TokenType.ENUM:
+			return '`enum`'
+		elif self == TokenType.PUB:
+			return '`pub`'
+		elif self == TokenType.UNION:
+			return '`union`'
+		elif self == TokenType.CONST:
+			return '`const`'
+		elif self == TokenType.MATCH:
+			return '`match`'
 		elif self == TokenType.AS:
 			return '`as`'
 		elif self == TokenType.VOID:

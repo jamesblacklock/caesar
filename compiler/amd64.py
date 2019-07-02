@@ -1,11 +1,16 @@
 import ctypes
-from .ir                                         import Move, Addr, Add, Call, Cmp, Div, Ret, IfElse, \
-	                                                     While, InfixOp, Sub, Mul, Storage, Coerce, \
-                                                         I8, I16, I32, I64, U8, U16, U32, U64, IPTR, \
-                                                         F32, F64
+from .ir                                         import Move, Addr, Add, Call, Cmp, Div, Ret, IfElse, Break, \
+	                                                     While, InfixOp, Sub, Mul, Coerce, Cont, Storage, \
+                                                         I8, I16, I32, I64, U8, U16, U32, U64, IPTR, F32, F64
 
 
 ARG_REGS = ['rdi', 'rsi', 'rdx', 'rcx', 'r8', 'r9']
+
+class LoopInfo:
+	def __init__(self, startLabel, endLabel, parent):
+		self.startLabel = startLabel
+		self.endLabel = endLabel
+		self.parent = parent
 
 def targetToOperand(target, fnIR, offset=0):
 	byteSize = target.type.byteSize
@@ -58,7 +63,7 @@ def getReg(type, ind=0):
 	else:
 		assert 0
 
-def irToAsm(instr, fnIR):
+def irToAsm(instr, fnIR, loopInfo=None):
 	if type(instr) == Move:
 		reg = getReg(instr.dest.type)
 		lines = []
@@ -152,9 +157,9 @@ def irToAsm(instr, fnIR):
 		lines.append('mov {}, {}'.format(reg, targetToOperand(instr.target, fnIR)))
 		lines.append('cmp {}, 0'.format(reg))
 		lines.append('jz {}'.format(elseLabel))
-		lines.append('{}{}'.format(irBlockToAsm(instr.ifBlock, fnIR), ifRetVal))
+		lines.append('{}{}'.format(irBlockToAsm(instr.ifBlock, fnIR, loopInfo), ifRetVal))
 		lines.append('jmp {}'.format(endLabel))
-		lines.append('{}:\n{}{}\t{}:'.format(elseLabel, irBlockToAsm(instr.elseBlock, fnIR), elseRetVal, endLabel))
+		lines.append('{}:\n{}{}\t{}:'.format(elseLabel, irBlockToAsm(instr.elseBlock, fnIR, loopInfo), elseRetVal, endLabel))
 		if instr.dest:
 			lines.append('mov {}, {}'.format(targetToOperand(instr.dest, fnIR), destReg))
 		return '\n\t\t'.join(lines)
@@ -164,17 +169,25 @@ def irToAsm(instr, fnIR):
 		endLabel = '{}__endwhilelabel__{}'.format(fnIR.name, fnIR.labelsCount)
 		fnIR.labelsCount += 1
 		result = '\n\t{}:\n{}\t\tmov {}, {}\n\t\tcmp {}, 0\n\t\tjz {}\n{}\t\tjmp {}\n\t{}:'.format(
-			startLabel,
-			irBlockToAsm(instr.condBlock, fnIR), 
+			startLabel, 
+			irBlockToAsm(instr.condBlock, fnIR, loopInfo), 
 			reg, 
 			targetToOperand(instr.target, fnIR), 
 			reg, 
 			endLabel, 
-			irBlockToAsm(instr.block, fnIR), 
+			irBlockToAsm(instr.block, fnIR, LoopInfo(startLabel, endLabel, loopInfo)), 
 			startLabel, 
 			endLabel
 		)
 		return result
+	elif type(instr) == Break:
+		if loopInfo == None:
+			assert 0
+		return 'jmp {}'.format(loopInfo.endLabel)
+	elif type(instr) == Cont:
+		if loopInfo == None:
+			assert 0
+		return 'jmp {}'.format(loopInfo.startLabel)
 	elif type(instr) == Cmp:
 		reg = getReg(instr.l.type)
 		reg2 = getReg(instr.l.type, 1)
@@ -272,10 +285,10 @@ def coerce(src, destType, fnIR, offset=0, regInd=0):
 	else:
 		raise RuntimeError('unimplemented!')
 
-def irBlockToAsm(irBlock, fnIR):
+def irBlockToAsm(irBlock, fnIR, loopInfo=None):
 	lines = []
 	for instr in irBlock:
-		lines.append('\t\t\n\t\t; {}\n\t\t'.format(str(instr).split('\n')[0]) + irToAsm(instr, fnIR) + '\n')
+		lines.append('\t\t\n\t\t; {}\n\t\t'.format(str(instr).split('\n')[0]) + irToAsm(instr, fnIR, loopInfo) + '\n')
 	return ''.join(lines)
 
 def delcareExterns(mod, lines):	

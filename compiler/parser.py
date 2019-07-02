@@ -9,7 +9,7 @@ from .ast                import CConv, FnDeclAST, LetAST, FnCallAST, ReturnAST, 
                                 ValueRefAST, InfixOpAST, FnCallAST, IfAST, CoercionAST, ModAST, \
                                 ValueExprAST, FnParamAST, BlockAST, AsgnAST, WhileAST, DerefAST, \
                                 IndexOpAST, VoidAST, CVarArgsParamAST, InfixOp, AddressAST, \
-                                INFIX_PRECEDENCE
+                                BreakAST, ContinueAST, INFIX_PRECEDENCE
 from .types              import BUILTIN_TYPES
 
 class ParserState:
@@ -499,6 +499,31 @@ def parseWhile(state):
 	
 	return WhileAST(expr, BlockAST(block), span)
 
+def parseLoopCtl(state):
+	span = state.tok.span
+	isBreak = state.tok.type == TokenType.BREAK
+	state.advance()
+	# label = None
+	# expr = None
+	# state.skipSpace()
+	
+	# if state.tok.type == TokenType.COLON:
+	# 	span = Span.merge(span, state.tok.span)
+	# 	state.advance()
+	# 	state.skipSpace()
+	# 	if expectType(state, TokenType.NAME):
+	# 		label = state.tok.content
+	# 		span = Span.merge(span, state.tok.span)
+	# 		state.advance()
+	# 		state.skipSpace()
+	
+	# if state.tok.type in VALUE_EXPR_TOKS:
+	# 	expr = parseValueExpr(state)
+	# 	if expr:
+	# 		span = Span.merge(span, expr.span)
+	
+	return BreakAST(span) if isBreak else ContinueAST(span)
+
 VALUE_EXPR_TOKS = (
 	TokenType.NEWLINE,
 	TokenType.LBRACE,
@@ -795,6 +820,8 @@ def parseFnBodyExpr(state):
 		return parseLet(state)
 	elif state.tok.type == TokenType.WHILE:
 		return parseWhile(state)
+	elif state.tok.type == TokenType.BREAK or state.tok.type == TokenType.CONTINUE:
+		return parseLoopCtl(state)
 	else:
 		logError(state, state.tok.span, 'expected expression, found {}'.format(state.tok.type.desc()))
 

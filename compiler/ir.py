@@ -2,7 +2,8 @@ from enum                            import Enum
 from .parser                         import FnDeclAST, FnCallAST, ValueRefAST, StrLitAST, BlockAST, \
 	                                        IntLitAST, ReturnAST, LetAST, IfAST, InfixOpAST, InfixOp, \
 											CoercionAST, BoolLitAST, WhileAST, AsgnAST, DerefAST, \
-											IndexOpAST, VoidAST, AddressAST, FloatLitAST
+											IndexOpAST, VoidAST, AddressAST, FloatLitAST, BreakAST, \
+											ContinueAST
 from .analyzer                       import lookupSymbol
 from .                               import types
 
@@ -144,7 +145,21 @@ class Ret(Instr):
 	
 	def __str__(self):
 		target = '' if self.target == None else ' {}'.format(self.target)
-		return 'ret{}'.format(target)
+		return 'ret {}'.format(target)
+
+class Break(Instr):
+	def __init__(self, ast):
+		super().__init__(ast)
+	
+	def __str__(self):
+		return 'break'
+
+class Cont(Instr):
+	def __init__(self, ast):
+		super().__init__(ast)
+	
+	def __str__(self):
+		return 'cont'
 
 class IfElse(Instr):
 	def __init__(self, ast, target, dest, ifBlock, elseBlock):
@@ -481,6 +496,12 @@ def addressToIR(scope, addr, fn, block):
 	
 	block.append(Addr(addr, src, dest))
 
+def breakToIR(scope, expr, fn, block):
+	block.append(Break(expr))
+
+def continueToIR(scope, expr, fn, block):
+	block.append(Cont(expr))
+
 def exprToIR(scope, expr, fn, block):
 	if type(expr) == BoolLitAST:
 		boolLitToIR(scope, expr, fn, block)
@@ -506,6 +527,10 @@ def exprToIR(scope, expr, fn, block):
 		whileBlockToIR(scope, expr, fn, block)
 	elif type(expr) == ReturnAST:
 		returnToIR(scope, expr, fn, block)
+	elif type(expr) == BreakAST:
+		breakToIR(scope, expr, fn, block)
+	elif type(expr) == ContinueAST:
+		continueToIR(scope, expr, fn, block)
 	elif type(expr) == BlockAST:
 		listToIR(scope, expr.exprs, fn, block)
 	elif type(expr) == CoercionAST:

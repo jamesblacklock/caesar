@@ -3,7 +3,7 @@ from .ast                import CConv, FnDeclAST, LetAST, FnCallAST, ReturnAST, 
                                 StrLitAST, IntLitAST, BoolLitAST, TupleLitAST, ValueRefAST, \
 								InfixOpAST, FnCallAST, IfAST, CoercionAST, ModAST, ValueExprAST, \
 								BlockAST, AsgnAST, WhileAST, DerefAST, IndexOpAST, VoidAST, \
-								AddressAST, FloatLitAST
+								AddressAST, FloatLitAST, BreakAST, ContinueAST, InfixOp
 from .                   import types
 from .types              import getValidAssignType, ResolvedType
 from .err                import logError, logWarning
@@ -69,33 +69,33 @@ def lookupSymbol(state, scope, symbolRef, inTypePosition):
 	
 	return symbol
 
-def resolveValueExprType(state, scope, expr, expectedType=None):
+def resolveValueExprType(state, scope, expr, implicitType=None):
 	if type(expr) == StrLitAST:
 		expr.resolvedType = types.ResolvedPtrType(types.Byte, 1)
 	elif type(expr) == BoolLitAST:
 		expr.resolvedType = types.Bool
 	elif type(expr) == IntLitAST:
-		typeCheckIntLit(state, scope, expr, expectedType)
+		typeCheckIntLit(state, scope, expr, implicitType)
 	elif type(expr) == FloatLitAST:
-		typeCheckFloatLit(state, scope, expr, expectedType)
+		typeCheckFloatLit(state, scope, expr, implicitType)
 	elif type(expr) == BlockAST:
-		typeCheckBlock(state, scope, expr, expectedType)
+		typeCheckBlock(state, scope, expr, implicitType)
 	elif type(expr) == DerefAST:
 		typeCheckDeref(state, scope, expr)
 	elif type(expr) == AddressAST:
-		typeCheckAddress(state, scope, expr, expectedType)
+		typeCheckAddress(state, scope, expr, implicitType)
 	elif type(expr) == TupleLitAST:
 		raise RuntimeError('unimplemented!')
 	elif type(expr) == ValueRefAST:
 		typeCheckValueRef(state, scope, expr)
 	elif type(expr) == InfixOpAST:
-		typeCheckInfixOp(state, scope, expr, expectedType)
+		typeCheckInfixOp(state, scope, expr, implicitType)
 	elif type(expr) == FnCallAST:
 		typeCheckFnCall(state, scope, expr)
 	elif type(expr) == IndexOpAST:
 		typeCheckIndex(state, scope, expr)
 	elif type(expr) == IfAST:
-		typeCheckIf(state, scope, expr, expectedType)
+		typeCheckIf(state, scope, expr, implicitType)
 	elif type(expr) == CoercionAST:
 		typeCheckCoercion(state, scope, expr)
 	elif type(expr) == VoidAST:
@@ -118,7 +118,7 @@ def typeCheckValueRef(state, scope, valueRef):
 	symbol = lookupSymbol(state, scope, valueRef, False)
 	valueRef.resolvedType = symbol.resolvedSymbolType if symbol else None
 
-def typeCheckIntLit(state, scope, lit, expectedType):
+def typeCheckIntLit(state, scope, lit, implicitType):
 	if lit.suffix == 'i8':
 		lit.resolvedType = types.Int8
 	elif lit.suffix == 'u8':
@@ -139,8 +139,8 @@ def typeCheckIntLit(state, scope, lit, expectedType):
 		lit.resolvedType = types.ISize
 	elif lit.suffix == 'usz':
 		lit.resolvedType = types.USize
-	elif expectedType and expectedType.isIntType:
-		lit.resolvedType = expectedType
+	elif implicitType and (implicitType.isIntType or (implicitType == types.Byte and lit.base != 10)):
+		lit.resolvedType = implicitType
 	elif types.canAccommodate(types.Int32, lit.value):
 		lit.resolvedType = types.Int32
 	elif types.canAccommodate(types.Int64, lit.value) or lit.value < 0:
@@ -151,13 +151,13 @@ def typeCheckIntLit(state, scope, lit, expectedType):
 	if not types.canAccommodate(lit.resolvedType, lit.value):
 		logError(state, lit.span, 'integer value out of range for type {}'.format(lit.resolvedType))
 
-def typeCheckFloatLit(state, scope, lit, expectedType):
+def typeCheckFloatLit(state, scope, lit, implicitType):
 	if lit.suffix == 'f32':
 		lit.resolvedType = types.Float32
 	elif lit.suffix == 'f64':
 		lit.resolvedType = types.Float64
-	elif expectedType and expectedType.isFloatType:
-		lit.resolvedType = expectedType
+	elif implicitType and implicitType.isFloatType:
+		lit.resolvedType = implicitType
 	else:# elif types.canAccommodate(types.Float32, lit.value):
 		lit.resolvedType = types.Float32
 	# else:
@@ -166,8 +166,8 @@ def typeCheckFloatLit(state, scope, lit, expectedType):
 	# if not types.canAccommodate(lit.resolvedType, lit.value):
 	# 	logError(state, lit.span, 'flaoting point value out of range for type {}'.format(lit.resolvedType))
 
-def typeCheckAddress(state, scope, addr, expectedType):
-	resolveValueExprType(state, scope, addr.expr, expectedType)
+def typeCheckAddress(state, scope, addr, implicitType):
+	resolveValueExprType(state, scope, addr.expr, implicitType)
 	if addr.expr.resolvedType == None:
 		return
 	
@@ -196,7 +196,7 @@ def typeCheckDeref(state, scope, deref):
 		else:
 			deref.resolvedType = types.ResolvedPtrType(baseType, indLevel - derefCount)
 
-def typeCheckInfixOp(state, scope, infixOp, expectedType):
+def typeCheckInfixOp(state, scope, infixOp, implicitType):
 	opErr = lambda: \
 		logError(state, infixOp.opSpan, 
 			'invalid operand types for operator `{}` ({} and {})'
@@ -206,10 +206,10 @@ def typeCheckInfixOp(state, scope, infixOp, expectedType):
 	rIndefinite = not types.hasDefiniteType(infixOp.r)
 	if lIndefinite or rIndefinite:
 		if not lIndefinite:
-			resolveValueExprType(state, scope, infixOp.l, expectedType)
+			resolveValueExprType(state, scope, infixOp.l, implicitType)
 			resolveValueExprType(state, scope, infixOp.r, infixOp.l.resolvedType)
 		elif not rIndefinite:
-			resolveValueExprType(state, scope, infixOp.r, expectedType)
+			resolveValueExprType(state, scope, infixOp.r, implicitType)
 			resolveValueExprType(state, scope, infixOp.l, infixOp.r.resolvedType)
 		elif types.canAccommodate(types.Int32, infixOp.l.value) and types.canAccommodate(types.Int32, infixOp.r.value):
 			resolveValueExprType(state, scope, infixOp.r, types.Int32)
@@ -221,13 +221,17 @@ def typeCheckInfixOp(state, scope, infixOp, expectedType):
 			resolveValueExprType(state, scope, infixOp.r, types.UInt64)
 			resolveValueExprType(state, scope, infixOp.l, types.UInt64)
 	else:
-		resolveValueExprType(state, scope, infixOp.r, expectedType)
-		resolveValueExprType(state, scope, infixOp.l, expectedType)
+		resolveValueExprType(state, scope, infixOp.r, implicitType)
+		resolveValueExprType(state, scope, infixOp.l, implicitType)
 	
 	if not infixOp.l.resolvedType or not infixOp.r.resolvedType:
 		return
 	
-	if infixOp.l.resolvedType.isPtrType and infixOp.r.resolvedType.isIntType:
+	if infixOp.l.resolvedType == types.Byte and infixOp.r.resolvedType == types.Byte:
+		if infixOp.op == InfixOp.EQ:
+			infixOp.resolvedType = types.Bool
+			return
+	elif infixOp.l.resolvedType.isPtrType and infixOp.r.resolvedType.isIntType:
 		if infixOp.op in ast.PTR_INT_OPS:
 			infixOp.resolvedType = infixOp.l.resolvedType
 			return
@@ -411,7 +415,7 @@ def getBlockType(block):
 	
 	return lastExpr.resolvedType
 
-def typeCheckIf(state, scope, ifExpr, expectedType):
+def typeCheckIf(state, scope, ifExpr, implicitType):
 	ifExpr.parentScope = scope
 	scope = ifExpr
 	
@@ -420,15 +424,15 @@ def typeCheckIf(state, scope, ifExpr, expectedType):
 		logError(state, ifExpr.expr.span, 
 			'condition type must be Bool (found {})'.format(ifExpr.expr.resolvedType))
 	
-	typeCheckBlock(state, scope, ifExpr.ifBlock, expectedType)
+	typeCheckBlock(state, scope, ifExpr.ifBlock, implicitType)
 	resolvedType = ifExpr.ifBlock.resolvedType
 	
 	if ifExpr.elseBlock:
-		typeCheckBlock(state, scope, ifExpr.elseBlock, expectedType)
+		typeCheckBlock(state, scope, ifExpr.elseBlock, implicitType)
 		elseResolvedType = ifExpr.elseBlock.resolvedType
 		
 		if ifExpr.ifBlock.doesReturn and ifExpr.elseBlock.doesReturn:
-			resolvedType = expectedType if expectedType else types.Void
+			resolvedType = implicitType if implicitType else types.Void
 		elif ifExpr.ifBlock.doesReturn:
 			resolvedType = ifExpr.elseBlock.resolvedType
 		elif ifExpr.elseBlock.doesReturn:
@@ -455,7 +459,16 @@ def typeCheckCoercion(state, scope, asExpr):
 		logError(state, asExpr.span, 'cannot coerce from {} to {}'
 			.format(asExpr.expr.resolvedType, asExpr.typeRef.resolvedType))
 
-def typeCheckBlock(state, scope, block, expectedType=None):
+def checkLoopCtl(state, scope, expr):
+	while scope:
+		if type(scope) == WhileAST:
+			return
+		scope = scope.parentScope
+	
+	logError(state, expr.span, '`{}` expression is not inside a loop'
+		.format('break' if type(expr) == BreakAST else 'continue'))
+
+def typeCheckBlock(state, scope, block, implicitType=None):
 	block.parentScope = scope
 	unreachableSpan = None
 	block.doesReturn = False
@@ -475,14 +488,16 @@ def typeCheckBlock(state, scope, block, expectedType=None):
 			block.doesReturn = expr.doesReturn
 		elif type(expr) == WhileAST:
 			typeCheckWhile(state, scope, expr)
+		elif type(expr) == BreakAST or type(expr) == ContinueAST:
+			checkLoopCtl(state, scope, expr)
 		elif isinstance(expr, ValueExprAST):
-			resolveValueExprType(state, scope, expr, expectedType if i+1 == len(block.exprs) else None)
+			resolveValueExprType(state, scope, expr, implicitType if i+1 == len(block.exprs) else None)
 			block.doesReturn = expr.doesReturn
 		else:
 			assert 0
 	
 	if block.doesReturn or len(block.exprs) == 0:
-		block.resolvedType = expectedType if expectedType else types.Void
+		block.resolvedType = implicitType if implicitType else types.Void
 	else:
 		lastExpr = block.exprs[-1]
 		if not isinstance(lastExpr, ValueExprAST):
