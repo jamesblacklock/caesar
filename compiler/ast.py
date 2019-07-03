@@ -292,8 +292,9 @@ class StructDeclAST(ModLevelDeclAST):
 		self.resolvedSymbolType = None
 
 class FieldDeclAST:
-	def __init__(self, name, typeRef, span):
-		self.name = name
+	def __init__(self, nameTok, typeRef, span):
+		self.nameTok = nameTok
+		self.name = nameTok.content
 		self.typeRef = typeRef
 		self.span = span
 		self.align = None
@@ -339,9 +340,10 @@ class LetAST:
 		self.noBinding = False
 
 class TypeRefAST:
-	def __init__(self, name, indirectionLevel, span):
-		self.name = name
-		self.path = [name]
+	def __init__(self, path, indirectionLevel, span):
+		self.path = path
+		self.nameTok = path[-1]
+		self.name = self.nameTok.content
 		self.indirectionLevel = indirectionLevel
 		self.span = span
 		self.resolvedType = None
@@ -441,9 +443,10 @@ class TupleLitAST(ValueExprAST):
 		self.span = span
 
 class FieldLitAST(ValueExprAST):
-	def __init__(self, name, expr, span):
+	def __init__(self, nameTok, expr, span):
 		super().__init__()
-		self.name = name
+		self.nameTok = nameTok
+		self.name = nameTok.content
 		self.expr = expr
 		self.span = span
 
@@ -451,6 +454,8 @@ class StructLitAST(ValueExprAST):
 	def __init__(self, path, fields, span):
 		super().__init__()
 		self.path = path
+		self.nameTok = path[-1]
+		self.name = self.nameTok.content
 		self.fields = fields
 		self.span = span
 
@@ -466,15 +471,19 @@ class ValueRefAST(ValueExprAST):
 	def __init__(self, path, span):
 		super().__init__()
 		self.path = path
-		self.name = path[-1]
+		self.nameTok = path[-1]
+		self.name = self.nameTok.content
 		self.span = span
 
 class FieldAccessAST(ValueExprAST):
-	def __init__(self, path, span):
+	def __init__(self, expr, path, span):
 		super().__init__()
+		self.expr = expr
 		self.path = path
-		self.name = path[-1]
+		self.nameTok = path[-1]
+		self.name = self.nameTok.content
 		self.span = span
+		self.fieldOffset = None
 
 class InfixOpAST(ValueExprAST):
 	def __init__(self, l, r, op, span, opSpan):

@@ -3,7 +3,7 @@ from .ast import IntLitAST
 
 class ResolvedType:
 	def __init__(self, name, byteSize, 
-		isFnType=False, isPtrType=False, 
+		isFnType=False, isPtrType=False, isStructType=False, 
 		isIntType=False, isFloatType=False, isOptionType=False, 
 		isVoidType=False, isPrimitiveType=False, isSigned=False):
 		self.name = name
@@ -12,6 +12,7 @@ class ResolvedType:
 		self.isVoidType = isVoidType
 		self.isFnType = isFnType
 		self.isPtrType = isPtrType
+		self.isStructType = isStructType
 		self.isIntType = isIntType
 		self.isFloatType = isFloatType
 		self.isOptionType = isOptionType
@@ -42,6 +43,27 @@ class ResolvedFnType(ResolvedType):
 		self.resolvedReturnType = resolvedReturnType
 		self.resolvedParamTypes = resolvedParamTypes
 		self.cVarArgs = cVarArgs
+
+class Field:
+	def __init__(self, name, symbolType, offset):
+		self.name = name
+		self.resolvedSymbolType = symbolType
+		self.offset = offset
+
+class ResolvedStructType(ResolvedType):
+	def __init__(self, name, fields):
+		byteSize = 0
+		self.fieldDict = {}
+		self.fields = fields
+		
+		if fields:
+			lastField = fields[-1]
+			byteSize = lastField.offset + lastField.resolvedSymbolType.byteSize
+			
+			for field in fields:
+				self.fieldDict[field.name] = field
+		
+		super().__init__(name, byteSize, isStructType=True)
 
 PLATFORM_WORD_SIZE = 8
 
@@ -175,3 +197,14 @@ def hasDefiniteType(ast):
 		return False
 	
 	return True
+
+def getAlignment(t):
+	if t.byteSize == 0:
+		return 1
+	elif t.isPrimitiveType:
+		return t.byteSize
+	elif t.isStructType:
+		assert len(t.fields) > 0
+		return getAlignment(t.fields[0].resolvedSymbolType)
+	else:
+		assert 0

@@ -268,16 +268,16 @@ def parseStructDecl(state, doccomment, attrs, anon):
 		if expectType(state, TokenType.NAME) == False:
 			return None
 		
-		name = state.tok.content
+		nameTok = state.tok
 		span = state.tok.span
 		
 		state.advance()
 		state.skipSpace()
 		
 		if expectType(state, TokenType.COLON) == False:
-			return FieldDeclAST(name, None, span)
+			return FieldDeclAST(nameTok, None, span)
 		
-		Span.merge(span, state.tok.span)
+		span = Span.merge(span, state.tok.span)
 		
 		state.advance()
 		onOneLine = permitLineBreakIndent(state) == False
@@ -285,12 +285,12 @@ def parseStructDecl(state, doccomment, attrs, anon):
 		
 		typeRef = parseTypeRef(state)
 		if typeRef:
-			Span.merge(span, typeRef.span)
+			span = Span.merge(span, typeRef.span)
 		
 		if not onOneLine:
 			state.popIndentLevel()
 		
-		return FieldDeclAST(name, typeRef, span)
+		return FieldDeclAST(nameTok, typeRef, span)
 	
 	span = state.tok.span
 	state.advance()
@@ -476,19 +476,19 @@ def parseBlock(state, parseItem, blockMarkers=BlockMarkers.BRACE,
 def parseTypeRef(state):
 	if expectType(state, TokenType.NAME) == False:
 		return None
-	else:
-		typeName = state.tok.content
-		span = state.tok.span
-		lastTok = state.tok
+	
+	path = parsePath(state)
+	span = path.span
+	indirectionLevel = 0
+	
+	state.skipSpace()
+	while state.tok.type == TokenType.AMP or state.tok.type == TokenType.AND:
+		span = Span.merge(span, state.tok.span)
+		indirectionLevel += 1 if state.tok.type == TokenType.AMP else 2
 		state.advance()
-		indirectionLevel = 0
-		
-		while state.tok.type == TokenType.AMP or state.tok.type == TokenType.AND:
-			lastTok = state.tok
-			indirectionLevel += 1 if state.tok.type == TokenType.AMP else 2
-			state.advance()
-		
-		return TypeRefAST(typeName, indirectionLevel, Span.merge(span, lastTok.span))
+		state.skipSpace()
+	
+	return TypeRefAST(path.path, indirectionLevel, span)
 
 def parseFnCall(state, expr):
 	block = parseBlock(state, parseValueExpr, BlockMarkers.PAREN, True)
@@ -685,7 +685,7 @@ class Path:
 		self.span = span
 
 def parsePath(state):
-	path = [state.tok.content]
+	path = [state.tok]
 	span = state.tok.span
 	state.advance()
 	onOneLine = True
@@ -702,7 +702,7 @@ def parsePath(state):
 		if expectType(state, TokenType.NAME) == False:
 			break
 		
-		path.append(state.tok.content)
+		path.append(state.tok)
 		span = Span.merge(span, state.tok.span)
 		state.advance()
 	
@@ -716,14 +716,14 @@ def parseStructLit(state, path):
 		if expectType(state, TokenType.NAME) == False:
 			return None
 		
-		name = state.tok.content
+		nameTok = state.tok
 		span = state.tok.span
 		
 		state.advance()
 		state.skipSpace()
 		
 		if expectType(state, TokenType.COLON) == False:
-			return FieldDeclAST(name, None, span)
+			return FieldDeclAST(nameTok, None, span)
 		
 		Span.merge(span, state.tok.span)
 		
@@ -733,12 +733,12 @@ def parseStructLit(state, path):
 		
 		expr = parseValueExpr(state)
 		if expr:
-			Span.merge(span, expr.span)
+			span = Span.merge(span, expr.span)
 		
 		if not onOneLine:
 			state.popIndentLevel()
 		
-		return FieldLitAST(name, expr, span)
+		return FieldLitAST(nameTok, expr, span)
 	
 	span = path.span
 	block = parseBlock(state, parseFieldLit)
@@ -765,7 +765,7 @@ def parseSign(state):
 
 def parseFieldAccess(state, expr):
 	path = []
-	span = state.tok.span
+	span = expr.span
 	onOneLine = True
 	
 	while state.tok.type == TokenType.DOT:
@@ -780,14 +780,14 @@ def parseFieldAccess(state, expr):
 		if expectType(state, TokenType.NAME) == False:
 			break
 		
-		path.append(state.tok.content)
+		path.append(state.tok)
 		span = Span.merge(span, state.tok.span)
 		state.advance()
 	
 	if not onOneLine:
 		state.popIndentLevel()
 	
-	return FieldAccessAST(path, span)
+	return FieldAccessAST(expr, path, span)
 
 def isBlockStart(state):
 	offset = state.offset

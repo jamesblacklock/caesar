@@ -4,9 +4,9 @@ from .ast                import CConv, FnDeclAST, LetAST, FnCallAST, ReturnAST, 
 								InfixOpAST, FnCallAST, IfAST, CoercionAST, ModAST, ValueExprAST, \
 								BlockAST, AsgnAST, WhileAST, DerefAST, IndexOpAST, VoidAST, \
 								AddressAST, FloatLitAST, BreakAST, ContinueAST, InfixOp, LoopAST, \
-                                CharLitAST
+                                CharLitAST, StructLitAST, FieldAccessAST, StructDeclAST
 from .                   import types
-from .types              import getValidAssignType, ResolvedType
+from .types              import getValidAssignType
 from .err                import logError, logWarning
 from .span               import Span
 
@@ -33,39 +33,45 @@ def invokeAttrs(state, decl):
 def lookupSymbol(state, scope, symbolRef, inTypePosition):
 	path = symbolRef.path
 	symbol = None
+	symbolTok = path[0]
 	
 	while scope != None:
-		if path[0] in scope.symbolTable:
-			symbol = scope.symbolTable[path[0]]
+		if path[0].content in scope.symbolTable:
+			symbol = scope.symbolTable[path[0].content]
 			break
 		scope = scope.parentScope
 	
 	if symbol != None:
-		for name in path[1:]:
+		for tok in path[1:]:
 			if state and type(symbol) != ModAST:
-				logError(state, symbolRef.span, '`{}` is not a module'.format(symbol.name))
+				logError(state, symbolTok.span, '`{}` is not a module'.format(symbol.name))
+				return None
+			
+			symbolTok = tok
+			if tok.content not in symbol.symbolTable:
 				symbol = None
 				break
 			
-			if name not in symbol.symbolTable:
-				return None
-			symbol = symbol.symbolTable[name]
+			symbol = symbol.symbolTable[tok.content]
+	
+	if symbol and inTypePosition and type(symbol) == StructDeclAST:
+		symbol = symbol.resolvedSymbolType
 	
 	if state:
 		if inTypePosition:
 			if symbol == None:
-				logError(state, symbolRef.span, 'cannot resolve type `{}`'.format(symbolRef.name))
-			elif type(symbol) != types.ResolvedType:
-				logError(state, symbolRef.span, '`{}` is not a type'.format(symbolRef.name))
+				logError(state, symbolTok.span, 'cannot resolve type `{}`'.format(symbolTok.content))
+			elif not isinstance(symbol,  types.ResolvedType):
+				logError(state, symbolTok.span, '`{}` is not a type'.format(symbolTok.content))
 				symbol = None
 		else:
 			if symbol == None:
-				logError(state, symbolRef.span, 'cannot resolve the symbol `{}`'.format(symbolRef.name))
-			elif type(symbol) == types.ResolvedType:
-				logError(state, symbolRef.span, 'found a type reference where a value was expected')
+				logError(state, symbolTok.span, 'cannot resolve the symbol `{}`'.format(symbolTok.content))
+			elif isinstance(symbol,  types.ResolvedType):
+				logError(state, symbolTok.span, 'found a type reference where a value was expected')
 				symbol = None
 			elif type(symbol) == ModAST:
-				logError(state, symbolRef.span, 'found a module name where a value was expected')
+				logError(state, symbolTok.span, 'found a module name where a value was expected')
 				symbol = None
 	
 	return symbol
@@ -103,6 +109,10 @@ def resolveValueExprType(state, scope, expr, implicitType=None):
 		typeCheckCoercion(state, scope, expr)
 	elif type(expr) == VoidAST:
 		expr.resolvedType = types.Void
+	elif type(expr) == StructLitAST:
+		typeCheckStructLit(state, scope, expr)
+	elif type(expr) == FieldAccessAST:
+		typeCheckFieldAccess(state, scope, expr)
 	else:
 		assert 0
 
@@ -110,7 +120,7 @@ def resolveTypeRefType(state, scope, typeRef):
 	resolvedType = lookupSymbol(state, scope, typeRef, True)
 	
 	if resolvedType == None:
-		resolvedType = ResolvedType(typeRef.name, 0)
+		resolvedType = types.ResolvedType(typeRef.name, 0)
 	
 	if typeRef.indirectionLevel > 0:
 		resolvedType = types.ResolvedPtrType(resolvedType, typeRef.indirectionLevel)
@@ -225,7 +235,7 @@ def typeCheckInfixOp(state, scope, infixOp, implicitType):
 	elif rIndefinite:
 		resolveValueExprType(state, scope, infixOp.l, implicitType)
 		if type(infixOp.r) == IntLitAST:
-			if infixOp.l.resolvedType.isPtrType:
+			if infixOp.l.resolvedType and infixOp.l.resolvedType.isPtrType:
 				if infixOp.op in ast.PTR_INT_OPS:
 					resolveValueExprType(state, scope, infixOp.r, types.ISize if infixOp.r.value < 0 else types.USize)
 				else:
@@ -238,7 +248,7 @@ def typeCheckInfixOp(state, scope, infixOp, implicitType):
 	elif lIndefinite:
 		resolveValueExprType(state, scope, infixOp.r, implicitType)
 		if type(infixOp.l) == IntLitAST:
-			if infixOp.r.resolvedType.isPtrType:
+			if infixOp.r.resolvedType and infixOp.r.resolvedType.isPtrType:
 				if infixOp.op in ast.PTR_INT_OPS:
 					resolveValueExprType(state, scope, infixOp.l, types.ISize if infixOp.l.value < 0 else types.USize)
 				else:
@@ -307,10 +317,10 @@ def typeCheckIndex(state, scope, expr):
 def typeCheckFnSig(state, scope, fnDecl):
 	fnDecl.parentScope = scope
 	
-	if fnDecl.returnType == None:
-		fnDecl.returnType = TypeRefAST('Void', 0, fnDecl.span)
-	
-	resolveTypeRefType(state, fnDecl, fnDecl.returnType)
+	resolvedReturnType = types.Void
+	if fnDecl.returnType:
+		resolveTypeRefType(state, fnDecl, fnDecl.returnType)
+		resolvedReturnType = fnDecl.returnType.resolvedType
 	
 	for param in fnDecl.params:
 		resolveTypeRefType(state, fnDecl, param.typeRef)
@@ -321,7 +331,7 @@ def typeCheckFnSig(state, scope, fnDecl):
 			fnDecl.symbolTable[param.name] = param
 	
 	resolvedParamTypes = [param.typeRef.resolvedType for param in fnDecl.params]
-	fnDecl.resolvedSymbolType = types.ResolvedFnType(resolvedParamTypes, fnDecl.cVarArgs, fnDecl.returnType.resolvedType)
+	fnDecl.resolvedSymbolType = types.ResolvedFnType(resolvedParamTypes, fnDecl.cVarArgs, resolvedReturnType)
 	
 	if fnDecl.cVarArgs and fnDecl.cconv != CConv.C:
 		logError(state, fnDecl.cVarArgsSpan, 'may not use C variadic parameter without the C calling convention')
@@ -502,6 +512,65 @@ def typeCheckCoercion(state, scope, asExpr):
 		logError(state, asExpr.span, 'cannot coerce from {} to {}'
 			.format(asExpr.expr.resolvedType, asExpr.typeRef.resolvedType))
 
+def typeCheckStructLit(state, scope, expr):
+	resolvedType = lookupSymbol(state, scope, expr, True)
+	
+	if resolvedType == None:
+		resolvedType = types.ResolvedType(expr.name, 0)
+		return
+	
+	if not resolvedType.isStructType:
+		logError(state, expr.nameTok.span, 'type `{}` is not a struct type'.format(expr.name))
+		return
+	
+	fieldDict = resolvedType.fieldDict
+	fieldNames = set()
+	for field in expr.fields:
+		if field.name in fieldNames:
+			logError(state, field.nameTok.span, 'field `{}` was already initialized'.format(field.name))
+		fieldNames.add(field.name)
+		
+		fieldType = None
+		if field.name in fieldDict:
+			fieldType = fieldDict[field.name].resolvedSymbolType
+		else:
+			logError(state, field.nameTok.span, 
+				'struct `{}` has no field `{}`'.format(resolvedType.name, field.name))
+		
+		resolveValueExprType(state, scope, field.expr, fieldType)
+		if field.expr.resolvedType and fieldType and \
+			not types.getValidAssignType(fieldType, field.expr.resolvedType):
+			logError(state, field.expr.span, 
+				'expected type {}, found {}'.format(fieldType, field.expr.resolvedType))
+	
+	expr.resolvedType = resolvedType
+
+def typeCheckFieldAccess(state, scope, expr):
+	resolveValueExprType(state, scope, expr.expr)
+	
+	t = expr.expr.resolvedType
+	if t == None:
+		return
+	
+	fieldOffset = 0
+	errSpan = expr.expr.span
+	for tok in expr.path:
+		if not t.isStructType:
+			logError(state, errSpan, 'type `{}` has no fields'.format(t.name))
+			return
+		
+		if tok.content not in t.fieldDict:
+			logError(state, expr.span, 'type `{}` has no field `{}`'.format(t.name, tok.content))
+			return
+		
+		field = t.fieldDict[tok.content]
+		fieldOffset = field.offset
+		t = field.resolvedSymbolType
+		if t == None:
+			return
+	
+	expr.fieldOffset = fieldOffset
+
 def checkLoopCtl(state, scope, expr):
 	while scope:
 		if type(scope) == WhileAST or type(scope) == LoopAST:
@@ -564,6 +633,27 @@ def typeCheckFnBody(state, fnDecl):
 		logError(state, fnDecl.body.span, 'invalid return type (expected {}, found {})'
 			.format(fnDecl.resolvedSymbolType.resolvedReturnType, fnDecl.body.resolvedType))
 
+def typeCheckStructDecl(state, scope, decl):
+	fields = []
+	offset = 0
+	fieldNames = set()
+	
+	for field in decl.fields:
+		if field.name in fieldNames:
+			logError(state, field.nameTok.span, 'duplicate field declared in struct')
+		fieldNames.add(field.name)
+		
+		resolveTypeRefType(state, scope, field.typeRef)
+		
+		align = types.getAlignment(field.typeRef.resolvedType)
+		if offset % align > 0:
+			offset += align - offset % align
+		
+		fields.append(types.Field(field.name, field.typeRef.resolvedType, offset))
+		offset += field.typeRef.resolvedType.byteSize
+	
+	decl.resolvedSymbolType = types.ResolvedStructType(decl.name, fields)
+
 def mangleFnName(state, fnDecl):
 	if fnDecl.cconv == CConv.C:
 		fnDecl.mangledName = '_{}'.format(fnDecl.name)
@@ -591,8 +681,14 @@ def typeCheckMod(state, scope, mod):
 	for decl in mod.staticDecls:
 		invokeAttrs(state, decl)
 	
+	for decl in mod.structDecls:
+		invokeAttrs(state, decl)
+	
 	for decl in mod.fnDecls:
 		invokeAttrs(state, decl)
+	
+	for decl in mod.structDecls:
+		typeCheckStructDecl(state, mod, decl)
 	
 	for decl in mod.fnDecls:
 		typeCheckFnSig(state, mod, decl)

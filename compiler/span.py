@@ -49,7 +49,7 @@ def revealSpan(span, message='', leadingLines=2, followingLines=2, indicatorChar
 		output.append(source.lines[line-1][span.startColumn-1:span.endColumn])
 	else:
 		output.append(source.lines[line-1][span.startColumn-1:]) # first line content
-		output.append('\n')
+		output.append('\033[0m\n')
 		tabCount = len(findall('\t', source.lines[span.startLine-1][:span.startColumn-1]))
 		output.append('\033[34;1m    |  \033[{}m_'.format(color))
 		output.append('_' * (span.startColumn - tabCount + 4*tabCount - 1))
@@ -58,7 +58,7 @@ def revealSpan(span, message='', leadingLines=2, followingLines=2, indicatorChar
 		while line < span.endLine:
 			output.append('\033[34;1m{:>4}|\033[{};1m | '.format(line, color)) # gutter
 			output.append(source.lines[line-1]) # content
-			output.append('\n')
+			output.append('\033[0m\n')
 			line += 1
 		output.append('\033[34;1m{:>4}|\033[{};1m | '.format(line, color)) # gutter
 		output.append(source.lines[span.endLine-1][:span.endColumn]) # last line content

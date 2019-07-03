@@ -3,7 +3,7 @@ from .ast                            import FnDeclAST, FnCallAST, ValueRefAST, S
 	                                        IntLitAST, ReturnAST, LetAST, IfAST, InfixOpAST, InfixOp, \
 											CoercionAST, BoolLitAST, WhileAST, AsgnAST, DerefAST, \
 											IndexOpAST, VoidAST, AddressAST, FloatLitAST, BreakAST, \
-											ContinueAST, LoopAST, CharLitAST
+											ContinueAST, LoopAST, CharLitAST, StructLitAST
 from .analyzer                       import lookupSymbol
 from .                               import types
 
@@ -534,6 +534,8 @@ def exprToIR(scope, expr, fn, block):
 		strLitToIR(scope, expr, fn, block)
 	elif type(expr) == CharLitAST:
 		charLitToIR(scope, expr, fn, block)
+	elif type(expr) == StructLitAST:
+		assert 0
 	elif type(expr) == ValueRefAST:
 		valueRefToIR(scope, expr, fn, block)
 	elif type(expr) == DerefAST:
