@@ -1,14 +1,16 @@
-@FFI("C") extern fn fopen(fileName: Byte&, mode: Byte&) -> USize
-@FFI("C") extern fn fclose(fp: USize)
-@FFI("C") extern fn fprintf(fp: USize, fmt: Byte&, ...) -> Int32
 @FFI("C") extern fn printf(fmt: Byte&, ...) -> Int32
-@FFI("C") extern fn exit(code: Int32)
+@FFI("C") extern fn atoi(str: Byte&) -> Int32
+
+struct S
+	a: Int32
+	b: Int32
 
 fn main(argc: UInt64, argv: Byte&&)
-	if argc != 2
-		printf("Usage: %s <file name>\n", argv^)
-		exit(1)
+	if argc != 3
+		printf("Usage: %s <number> <number>\n", argv^)
 	
-	let fp = fopen(argv[8], "w")
-	fprintf(fp, "Hello world!\n")
-	fclose(fp)
+	let s = S
+		a: atoi(argv[8])
+		b: atoi(argv[16])
+	
+	printf("%d, %d\n", s.a+1, s.b+1)

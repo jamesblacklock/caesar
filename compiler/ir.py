@@ -272,7 +272,7 @@ def letToIR(scope, let, fn, block):
 			return
 		src = block[-1].dest.clone()
 	
-	if let.resolvedSymbolType == types.Void:
+	if let.noBinding:
 		return
 	
 	fn.sp += 1

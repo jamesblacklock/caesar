@@ -9,7 +9,8 @@ from .ast                import CConv, FnDeclAST, LetAST, FnCallAST, ReturnAST, 
                                 ValueRefAST, InfixOpAST, FnCallAST, IfAST, CoercionAST, ModAST, \
                                 ValueExprAST, FnParamAST, BlockAST, AsgnAST, WhileAST, DerefAST, \
                                 IndexOpAST, VoidAST, CVarArgsParamAST, InfixOp, AddressAST, LoopAST, \
-                                BreakAST, ContinueAST, CharLitAST, INFIX_PRECEDENCE
+                                BreakAST, ContinueAST, CharLitAST, FieldDeclAST, StructDeclAST, \
+                                FieldLitAST, StructLitAST, FieldAccessAST, INFIX_PRECEDENCE
 from .types              import BUILTIN_TYPES
 
 class ParserState:
@@ -261,6 +262,50 @@ def parseFnDeclReturnType(state):
 		state.popIndentLevel()
 	
 	return typeRef
+
+def parseStructDecl(state, doccomment, attrs, anon):
+	def parseFieldDecl(state):
+		if expectType(state, TokenType.NAME) == False:
+			return None
+		
+		name = state.tok.content
+		span = state.tok.span
+		
+		state.advance()
+		state.skipSpace()
+		
+		if expectType(state, TokenType.COLON) == False:
+			return FieldDeclAST(name, None, span)
+		
+		Span.merge(span, state.tok.span)
+		
+		state.advance()
+		onOneLine = permitLineBreakIndent(state) == False
+		state.skipSpace()
+		
+		typeRef = parseTypeRef(state)
+		if typeRef:
+			Span.merge(span, typeRef.span)
+		
+		if not onOneLine:
+			state.popIndentLevel()
+		
+		return FieldDeclAST(name, typeRef, span)
+	
+	span = state.tok.span
+	state.advance()
+	state.skipSpace()
+	
+	name = None
+	if not anon and expectType(state, TokenType.NAME):
+		name = state.tok.content
+		span = Span.merge(span, state.tok.span)
+		state.advance()
+		state.skipSpace()
+	
+	block = parseBlock(state, parseFieldDecl)
+	span = Span.merge(span, block.span)
+	return StructDeclAST(doccomment, attrs, name, block.list, span)
 
 def parseCoercion(state, expr):
 	span = Span.merge(expr.span, state.tok.span)
@@ -634,7 +679,12 @@ def parseInfixOp(state, l, mustIndent, spaceAroundOp):
 	else:
 		return InfixOpAST(l, r, InfixOp.fromTokenType(op), Span.merge(l.span, r.span), opSpan)
 
-def parseValueRef(state):
+class Path:
+	def __init__(self, path, span):
+		self.path = path
+		self.span = span
+
+def parsePath(state):
 	path = [state.tok.content]
 	span = state.tok.span
 	state.advance()
@@ -659,7 +709,41 @@ def parseValueRef(state):
 	if not onOneLine:
 		state.popIndentLevel()
 	
-	return ValueRefAST(path, span)
+	return Path(path, span)
+
+def parseStructLit(state, path):
+	def parseFieldLit(state):
+		if expectType(state, TokenType.NAME) == False:
+			return None
+		
+		name = state.tok.content
+		span = state.tok.span
+		
+		state.advance()
+		state.skipSpace()
+		
+		if expectType(state, TokenType.COLON) == False:
+			return FieldDeclAST(name, None, span)
+		
+		Span.merge(span, state.tok.span)
+		
+		state.advance()
+		onOneLine = permitLineBreakIndent(state) == False
+		state.skipSpace()
+		
+		expr = parseValueExpr(state)
+		if expr:
+			Span.merge(span, expr.span)
+		
+		if not onOneLine:
+			state.popIndentLevel()
+		
+		return FieldLitAST(name, expr, span)
+	
+	span = path.span
+	block = parseBlock(state, parseFieldLit)
+	span = Span.merge(span, block.span)
+	return StructLitAST(path.path, block.list, span)
 
 def parseSign(state):
 	negate = state.tok.type == TokenType.MINUS
@@ -679,6 +763,43 @@ def parseSign(state):
 	
 	return expr
 
+def parseFieldAccess(state, expr):
+	path = []
+	span = state.tok.span
+	onOneLine = True
+	
+	while state.tok.type == TokenType.DOT:
+		span = Span.merge(span, state.tok.span)
+		state.advance()
+		
+		if onOneLine:
+			onOneLine = permitLineBreakIndent(state) == False
+		else:
+			permitLineBreak(state)
+		
+		if expectType(state, TokenType.NAME) == False:
+			break
+		
+		path.append(state.tok.content)
+		span = Span.merge(span, state.tok.span)
+		state.advance()
+	
+	if not onOneLine:
+		state.popIndentLevel()
+	
+	return FieldAccessAST(path, span)
+
+def isBlockStart(state):
+	offset = state.offset
+	state.skipSpace()
+	result = False
+	
+	if state.tok.type == TokenType.LBRACE or state.skipEmptyLines() and isIndentIncrease(state):
+		result = True
+	
+	state.rollback(offset)
+	return result
+
 def parseValueExpr(state, precedence=0):
 	if state.tok.type == TokenType.NEWLINE:
 		block = parseBlock(state, parseFnBodyExpr)
@@ -697,7 +818,11 @@ def parseValueExpr(state, precedence=0):
 		expr = VoidAST(state.tok.span)
 		state.advance()
 	elif state.tok.type == TokenType.NAME:
-		expr = parseValueRef(state)
+		path = parsePath(state)
+		if isBlockStart(state):
+			expr = parseStructLit(state, path)
+		else:
+			expr = ValueRefAST(path.path, path.span)
 	elif state.tok.type == TokenType.STRING:
 		expr = StrLitAST(state.tok.content, state.tok.span)
 		state.advance()
@@ -737,6 +862,8 @@ def parseValueExpr(state, precedence=0):
 			expr = parseFnCall(state, expr)
 		elif state.tok.type == TokenType.AS:
 			expr = parseCoercion(state, expr)
+		elif state.tok.type == TokenType.DOT:
+			expr = parseFieldAccess(state, expr)
 		elif state.tok.type in INFIX_PRECEDENCE and INFIX_PRECEDENCE[state.tok.type] > precedence:
 			expr = parseInfixOp(state, expr, expr.span.startLine == expr.span.endLine, spaceBeforeOp)
 		elif state.tok.type == TokenType.CARET:
@@ -919,7 +1046,7 @@ def parseModLevelDecl(state):
 	
 	if startToken == None: startToken = state.tok
 	
-	if expectType(state, TokenType.FN, TokenType.LET) == False:
+	if expectType(state, TokenType.FN, TokenType.LET, TokenType.STRUCT) == False:
 		return None
 	
 	if state.tok.type == TokenType.FN:
@@ -927,6 +1054,13 @@ def parseModLevelDecl(state):
 		if fnDecl != None:
 			fnDecl.span = Span.merge(startToken.span, fnDecl.span)
 		return fnDecl
+	elif state.tok.type == TokenType.STRUCT:
+		if extern:
+			logError(state, state.tok.span, '`struct`s cannot be declared `extern`')
+		structDecl = parseStructDecl(state, doccomment, attrs, False)
+		if structDecl != None:
+			structDecl.span = Span.merge(startToken.span, structDecl.span)
+		return structDecl
 	else:
 		logError(state, state.tok.span, 'static variables at the module level are unimplemented')
 		return None

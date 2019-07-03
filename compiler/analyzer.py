@@ -259,6 +259,10 @@ def typeCheckInfixOp(state, scope, infixOp, implicitType):
 		if infixOp.op == InfixOp.EQ:
 			infixOp.resolvedType = types.Bool
 			return
+	elif infixOp.l.resolvedType == types.Char and infixOp.r.resolvedType == types.Char:
+		if infixOp.op == InfixOp.EQ:
+			infixOp.resolvedType = types.Bool
+			return
 	elif infixOp.l.resolvedType.isPtrType and infixOp.r.resolvedType.isIntType:
 		if infixOp.op in ast.PTR_INT_OPS and infixOp.r.resolvedType.byteSize == types.USize.byteSize:
 			infixOp.resolvedType = infixOp.l.resolvedType
@@ -333,7 +337,10 @@ def typeCheckLet(state, scope, letExpr):
 			if type(fnScope) == FnDeclAST:
 				break
 	
-	scope.symbolTable[letExpr.name] = letExpr
+	if letExpr.name == '_':
+		letExpr.noBinding = True
+	else:
+		scope.symbolTable[letExpr.name] = letExpr
 	
 	if letExpr.typeRef:
 		resolveTypeRefType(state, scope, letExpr.typeRef)
@@ -352,6 +359,9 @@ def typeCheckLet(state, scope, letExpr):
 		letExpr.resolvedSymbolType = letExpr.expr.resolvedType
 	else:
 		logError(state, letExpr.expr.span, 'cannot infer type of `{}`'.format(letExpr.name))
+	
+	if letExpr.resolvedSymbolType == types.Void:
+		letExpr.noBinding = True
 
 def typeCheckFnCall(state, scope, fnCallExpr):
 	resolveValueExprType(state, scope, fnCallExpr.expr)

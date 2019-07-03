@@ -259,6 +259,7 @@ class ModAST(ModLevelDeclAST):
 		self.importDecls = []
 		self.fnDecls = []
 		self.modDecls = []
+		self.structDecls = []
 		self.staticDecls = []
 		self.symbolTable = {}
 		
@@ -267,6 +268,8 @@ class ModAST(ModLevelDeclAST):
 				self.fnDecls.append(decl)
 			elif type(decl) == ModAST:
 				self.modDecls.append(decl)
+			elif type(decl) == StructDeclAST:
+				self.structDecls.append(decl)
 			else:
 				raise RuntimeError('unimplemented!')
 			
@@ -280,6 +283,21 @@ class AttrAST:
 		self.span = span
 		self.name = name
 		self.args = args
+
+class StructDeclAST(ModLevelDeclAST):
+	def __init__(self, doccomment, attrs, name, fields, span):
+		super().__init__(doccomment, attrs, False, None, span)
+		self.name = name
+		self.fields = fields
+		self.resolvedSymbolType = None
+
+class FieldDeclAST:
+	def __init__(self, name, typeRef, span):
+		self.name = name
+		self.typeRef = typeRef
+		self.span = span
+		self.align = None
+		self.resolvedSymbolType = None
 
 class FnDeclAST(ModLevelDeclAST):
 	def __init__(self, doccomment, attrs, extern, nameTok, params, cVarArgs, returnType, body, span, cVarArgsSpan):
@@ -318,6 +336,7 @@ class LetAST:
 		self.span = span
 		self.resolvedSymbolType = None
 		self.doesReturn = False
+		self.noBinding = False
 
 class TypeRefAST:
 	def __init__(self, name, indirectionLevel, span):
@@ -421,6 +440,20 @@ class TupleLitAST(ValueExprAST):
 		self.values = values
 		self.span = span
 
+class FieldLitAST(ValueExprAST):
+	def __init__(self, name, expr, span):
+		super().__init__()
+		self.name = name
+		self.expr = expr
+		self.span = span
+
+class StructLitAST(ValueExprAST):
+	def __init__(self, path, fields, span):
+		super().__init__()
+		self.path = path
+		self.fields = fields
+		self.span = span
+
 class BlockAST(ValueExprAST):
 	def __init__(self, block):
 		super().__init__()
@@ -430,6 +463,13 @@ class BlockAST(ValueExprAST):
 		self.symbolTable = {}
 
 class ValueRefAST(ValueExprAST):
+	def __init__(self, path, span):
+		super().__init__()
+		self.path = path
+		self.name = path[-1]
+		self.span = span
+
+class FieldAccessAST(ValueExprAST):
 	def __init__(self, path, span):
 		super().__init__()
 		self.path = path

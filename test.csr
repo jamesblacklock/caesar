@@ -67,7 +67,7 @@ fn main()
 			98, 121, 101)
 
 fn moreThanSixArgs(
-	a: Int8, b: Int32, c: Int32, d: Int32, 
-	e: Int32, f: Int32, g: Int32, h: Int32,
+	a: Int8, b: Int32, c: Int32, d: Int32
+	e: Int32, f: Int32, g: Int32, h: Int32
 	i: Int32)
 	printf("%d %d %d %d %d %d %d %d %d\n", a, i, b, c, d, e, f, g, h)
