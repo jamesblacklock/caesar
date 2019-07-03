@@ -9,7 +9,7 @@ from .ast                import CConv, FnDeclAST, LetAST, FnCallAST, ReturnAST, 
                                 ValueRefAST, InfixOpAST, FnCallAST, IfAST, CoercionAST, ModAST, \
                                 ValueExprAST, FnParamAST, BlockAST, AsgnAST, WhileAST, DerefAST, \
                                 IndexOpAST, VoidAST, CVarArgsParamAST, InfixOp, AddressAST, LoopAST, \
-                                BreakAST, ContinueAST, INFIX_PRECEDENCE
+                                BreakAST, ContinueAST, CharLitAST, INFIX_PRECEDENCE
 from .types              import BUILTIN_TYPES
 
 class ParserState:
@@ -541,6 +541,7 @@ VALUE_EXPR_TOKS = (
 	TokenType.LPAREN,
 	TokenType.NAME,
 	TokenType.STRING,
+	TokenType.CHAR,
 	TokenType.INTEGER,
 	TokenType.FLOAT,
 	TokenType.PLUS,
@@ -699,6 +700,9 @@ def parseValueExpr(state, precedence=0):
 		expr = parseValueRef(state)
 	elif state.tok.type == TokenType.STRING:
 		expr = StrLitAST(state.tok.content, state.tok.span)
+		state.advance()
+	elif state.tok.type == TokenType.CHAR:
+		expr = CharLitAST(state.tok.content, state.tok.span)
 		state.advance()
 	elif state.tok.type == TokenType.PLUS or state.tok.type == TokenType.MINUS:
 		expr = parseSign(state)
