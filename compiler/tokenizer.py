@@ -355,7 +355,7 @@ def tokenize(source):
 			tok = lexNewline(state)
 		elif re.match(r"\d", state.char) or state.char == '.' and re.match(r"\d", state.nextChar):
 			tok = lexNumber(state)
-		elif re.match(r"[\[\]!@\(\):^&,.\-+=*/<>|{}]", state.char):
+		elif re.match(r"[\[\]!@\(\):;^&,.\-+=*/<>|{}]", state.char):
 			tok = lexOperator(state)
 		elif state.char == '"':
 			tok = lexString(state)

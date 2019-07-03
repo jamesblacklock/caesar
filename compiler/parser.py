@@ -8,7 +8,7 @@ from .ast                import CConv, FnDeclAST, LetAST, FnCallAST, ReturnAST, 
                                 AttrAST, StrLitAST, IntLitAST, FloatLitAST, BoolLitAST, TupleLitAST, \
                                 ValueRefAST, InfixOpAST, FnCallAST, IfAST, CoercionAST, ModAST, \
                                 ValueExprAST, FnParamAST, BlockAST, AsgnAST, WhileAST, DerefAST, \
-                                IndexOpAST, VoidAST, CVarArgsParamAST, InfixOp, AddressAST, \
+                                IndexOpAST, VoidAST, CVarArgsParamAST, InfixOp, AddressAST, LoopAST, \
                                 BreakAST, ContinueAST, INFIX_PRECEDENCE
 from .types              import BUILTIN_TYPES
 
@@ -348,6 +348,7 @@ def parseBlock(state, parseItem, blockMarkers=BlockMarkers.BRACE,
 		# check to see if the block was terminated
 		offset = state.offset
 		if needsTerm:
+			state.skipSpace()
 			if state.tok.type == closeMarker or state.tok.type == TokenType.EOF:
 				# close marker on the same line
 				expectType(state, closeMarker)
@@ -398,8 +399,8 @@ def parseBlock(state, parseItem, blockMarkers=BlockMarkers.BRACE,
 		item = parseItem(state)
 		if item == None:
 			# if item parsing failed, try to skip to a sane place
-			skipUntilTypes = (TokenType.COMMA, TokenType.NEWLINE, closeMarker) \
-				if needsTerm else (TokenType.COMMA, TokenType.NEWLINE)
+			skipUntilTypes = (TokenType.COMMA, TokenType.SEMICOLON, TokenType.NEWLINE, closeMarker) \
+				if needsTerm else (TokenType.COMMA, TokenType.SEMICOLON, TokenType.NEWLINE)
 			state.skipUntil(*skipUntilTypes)
 		else:
 			list.append(item)
@@ -409,14 +410,16 @@ def parseBlock(state, parseItem, blockMarkers=BlockMarkers.BRACE,
 		# (or newline/eof if the block needs no close marker)
 		state.skipSpace()
 		if needsTerm:
-			if expectType(state, TokenType.INDENT, TokenType.COMMA, TokenType.NEWLINE, closeMarker) == False:
+			if expectType(state, TokenType.INDENT, TokenType.COMMA, TokenType.SEMICOLON, \
+				TokenType.NEWLINE, closeMarker) == False:
 				state.skipUntil(closeMarker)
 		else:
-			if expectType(state, TokenType.INDENT, TokenType.COMMA, TokenType.NEWLINE, TokenType.EOF) == False:
+			if expectType(state, TokenType.INDENT, TokenType.COMMA, TokenType.SEMICOLON, \
+				TokenType.NEWLINE, TokenType.EOF) == False:
 				break
 		
 		# skip the comma (it's just a separator)
-		if state.tok.type == TokenType.COMMA:
+		if state.tok.type == TokenType.COMMA or state.tok.type == TokenType.SEMICOLON:
 			state.advance()
 			trailingSeparator = True
 	
@@ -498,6 +501,14 @@ def parseWhile(state):
 	span = Span.merge(span, block.span)
 	
 	return WhileAST(expr, BlockAST(block), span)
+
+def parseLoop(state):
+	span = state.tok.span
+	state.advance()
+	block = parseBlock(state, parseFnBodyExpr)
+	span = Span.merge(span, block.span)
+	
+	return LoopAST(BlockAST(block), span)
 
 def parseLoopCtl(state):
 	span = state.tok.span
@@ -705,7 +716,7 @@ def parseValueExpr(state, precedence=0):
 		expr = parseIf(state)
 	else:
 		logError(state, state.tok.span, 'expected value expression, found {}'.format(state.tok.type.desc()))
-		state.skipUntil(TokenType.NEWLINE, TokenType.COMMA, TokenType.RBRACE)
+		state.skipUntil(TokenType.NEWLINE, TokenType.COMMA, TokenType.SEMICOLON, TokenType.RBRACE)
 		expr = None
 	
 	if expr == None:
@@ -762,7 +773,8 @@ def parseReturn(state):
 	state.skipSpace()
 	
 	expr = None
-	if state.tok.type not in (TokenType.COMMA, TokenType.RBRACE, TokenType.NEWLINE, TokenType.EOF):
+	if state.tok.type not in (TokenType.COMMA, TokenType.SEMICOLON, \
+		TokenType.RBRACE, TokenType.NEWLINE, TokenType.EOF):
 		expr = parseValueExpr(state)
 		if expr != None:
 			span = Span.merge(span, expr.span)
@@ -818,8 +830,12 @@ def parseFnBodyExpr(state):
 		return parseReturn(state)
 	elif state.tok.type == TokenType.LET:
 		return parseLet(state)
+	elif state.tok.type == TokenType.LOOP:
+		return parseLoop(state)
 	elif state.tok.type == TokenType.WHILE:
 		return parseWhile(state)
+	# elif state.tok.type == TokenType.FOR:
+	# 	return parseFor(state)
 	elif state.tok.type == TokenType.BREAK or state.tok.type == TokenType.CONTINUE:
 		return parseLoopCtl(state)
 	else:

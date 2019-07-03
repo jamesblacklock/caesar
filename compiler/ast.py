@@ -331,6 +331,13 @@ class AsgnAST:
 		self.span = span
 		self.doesReturn = False
 
+class LoopAST:
+	def __init__(self, block, span):
+		self.block = block
+		self.span = span
+		self.parentScope = None
+		self.symbolTable = {}
+
 class WhileAST:
 	def __init__(self, expr, block, span):
 		self.expr = expr

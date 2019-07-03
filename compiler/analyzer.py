@@ -3,7 +3,7 @@ from .ast                import CConv, FnDeclAST, LetAST, FnCallAST, ReturnAST, 
                                 StrLitAST, IntLitAST, BoolLitAST, TupleLitAST, ValueRefAST, \
 								InfixOpAST, FnCallAST, IfAST, CoercionAST, ModAST, ValueExprAST, \
 								BlockAST, AsgnAST, WhileAST, DerefAST, IndexOpAST, VoidAST, \
-								AddressAST, FloatLitAST, BreakAST, ContinueAST, InfixOp
+								AddressAST, FloatLitAST, BreakAST, ContinueAST, InfixOp, LoopAST
 from .                   import types
 from .types              import getValidAssignType, ResolvedType
 from .err                import logError, logWarning
@@ -430,6 +430,11 @@ def typeCheckWhile(state, scope, whileExpr):
 	
 	typeCheckBlock(state, scope, whileExpr.block)
 
+def typeCheckLoop(state, scope, loop):
+	loop.parentScope = scope
+	scope = loop
+	typeCheckBlock(state, scope, loop.block)
+
 def getBlockType(block):
 	if len(block.exprs) == 0:
 		return types.Void
@@ -486,7 +491,7 @@ def typeCheckCoercion(state, scope, asExpr):
 
 def checkLoopCtl(state, scope, expr):
 	while scope:
-		if type(scope) == WhileAST:
+		if type(scope) == WhileAST or type(scope) == LoopAST:
 			return
 		scope = scope.parentScope
 	
@@ -511,6 +516,8 @@ def typeCheckBlock(state, scope, block, implicitType=None):
 		elif type(expr) == AsgnAST:
 			typeCheckAsgn(state, scope, expr)
 			block.doesReturn = expr.doesReturn
+		elif type(expr) == LoopAST:
+			typeCheckLoop(state, scope, expr)
 		elif type(expr) == WhileAST:
 			typeCheckWhile(state, scope, expr)
 		elif type(expr) == BreakAST or type(expr) == ContinueAST:

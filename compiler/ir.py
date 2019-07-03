@@ -1,9 +1,9 @@
 from enum                            import Enum
-from .parser                         import FnDeclAST, FnCallAST, ValueRefAST, StrLitAST, BlockAST, \
+from .ast                            import FnDeclAST, FnCallAST, ValueRefAST, StrLitAST, BlockAST, \
 	                                        IntLitAST, ReturnAST, LetAST, IfAST, InfixOpAST, InfixOp, \
 											CoercionAST, BoolLitAST, WhileAST, AsgnAST, DerefAST, \
 											IndexOpAST, VoidAST, AddressAST, FloatLitAST, BreakAST, \
-											ContinueAST
+											ContinueAST, LoopAST
 from .analyzer                       import lookupSymbol
 from .                               import types
 
@@ -184,6 +184,14 @@ class While(Instr):
 		target = '' if self.target == None else ' {}'.format(self.target)
 		return '{}\n\twhile {}\n{}{}'.format(blockToStr(self.condBlock, 2), self.target, blockToStr(self.block, 2), blockToStr(self.condBlock, 2))
 
+class Loop(Instr):
+	def __init__(self, ast, block):
+		super().__init__(ast)
+		self.block = block
+	
+	def __str__(self):
+		return 'loop\n{}'.format(blockToStr(self.block, 2))
+
 class BinOp(Instr):
 	def __init__(self, ast, l, r, dest, type):
 		super().__init__(ast, True)
@@ -337,6 +345,11 @@ def whileBlockToIR(scope, whileAst, fn, block):
 	whileBlock = []
 	blockToIR(scope, whileAst.block.exprs, fn, whileBlock)
 	block.append(While(whileAst, result, condBlock, whileBlock))
+
+def loopToIR(scope, loop, fn, block):
+	loopBlock = []
+	blockToIR(scope, loop.block.exprs, fn, loopBlock)
+	block.append(Loop(loop, loopBlock))
 
 def boolLitToIR(scope, lit, fn, block):
 	fn.sp += 1
@@ -523,6 +536,8 @@ def exprToIR(scope, expr, fn, block):
 		letToIR(scope, expr, fn, block)
 	elif type(expr) == IfAST:
 		ifBlockToIR(scope, expr, fn, block)
+	elif type(expr) == LoopAST:
+		loopToIR(scope, expr, fn, block)
 	elif type(expr) == WhileAST:
 		whileBlockToIR(scope, expr, fn, block)
 	elif type(expr) == ReturnAST:
