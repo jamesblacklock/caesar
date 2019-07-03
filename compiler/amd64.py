@@ -1,6 +1,6 @@
 import ctypes
 from .ir                                         import Move, Addr, Add, Call, Cmp, Div, Ret, IfElse, Break, \
-	                                                     While, InfixOp, Sub, Mul, Coerce, Cont, Storage, \
+	                                                     While, Loop, InfixOp, Sub, Mul, Coerce, Cont, Storage, \
                                                          I8, I16, I32, I64, U8, U16, U32, U64, IPTR, F32, F64
 
 
@@ -163,6 +163,17 @@ def irToAsm(instr, fnIR, loopInfo=None):
 		if instr.dest:
 			lines.append('mov {}, {}'.format(targetToOperand(instr.dest, fnIR), destReg))
 		return '\n\t\t'.join(lines)
+	elif type(instr) == Loop:
+		startLabel = '{}__looplabel__{}'.format(fnIR.name, fnIR.labelsCount)
+		endLabel = '{}__endlooplabel__{}'.format(fnIR.name, fnIR.labelsCount)
+		fnIR.labelsCount += 1
+		result = '\n\t{}:\n{}\t\tjmp {}\n\t{}:'.format(
+			startLabel, 
+			irBlockToAsm(instr.block, fnIR, LoopInfo(startLabel, endLabel, loopInfo)), 
+			startLabel, 
+			endLabel
+		)
+		return result
 	elif type(instr) == While:
 		reg = getReg(instr.target.type)
 		startLabel = '{}__whilelabel__{}'.format(fnIR.name, fnIR.labelsCount)
