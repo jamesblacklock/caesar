@@ -3,7 +3,8 @@ from .ast                import CConv, FnDeclAST, LetAST, FnCallAST, ReturnAST, 
                                 StrLitAST, IntLitAST, BoolLitAST, TupleLitAST, ValueRefAST, \
 								InfixOpAST, FnCallAST, IfAST, CoercionAST, ModAST, ValueExprAST, \
 								BlockAST, AsgnAST, WhileAST, DerefAST, IndexOpAST, VoidAST, \
-								AddressAST, FloatLitAST, BreakAST, ContinueAST, InfixOp, LoopAST
+								AddressAST, FloatLitAST, BreakAST, ContinueAST, InfixOp, LoopAST, \
+                                CharLitAST
 from .                   import types
 from .types              import getValidAssignType, ResolvedType
 from .err                import logError, logWarning
@@ -72,6 +73,8 @@ def lookupSymbol(state, scope, symbolRef, inTypePosition):
 def resolveValueExprType(state, scope, expr, implicitType=None):
 	if type(expr) == StrLitAST:
 		expr.resolvedType = types.ResolvedPtrType(types.Byte, 1)
+	elif type(expr) == CharLitAST:
+		expr.resolvedType = types.Char
 	elif type(expr) == BoolLitAST:
 		expr.resolvedType = types.Bool
 	elif type(expr) == IntLitAST:

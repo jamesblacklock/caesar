@@ -214,7 +214,7 @@ class CConv(Enum):
 	CAESAR = 'CAESAR'
 	C = 'C'
 
-def strBytes(s):
+def strEsc(s):
 	result = ''
 	esc = False
 	for c in s[1:-1]:
@@ -235,7 +235,10 @@ def strBytes(s):
 		else:
 			result += c
 	
-	return bytes(result, 'utf-8')
+	return result
+
+def strBytes(s):
+	return bytes(strEsc(s), 'utf-8')
 
 class ModLevelDeclAST:
 	def __init__(self, doccomment, attrs, extern, nameTok, span):
@@ -363,6 +366,13 @@ class StrLitAST(ValueExprAST):
 	def __init__(self, value, span):
 		super().__init__()
 		self.value = strBytes(value)
+		self.span = span
+
+class CharLitAST(ValueExprAST):
+	def __init__(self, value, span):
+		super().__init__()
+		bytes = strEsc(value)
+		self.value = ord(bytes)
 		self.span = span
 
 class BoolLitAST(ValueExprAST):
