@@ -789,13 +789,20 @@ def parseFieldAccess(state, expr):
 	
 	return FieldAccessAST(expr, path, span)
 
-def isBlockStart(state):
+def isStructLitStart(state):
 	offset = state.offset
 	state.skipSpace()
 	result = False
 	
-	if state.tok.type == TokenType.LBRACE or state.skipEmptyLines() and isIndentIncrease(state):
+	if state.tok.type == TokenType.LBRACE:
+		state.advance()
 		result = True
+	elif state.skipEmptyLines() and isIndentIncrease(state):
+		result = True
+	
+	if result == True:
+		state.skip(TokenType.SPACE, TokenType.INDENT, TokenType.COMMENT, TokenType.NEWLINE)
+		result = state.tok.type == TokenType.NAME and state.nextTok.type == TokenType.COLON
 	
 	state.rollback(offset)
 	return result
@@ -819,7 +826,7 @@ def parseValueExpr(state, precedence=0):
 		state.advance()
 	elif state.tok.type == TokenType.NAME:
 		path = parsePath(state)
-		if isBlockStart(state):
+		if isStructLitStart(state):
 			expr = parseStructLit(state, path)
 		else:
 			expr = ValueRefAST(path.path, path.span)

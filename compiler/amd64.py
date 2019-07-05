@@ -76,7 +76,7 @@ def irToAsm(instr, fnIR, loopInfo=None):
 				
 				lines.append('mov {}, [rax]'.format(reg))
 			else:
-				lines.append('mov {}, {}'.format(reg, targetToOperand(instr.src, fnIR)))
+				lines.append('mov {}, {}'.format(reg, targetToOperand(instr.src, fnIR, instr.src.offset)))
 			
 			lines.append('lea rdx, {}'.format(targetToOperand(instr.dest, fnIR)))
 			for _ in range(0, instr.destDeref):
@@ -107,7 +107,6 @@ def irToAsm(instr, fnIR, loopInfo=None):
 		lines.append('mov {}, {}'.format(targetToOperand(instr.dest, fnIR), reg))
 		return '\n\t\t'.join(lines)
 	elif type(instr) == Call:
-		reg = getReg(instr.dest.type)
 		lines = []
 		for (i, arg) in enumerate(instr.args[0:len(ARG_REGS)]):
 			regType = I64 if arg.type.isSigned else U64
@@ -128,7 +127,8 @@ def irToAsm(instr, fnIR, loopInfo=None):
 		lines.append('call {}'.format(instr.callee.value))
 		if len(stackArgs) > 0:
 			lines.append('add rsp, {}'.format(size))
-		lines.append('mov {}, {}'.format(targetToOperand(instr.dest, fnIR), reg))
+		if instr.dest:
+			lines.append('mov {}, {}'.format(targetToOperand(instr.dest, fnIR), getReg(instr.dest.type)))
 		return '\n\t\t'.join(lines)
 	elif type(instr) == Ret:
 		output = '' if instr.target == None else 'mov {}, {}\n\t\t'.format(

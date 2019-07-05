@@ -588,6 +588,7 @@ def typeCheckFieldAccess(state, scope, expr):
 			return
 	
 	expr.fieldOffset = fieldOffset
+	expr.resolvedType = t
 
 def checkLoopCtl(state, scope, expr):
 	while scope:

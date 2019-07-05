@@ -442,9 +442,8 @@ class TupleLitAST(ValueExprAST):
 		self.values = values
 		self.span = span
 
-class FieldLitAST(ValueExprAST):
+class FieldLitAST:
 	def __init__(self, nameTok, expr, span):
-		super().__init__()
 		self.nameTok = nameTok
 		self.name = nameTok.content
 		self.expr = expr
@@ -458,6 +457,10 @@ class StructLitAST(ValueExprAST):
 		self.name = self.nameTok.content
 		self.fields = fields
 		self.span = span
+		
+		self.fieldDict = {}
+		for field in fields:
+			self.fieldDict[field.name] = field
 
 class BlockAST(ValueExprAST):
 	def __init__(self, block):
