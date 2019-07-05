@@ -543,6 +543,24 @@ def typeCheckStructLit(state, scope, expr):
 			logError(state, field.expr.span, 
 				'expected type {}, found {}'.format(fieldType, field.expr.resolvedType))
 	
+	uninit = [field for field in fieldDict if field not in fieldNames]
+	if len(uninit) > 0:
+		fieldsStr = None
+		if len(uninit) == 1:
+			fieldsStr = uninit[0]
+		elif len(uninit) == 2:
+			fieldsStr = '{} and {}'.format(*uninit)
+		elif len(uninit) < 5:
+			fieldsStr = '{}, and {}'.format(', '.join(uninit[:-1]), uninit[-1])
+		else:
+			fieldsStr = '{}, and {} other fields'.format(', '.join(uninit[:3]), len(uninit) - 3)
+		message = 'missing {} {} in initializer of `{}`'.format(
+			'field' if len(uninit) == 1 else 'fields',
+			fieldsStr,
+			expr.name
+		)
+		logError(state, expr.nameTok.span, message)
+	
 	expr.resolvedType = resolvedType
 
 def typeCheckFieldAccess(state, scope, expr):

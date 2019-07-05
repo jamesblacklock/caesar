@@ -9,12 +9,6 @@ struct T
 struct S
 	a: Int32
 	b: Int32
-	d: Byte
-	e: Int64
-	f: T
-	g: Byte
-	h: Byte
-	i: Int16
 
 fn main(argc: UInt64, argv: Byte&&)
 	if argc != 3
