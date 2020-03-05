@@ -4,11 +4,13 @@ from .ast                import CConv, FnDeclAST, LetAST, FnCallAST, ReturnAST, 
 								InfixOpAST, FnCallAST, IfAST, CoercionAST, ModAST, ValueExprAST, \
 								BlockAST, AsgnAST, WhileAST, DerefAST, IndexOpAST, VoidAST, \
 								AddressAST, FloatLitAST, BreakAST, ContinueAST, InfixOp, LoopAST, \
-                                CharLitAST, StructLitAST, FieldAccessAST, StructDeclAST
+                                CharLitAST, StructLitAST, FieldAccessAST, StructDeclAST, FnParamAST, \
+                                SignAST
 from .                   import types
 from .types              import getValidAssignType
 from .err                import logError, logWarning
 from .span               import Span
+from .types              import BUILTIN_TYPES
 
 def ffiAttr(decl, params):
 	if len(params) != 1 or params[0].content != '"C"':
@@ -30,53 +32,7 @@ def invokeAttrs(state, decl):
 		
 		builtinAttrs[attr.name](decl, attr.args)
 
-def lookupSymbol(state, scope, symbolRef, inTypePosition):
-	path = symbolRef.path
-	symbol = None
-	symbolTok = path[0]
-	
-	while scope != None:
-		if path[0].content in scope.symbolTable:
-			symbol = scope.symbolTable[path[0].content]
-			break
-		scope = scope.parentScope
-	
-	if symbol != None:
-		for tok in path[1:]:
-			if state and type(symbol) != ModAST:
-				logError(state, symbolTok.span, '`{}` is not a module'.format(symbol.name))
-				return None
-			
-			symbolTok = tok
-			if tok.content not in symbol.symbolTable:
-				symbol = None
-				break
-			
-			symbol = symbol.symbolTable[tok.content]
-	
-	if symbol and inTypePosition and type(symbol) == StructDeclAST:
-		symbol = symbol.resolvedSymbolType
-	
-	if state:
-		if inTypePosition:
-			if symbol == None:
-				logError(state, symbolTok.span, 'cannot resolve type `{}`'.format(symbolTok.content))
-			elif not isinstance(symbol,  types.ResolvedType):
-				logError(state, symbolTok.span, '`{}` is not a type'.format(symbolTok.content))
-				symbol = None
-		else:
-			if symbol == None:
-				logError(state, symbolTok.span, 'cannot resolve the symbol `{}`'.format(symbolTok.content))
-			elif isinstance(symbol,  types.ResolvedType):
-				logError(state, symbolTok.span, 'found a type reference where a value was expected')
-				symbol = None
-			elif type(symbol) == ModAST:
-				logError(state, symbolTok.span, 'found a module name where a value was expected')
-				symbol = None
-	
-	return symbol
-
-def resolveValueExprType(state, scope, expr, implicitType=None):
+def analyzeValueExpr(state, expr, implicitType=None):
 	if type(expr) == StrLitAST:
 		expr.resolvedType = types.ResolvedPtrType(types.Byte, 1)
 	elif type(expr) == CharLitAST:
@@ -84,40 +40,42 @@ def resolveValueExprType(state, scope, expr, implicitType=None):
 	elif type(expr) == BoolLitAST:
 		expr.resolvedType = types.Bool
 	elif type(expr) == IntLitAST:
-		typeCheckIntLit(state, scope, expr, implicitType)
+		analyzeIntLit(state, expr, implicitType)
 	elif type(expr) == FloatLitAST:
-		typeCheckFloatLit(state, scope, expr, implicitType)
+		analyzeFloatLit(state, expr, implicitType)
 	elif type(expr) == BlockAST:
-		typeCheckBlock(state, scope, expr, implicitType)
+		analyzeBlock(state, expr, implicitType)
 	elif type(expr) == DerefAST:
-		typeCheckDeref(state, scope, expr)
+		analyzeDeref(state, expr)
+	elif type(expr) == SignAST:
+		analyzeSign(state, expr)
 	elif type(expr) == AddressAST:
-		typeCheckAddress(state, scope, expr, implicitType)
+		analyzeAddress(state, expr, implicitType)
 	elif type(expr) == TupleLitAST:
 		raise RuntimeError('unimplemented!')
 	elif type(expr) == ValueRefAST:
-		typeCheckValueRef(state, scope, expr)
+		analyzeValueRef(state, expr)
 	elif type(expr) == InfixOpAST:
-		typeCheckInfixOp(state, scope, expr, implicitType)
+		analyzeInfixOp(state, expr, implicitType)
 	elif type(expr) == FnCallAST:
-		typeCheckFnCall(state, scope, expr)
+		analyzeFnCall(state, expr)
 	elif type(expr) == IndexOpAST:
-		typeCheckIndex(state, scope, expr)
+		analyzeIndex(state, expr)
 	elif type(expr) == IfAST:
-		typeCheckIf(state, scope, expr, implicitType)
+		analyzeIf(state, expr, implicitType)
 	elif type(expr) == CoercionAST:
-		typeCheckCoercion(state, scope, expr)
+		analyzeCoercion(state, expr)
 	elif type(expr) == VoidAST:
 		expr.resolvedType = types.Void
 	elif type(expr) == StructLitAST:
-		typeCheckStructLit(state, scope, expr)
+		analyzeStructLit(state, expr)
 	elif type(expr) == FieldAccessAST:
-		typeCheckFieldAccess(state, scope, expr)
+		analyzeFieldAccess(state, expr)
 	else:
 		assert 0
 
-def resolveTypeRefType(state, scope, typeRef):
-	resolvedType = lookupSymbol(state, scope, typeRef, True)
+def resolveTypeRef(state, typeRef):
+	resolvedType = state.lookupSymbol(typeRef, True)
 	
 	if resolvedType == None:
 		resolvedType = types.ResolvedType(typeRef.name, 0)
@@ -127,11 +85,18 @@ def resolveTypeRefType(state, scope, typeRef):
 	
 	typeRef.resolvedType = resolvedType
 
-def typeCheckValueRef(state, scope, valueRef):
-	symbol = lookupSymbol(state, scope, valueRef, False)
-	valueRef.resolvedType = symbol.resolvedSymbolType if symbol else None
+def analyzeValueRef(state, valueRef, isLValue=False):
+	valueRef.symbol = state.lookupSymbol(valueRef, False)
+	if valueRef.symbol:
+		valueRef.symbol.unused = False
+		valueRef.resolvedType = valueRef.symbol.resolvedSymbolType
+		
+		if not isLValue:
+			state.refSymbol(valueRef)
+	else:
+		valueRef.resolvedType = None
 
-def typeCheckIntLit(state, scope, lit, implicitType):
+def analyzeIntLit(state, lit, implicitType):
 	if lit.suffix == 'i8':
 		lit.resolvedType = types.Int8
 	elif lit.suffix == 'u8':
@@ -164,7 +129,7 @@ def typeCheckIntLit(state, scope, lit, implicitType):
 	if not types.canAccommodate(lit.resolvedType, lit.value):
 		logError(state, lit.span, 'integer value out of range for type {}'.format(lit.resolvedType))
 
-def typeCheckFloatLit(state, scope, lit, implicitType):
+def analyzeFloatLit(state, lit, implicitType):
 	if lit.suffix == 'f32':
 		lit.resolvedType = types.Float32
 	elif lit.suffix == 'f64':
@@ -179,8 +144,8 @@ def typeCheckFloatLit(state, scope, lit, implicitType):
 	# if not types.canAccommodate(lit.resolvedType, lit.value):
 	# 	logError(state, lit.span, 'flaoting point value out of range for type {}'.format(lit.resolvedType))
 
-def typeCheckAddress(state, scope, addr, implicitType):
-	resolveValueExprType(state, scope, addr.expr, implicitType)
+def analyzeAddress(state, addr, implicitType):
+	analyzeValueExpr(state, addr.expr, implicitType)
 	if addr.expr.resolvedType == None:
 		return
 	
@@ -192,8 +157,8 @@ def typeCheckAddress(state, scope, addr, implicitType):
 	
 	addr.resolvedType = types.ResolvedPtrType(baseType, indLevel)
 
-def typeCheckDeref(state, scope, deref):
-	resolveValueExprType(state, scope, deref.expr)
+def analyzeDeref(state, deref):
+	analyzeValueExpr(state, deref.expr)
 	if deref.expr.resolvedType == None:
 		return
 	elif not deref.expr.resolvedType.isPtrType:
@@ -209,7 +174,15 @@ def typeCheckDeref(state, scope, deref):
 		else:
 			deref.resolvedType = types.ResolvedPtrType(baseType, indLevel - derefCount)
 
-def typeCheckInfixOp(state, scope, infixOp, implicitType):
+def analyzeSign(state, ast):
+	analyzeValueExpr(state, ast.expr)
+	ast.resolvedType = ast.expr.resolvedType
+	if ast.expr.resolvedType == None:
+		return
+	elif not ast.expr.resolvedType.isSigned:
+		logError(state, ast.expr.span, 'type "{}" has no sign'.format(ast.expr.resolvedType.name))
+
+def analyzeInfixOp(state, infixOp, implicitType):
 	opErr = lambda: \
 		logError(state, infixOp.opSpan, 
 			'invalid operand types for operator `{}` ({} and {})'
@@ -221,51 +194,55 @@ def typeCheckInfixOp(state, scope, infixOp, implicitType):
 		if type(infixOp.l) == IntLitAST and type(infixOp.r) == IntLitAST:
 			if types.canAccommodate(types.Int32, infixOp.l.value) and \
 				types.canAccommodate(types.Int32, infixOp.r.value):
-				resolveValueExprType(state, scope, infixOp.r, types.Int32)
-				resolveValueExprType(state, scope, infixOp.l, types.Int32)
+				analyzeValueExpr(state, infixOp.r, types.Int32)
+				analyzeValueExpr(state, infixOp.l, types.Int32)
 			elif types.canAccommodate(types.Int64, infixOp.l.value) and \
 				types.canAccommodate(types.Int64, infixOp.r.value):
-				resolveValueExprType(state, scope, infixOp.r, types.Int64)
-				resolveValueExprType(state, scope, infixOp.l, types.Int64)
+				analyzeValueExpr(state, infixOp.r, types.Int64)
+				analyzeValueExpr(state, infixOp.l, types.Int64)
 			else:
-				resolveValueExprType(state, scope, infixOp.r, types.UInt64)
-				resolveValueExprType(state, scope, infixOp.l, types.UInt64)
+				analyzeValueExpr(state, infixOp.r, types.UInt64)
+				analyzeValueExpr(state, infixOp.l, types.UInt64)
 		else:
 			assert 0
 	elif rIndefinite:
-		resolveValueExprType(state, scope, infixOp.l, implicitType)
+		analyzeValueExpr(state, infixOp.l, implicitType)
 		if type(infixOp.r) == IntLitAST:
 			if infixOp.l.resolvedType and infixOp.l.resolvedType.isPtrType:
 				if infixOp.op in ast.PTR_INT_OPS:
-					resolveValueExprType(state, scope, infixOp.r, types.ISize if infixOp.r.value < 0 else types.USize)
+					analyzeValueExpr(state, infixOp.r, types.ISize if infixOp.r.value < 0 else types.USize)
 				else:
 					opErr()
 					return
 			else:
-				resolveValueExprType(state, scope, infixOp.r, infixOp.l.resolvedType)
+				analyzeValueExpr(state, infixOp.r, infixOp.l.resolvedType)
 		else:
 			assert 0
 	elif lIndefinite:
-		resolveValueExprType(state, scope, infixOp.r, implicitType)
+		analyzeValueExpr(state, infixOp.r, implicitType)
 		if type(infixOp.l) == IntLitAST:
 			if infixOp.r.resolvedType and infixOp.r.resolvedType.isPtrType:
 				if infixOp.op in ast.PTR_INT_OPS:
-					resolveValueExprType(state, scope, infixOp.l, types.ISize if infixOp.l.value < 0 else types.USize)
+					analyzeValueExpr(state, infixOp.l, types.ISize if infixOp.l.value < 0 else types.USize)
 				else:
 					opErr()
 					return
 			else:
-				resolveValueExprType(state, scope, infixOp.l, infixOp.r.resolvedType)
+				analyzeValueExpr(state, infixOp.l, infixOp.r.resolvedType)
 		else:
 			assert 0
 	else:
-		resolveValueExprType(state, scope, infixOp.l, implicitType)
-		resolveValueExprType(state, scope, infixOp.r, implicitType)
+		analyzeValueExpr(state, infixOp.l, implicitType)
+		analyzeValueExpr(state, infixOp.r, implicitType)
 	
 	if not infixOp.l.resolvedType or not infixOp.r.resolvedType:
 		return
 	
-	if infixOp.l.resolvedType == types.Byte and infixOp.r.resolvedType == types.Byte:
+	if infixOp.l.resolvedType == types.Bool and infixOp.r.resolvedType == types.Bool:
+		if infixOp.op == InfixOp.EQ:
+			infixOp.resolvedType = types.Bool
+			return
+	elif infixOp.l.resolvedType == types.Byte and infixOp.r.resolvedType == types.Byte:
 		if infixOp.op == InfixOp.EQ:
 			infixOp.resolvedType = types.Bool
 			return
@@ -303,9 +280,9 @@ def typeCheckInfixOp(state, scope, infixOp, implicitType):
 	
 	opErr()
 
-def typeCheckIndex(state, scope, expr):
-	resolveValueExprType(state, scope, expr.expr)
-	resolveValueExprType(state, scope, expr.index, types.ISize)
+def analyzeIndex(state, expr):
+	analyzeValueExpr(state, expr.expr)
+	analyzeValueExpr(state, expr.index, types.ISize)
 	
 	if not expr.expr.resolvedType.isPtrType:
 		logError(state, expr.expr.span, 
@@ -314,21 +291,20 @@ def typeCheckIndex(state, scope, expr):
 	if not expr.index.resolvedType.isIntType:
 		logError(state, expr.index.span, 'index must be an integer (found {})'.format(expr.index.resolvedType))
 
-def typeCheckFnSig(state, scope, fnDecl):
-	fnDecl.parentScope = scope
-	
+def analyzeFnSig(state, fnDecl):
 	resolvedReturnType = types.Void
 	if fnDecl.returnType:
-		resolveTypeRefType(state, fnDecl, fnDecl.returnType)
+		resolveTypeRef(state, fnDecl.returnType)
 		resolvedReturnType = fnDecl.returnType.resolvedType
 	
+	symbolNames = set()
 	for param in fnDecl.params:
-		resolveTypeRefType(state, fnDecl, param.typeRef)
+		resolveTypeRef(state, param.typeRef)
 		param.resolvedSymbolType = param.typeRef.resolvedType
-		if param.name in fnDecl.symbolTable:
+		if param.name in symbolNames:
 			logError(state, param.span, 'duplicate parameter name')
 		else:
-			fnDecl.symbolTable[param.name] = param
+			symbolNames.add(param.name)
 	
 	resolvedParamTypes = [param.typeRef.resolvedType for param in fnDecl.params]
 	fnDecl.resolvedSymbolType = types.ResolvedFnType(resolvedParamTypes, fnDecl.cVarArgs, resolvedReturnType)
@@ -336,28 +312,13 @@ def typeCheckFnSig(state, scope, fnDecl):
 	if fnDecl.cVarArgs and fnDecl.cconv != CConv.C:
 		logError(state, fnDecl.cVarArgsSpan, 'may not use C variadic parameter without the C calling convention')
 
-def typeCheckLet(state, scope, letExpr):
-	if type(scope) != FnDeclAST:
-		fnScope = scope.parentScope
-		while True:
-			if letExpr.name in scope.symbolTable:
-				logError(state, letExpr.span, '`{}` has already been declared in an outer scope'.format(letExpr.name))
-				break
-			
-			if type(fnScope) == FnDeclAST:
-				break
-	
-	if letExpr.name == '_':
-		letExpr.noBinding = True
-	else:
-		scope.symbolTable[letExpr.name] = letExpr
-	
+def analyzeLet(state, letExpr):
 	if letExpr.typeRef:
-		resolveTypeRefType(state, scope, letExpr.typeRef)
+		resolveTypeRef(state, letExpr.typeRef)
 		letExpr.resolvedSymbolType = letExpr.typeRef.resolvedType
 		
 		if letExpr.expr:
-			resolveValueExprType(state, scope, letExpr.expr, letExpr.resolvedSymbolType)
+			analyzeValueExpr(state, letExpr.expr, letExpr.resolvedSymbolType)
 			assignType = getValidAssignType(letExpr.resolvedSymbolType, letExpr.expr.resolvedType)
 			if assignType:
 				letExpr.expr.resolvedType = assignType
@@ -365,16 +326,18 @@ def typeCheckLet(state, scope, letExpr):
 				logError(state, letExpr.expr.span, 'expected type {}, found {}'
 					.format(letExpr.resolvedSymbolType, letExpr.expr.resolvedType))
 	elif letExpr.expr:
-		resolveValueExprType(state, scope, letExpr.expr)
+		analyzeValueExpr(state, letExpr.expr)
 		letExpr.resolvedSymbolType = letExpr.expr.resolvedType
 	else:
 		logError(state, letExpr.expr.span, 'cannot infer type of `{}`'.format(letExpr.name))
 	
-	if letExpr.resolvedSymbolType == types.Void:
+	if letExpr.name == '_':
 		letExpr.noBinding = True
+	else:
+		state.declSymbol(letExpr)
 
-def typeCheckFnCall(state, scope, fnCallExpr):
-	resolveValueExprType(state, scope, fnCallExpr.expr)
+def analyzeFnCall(state, fnCallExpr):
+	analyzeValueExpr(state, fnCallExpr.expr)
 	fnType = fnCallExpr.expr.resolvedType
 	if fnType == None:
 		return
@@ -393,7 +356,7 @@ def typeCheckFnCall(state, scope, fnCallExpr):
 		return
 	
 	for (expected, arg) in zip(fnType.resolvedParamTypes, fnCallExpr.args):
-		resolveValueExprType(state, scope, arg, expected)
+		analyzeValueExpr(state, arg, expected)
 		assignType = getValidAssignType(expected, arg.resolvedType)
 		if assignType:
 			arg.resolvedType = assignType
@@ -402,29 +365,31 @@ def typeCheckFnCall(state, scope, fnCallExpr):
 	
 	if fnType.cVarArgs and len(fnCallExpr.args) > len(fnType.resolvedParamTypes):
 		for arg in fnCallExpr.args[len(fnType.resolvedParamTypes):]:
-			resolveValueExprType(state, scope, arg)
+			analyzeValueExpr(state, arg)
 			if arg.resolvedType and not arg.resolvedType.isPrimitiveType:
 				logError(state, arg.span, 
 					'type {} cannot be used as a C variadic argument'.format(arg.resolvedType))
 
-def typeCheckReturn(state, scope, retExpr):
-	fnScope = scope
-	while type(scope) != FnDeclAST:
-		scope = scope.parentScope
+def analyzeReturn(state, retExpr):
+	scope = state.scope
+	fnDecl = scope.fnDecl
 	
 	if retExpr.expr:
-		resolveValueExprType(state, scope, retExpr.expr, scope.resolvedSymbolType.resolvedReturnType)
-		assignType = getValidAssignType(scope.resolvedSymbolType.resolvedReturnType, retExpr.expr.resolvedType)
+		analyzeValueExpr(state, retExpr.expr, fnDecl.resolvedSymbolType.resolvedReturnType)
+		assignType = getValidAssignType(fnDecl.resolvedSymbolType.resolvedReturnType, retExpr.expr.resolvedType)
 		
 		if assignType:
 			retExpr.expr.resolvedType = assignType
 		else:
 			logError(state, retExpr.expr.span, 'invalid return type (expected {}, found {})'
-				.format(scope.resolvedSymbolType.resolvedReturnType, retExpr.expr.resolvedType))
+				.format(fnDecl.resolvedSymbolType.resolvedReturnType, retExpr.expr.resolvedType))
 
-def typeCheckAsgn(state, scope, asgnExpr):
-	resolveValueExprType(state, scope, asgnExpr.lvalue)
-	resolveValueExprType(state, scope, asgnExpr.rvalue, asgnExpr.lvalue.resolvedType)
+def analyzeAsgn(state, asgnExpr):
+	if type(asgnExpr.lvalue) == ValueRefAST:
+		analyzeValueRef(state, asgnExpr.lvalue, isLValue=True)
+	else:
+		analyzeValueExpr(state, asgnExpr.lvalue)
+	analyzeValueExpr(state, asgnExpr.rvalue, asgnExpr.lvalue.resolvedType)
 	
 	assignType = getValidAssignType(asgnExpr.lvalue.resolvedType, asgnExpr.rvalue.resolvedType)
 	if assignType:
@@ -433,30 +398,33 @@ def typeCheckAsgn(state, scope, asgnExpr):
 		logError(state, asgnExpr.rvalue.span, 'invalid types in assignment (expected {}, found {})'
 			.format(asgnExpr.lvalue.resolvedType, asgnExpr.rvalue.resolvedType))
 	
-	symbol = asgnExpr.lvalue
-	if type(symbol) == DerefAST:
-		symbol = symbol.expr
-	if type(symbol) != ValueRefAST:
+	ref = asgnExpr.lvalue
+	if type(ref) == DerefAST:
+		ref = ref.expr
+	
+	if type(ref) != ValueRefAST:
 		assert 0
 	
-	if not lookupSymbol(state, scope, symbol, False).mut:
-		logError(state, symbol.span, 'assignment target is not mutable')
+	if ref.symbol != None:
+		state.assignSymbol(ref)
 
-def typeCheckWhile(state, scope, whileExpr):
-	whileExpr.parentScope = scope
-	scope = whileExpr
+def analyzeWhile(state, whileExpr):
+	# the test needs to be considered in a new scope because it can be run 
+	# multiple times and potentially assign to variables in an outer scope
+	state.pushScope(whileExpr.block, isLoop=True)
 	
-	resolveValueExprType(state, scope, whileExpr.expr)
+	analyzeValueExpr(state, whileExpr.expr)
 	if whileExpr.expr.resolvedType and whileExpr.expr.resolvedType != types.Bool:
 		logError(state, whileExpr.expr.span, 
 			'condition type must be Bool (found {})'.format(whileExpr.expr.resolvedType))
 	
-	typeCheckBlock(state, scope, whileExpr.block)
+	whileExpr.block.resultUnused = True
+	analyzeBlock(state, whileExpr.block, manageScope=False)
+	state.popScope()
 
-def typeCheckLoop(state, scope, loop):
-	loop.parentScope = scope
-	scope = loop
-	typeCheckBlock(state, scope, loop.block)
+def analyzeLoop(state, loop):
+	loop.block.resultUnused = True
+	analyzeBlock(state, loop.block, isLoop=True)
 
 def getBlockType(block):
 	if len(block.exprs) == 0:
@@ -468,43 +436,41 @@ def getBlockType(block):
 	
 	return lastExpr.resolvedType
 
-def typeCheckIf(state, scope, ifExpr, implicitType):
-	ifExpr.parentScope = scope
-	scope = ifExpr
-	
-	resolveValueExprType(state, scope, ifExpr.expr)
+def analyzeIf(state, ifExpr, implicitType):
+	analyzeValueExpr(state, ifExpr.expr)
 	if ifExpr.expr.resolvedType and ifExpr.expr.resolvedType != types.Bool:
 		logError(state, ifExpr.expr.span, 
 			'condition type must be Bool (found {})'.format(ifExpr.expr.resolvedType))
 	
-	typeCheckBlock(state, scope, ifExpr.ifBlock, implicitType)
-	resolvedType = ifExpr.ifBlock.resolvedType
+	ifExpr.block.resultUnused = ifExpr.resultUnused
+	analyzeBlock(state, ifExpr.block, implicitType, isIf=True)
+	resolvedType = ifExpr.block.resolvedType
 	
-	if ifExpr.elseBlock:
-		typeCheckBlock(state, scope, ifExpr.elseBlock, implicitType)
-		elseResolvedType = ifExpr.elseBlock.resolvedType
-		
-		if ifExpr.ifBlock.doesReturn and ifExpr.elseBlock.doesReturn:
-			resolvedType = implicitType if implicitType else types.Void
-		elif ifExpr.ifBlock.doesReturn:
-			resolvedType = ifExpr.elseBlock.resolvedType
-		elif ifExpr.elseBlock.doesReturn:
-			resolvedType = ifExpr.ifBlock.resolvedType
-		else:
-			superType = getValidAssignType(resolvedType, elseResolvedType)
-			if not superType:
-				superType = getValidAssignType(elseResolvedType, resolvedType)
-				if not superType:
-					superType = types.ResolvedOptionType(resolvedType, elseResolvedType)
-			resolvedType = superType
+	ifExpr.elseBlock.resultUnused = ifExpr.resultUnused
+	analyzeBlock(state, ifExpr.elseBlock, implicitType, isElse=True, ifExpr=ifExpr)
+	elseResolvedType = ifExpr.elseBlock.resolvedType
+	
+	ifExpr.doesReturn = ifExpr.block.doesReturn and ifExpr.elseBlock.doesReturn
+	
+	if ifExpr.block.doesReturn and ifExpr.elseBlock.doesReturn:
+		resolvedType = implicitType if implicitType else types.Void
+	elif ifExpr.block.doesReturn:
+		resolvedType = ifExpr.elseBlock.resolvedType
+	elif ifExpr.elseBlock.doesReturn:
+		resolvedType = ifExpr.block.resolvedType
 	else:
-		resolvedType = types.Void
+		superType = getValidAssignType(resolvedType, elseResolvedType)
+		if not superType:
+			superType = getValidAssignType(elseResolvedType, resolvedType)
+			if not superType:
+				superType = types.ResolvedOptionType(resolvedType, elseResolvedType)
+		resolvedType = superType
 	
 	ifExpr.resolvedType = resolvedType
 
-def typeCheckCoercion(state, scope, asExpr):
-	resolveValueExprType(state, scope, asExpr.expr)
-	resolveTypeRefType(state, scope, asExpr.typeRef)
+def analyzeCoercion(state, asExpr):
+	analyzeValueExpr(state, asExpr.expr)
+	resolveTypeRef(state, asExpr.typeRef)
 	
 	asExpr.resolvedType = asExpr.typeRef.resolvedType
 	
@@ -512,8 +478,8 @@ def typeCheckCoercion(state, scope, asExpr):
 		logError(state, asExpr.span, 'cannot coerce from {} to {}'
 			.format(asExpr.expr.resolvedType, asExpr.typeRef.resolvedType))
 
-def typeCheckStructLit(state, scope, expr):
-	resolvedType = lookupSymbol(state, scope, expr, True)
+def analyzeStructLit(state, expr):
+	resolvedType = state.lookupSymbol(expr, True)
 	
 	if resolvedType == None:
 		resolvedType = types.ResolvedType(expr.name, 0)
@@ -537,7 +503,7 @@ def typeCheckStructLit(state, scope, expr):
 			logError(state, field.nameTok.span, 
 				'struct `{}` has no field `{}`'.format(resolvedType.name, field.name))
 		
-		resolveValueExprType(state, scope, field.expr, fieldType)
+		analyzeValueExpr(state, field.expr, fieldType)
 		if field.expr.resolvedType and fieldType and \
 			not types.getValidAssignType(fieldType, field.expr.resolvedType):
 			logError(state, field.expr.span, 
@@ -563,8 +529,8 @@ def typeCheckStructLit(state, scope, expr):
 	
 	expr.resolvedType = resolvedType
 
-def typeCheckFieldAccess(state, scope, expr):
-	resolveValueExprType(state, scope, expr.expr)
+def analyzeFieldAccess(state, expr):
+	analyzeValueExpr(state, expr.expr)
 	
 	t = expr.expr.resolvedType
 	if t == None:
@@ -590,46 +556,63 @@ def typeCheckFieldAccess(state, scope, expr):
 	expr.fieldOffset = fieldOffset
 	expr.resolvedType = t
 
-def checkLoopCtl(state, scope, expr):
-	while scope:
-		if type(scope) == WhileAST or type(scope) == LoopAST:
-			return
-		scope = scope.parentScope
+def analyzeLoopCtl(state, expr):
+	if state.loopNest == 0:
+		logError(state, expr.span, '`{}` expression is not inside a loop'
+			.format('break' if type(expr) == BreakAST else 'continue'))
 	
-	logError(state, expr.span, '`{}` expression is not inside a loop'
-		.format('break' if type(expr) == BreakAST else 'continue'))
+	symbolInfo = state.scope.symbolInfo
+	scope = state.scope
+	while True:
+		for symbol in scope.symbolTable.values():
+			if not symbolInfo[symbol].uninitialized:
+				expr.dropSymbols.append(symbol)
+		
+		if scope.isLoop:
+			break
+		
+		scope = scope.parent
 
-def typeCheckBlock(state, scope, block, implicitType=None):
-	block.parentScope = scope
+def analyzeBlock(state, block, implicitType=None, \
+	isLoop=False, isIf=False, isElse=False, ifExpr=None, fnDecl=None, manageScope=True):
+	if manageScope:
+		state.pushScope(block, isLoop=isLoop, isIf=isIf, isElse=isElse, ifExpr=ifExpr, fnDecl=fnDecl)
+	
 	unreachableSpan = None
 	block.doesReturn = False
 	
 	for (i, expr) in enumerate(block.exprs):
-		if block.doesReturn:
+		if block.doesReturn or block.doesBreak:
 			unreachableSpan = Span.merge(unreachableSpan, expr.span) if unreachableSpan else expr.span
 		
 		if type(expr) == LetAST:
-			typeCheckLet(state, scope, expr)
+			analyzeLet(state, expr)
 			block.doesReturn = expr.doesReturn
+			block.doesBreak = expr.doesBreak
 		elif type(expr) == ReturnAST:
-			typeCheckReturn(state, scope, expr)
+			analyzeReturn(state, expr)
 			block.doesReturn = True
 		elif type(expr) == AsgnAST:
-			typeCheckAsgn(state, scope, expr)
+			analyzeAsgn(state, expr)
 			block.doesReturn = expr.doesReturn
+			block.doesBreak = expr.doesBreak
 		elif type(expr) == LoopAST:
-			typeCheckLoop(state, scope, expr)
+			analyzeLoop(state, expr)
 		elif type(expr) == WhileAST:
-			typeCheckWhile(state, scope, expr)
+			analyzeWhile(state, expr)
 		elif type(expr) == BreakAST or type(expr) == ContinueAST:
-			checkLoopCtl(state, scope, expr)
+			analyzeLoopCtl(state, expr)
+			block.doesBreak = True
 		elif isinstance(expr, ValueExprAST):
-			resolveValueExprType(state, scope, expr, implicitType if i+1 == len(block.exprs) else None)
+			lastExpr = i+1 == len(block.exprs)
+			expr.resultUnused = block.resultUnused or not lastExpr
+			analyzeValueExpr(state, expr, implicitType if lastExpr else None)
 			block.doesReturn = expr.doesReturn
+			block.doesBreak = expr.doesBreak
 		else:
 			assert 0
 	
-	if block.doesReturn or len(block.exprs) == 0:
+	if block.doesReturn or block.doesBreak or len(block.exprs) == 0:
 		block.resolvedType = implicitType if implicitType else types.Void
 	else:
 		lastExpr = block.exprs[-1]
@@ -640,19 +623,25 @@ def typeCheckBlock(state, scope, block, implicitType=None):
 	
 	if unreachableSpan:
 		logWarning(state, unreachableSpan, 'unreachable code')
+	
+	if manageScope:
+		state.popScope()
 
-def typeCheckFnBody(state, fnDecl):
+def analyzeFnBody(state, fnDecl):
 	if fnDecl.body == None:
 		return
 	
-	typeCheckBlock(state, fnDecl, fnDecl.body, fnDecl.resolvedSymbolType.resolvedReturnType)
+	if fnDecl.resolvedSymbolType.resolvedReturnType == types.Void:
+		fnDecl.body.resultUnused = True
+	
+	analyzeBlock(state, fnDecl.body, fnDecl.resolvedSymbolType.resolvedReturnType, fnDecl=fnDecl)
 	
 	if not fnDecl.body.doesReturn and getValidAssignType(
 		fnDecl.resolvedSymbolType.resolvedReturnType, fnDecl.body.resolvedType, True) == None:
 		logError(state, fnDecl.body.span, 'invalid return type (expected {}, found {})'
 			.format(fnDecl.resolvedSymbolType.resolvedReturnType, fnDecl.body.resolvedType))
 
-def typeCheckStructDecl(state, scope, decl):
+def analyzeStructDecl(state, decl):
 	fields = []
 	offset = 0
 	fieldNames = set()
@@ -660,9 +649,10 @@ def typeCheckStructDecl(state, scope, decl):
 	for field in decl.fields:
 		if field.name in fieldNames:
 			logError(state, field.nameTok.span, 'duplicate field declared in struct')
-		fieldNames.add(field.name)
+		else:
+			fieldNames.add(field.name)
 		
-		resolveTypeRefType(state, scope, field.typeRef)
+		resolveTypeRef(state, field.typeRef)
 		
 		align = types.getAlignment(field.typeRef.resolvedType)
 		if offset % align > 0:
@@ -678,21 +668,131 @@ def mangleFnName(state, fnDecl):
 		fnDecl.mangledName = '_{}'.format(fnDecl.name)
 	else:
 		mangled = 'F{}{}'.format(len(fnDecl.name), fnDecl.name)
-		parent = fnDecl.parentScope
-		while parent:
-			if type(parent) == ModAST:
-				mangled = 'M{}{}{}'.format(len(parent.name), parent.name, mangled)
-			elif type(parent) == FnDeclAST:
-				mangled = 'F{}{}{}'.format(len(parent.name), parent.name, mangled)
+		scope = state.scope
+		while scope:
+			if scope.isMod:
+				mangled = 'M{}{}{}'.format(len(scope.mod.name), scope.mod.name, mangled)
+			elif scope.isFn:
+				mangled = 'F{}{}{}'.format(len(scope.fnDecl.name), scope.fnDecl.name, mangled)
 			else:
 				assert 0
 			
-			parent = parent.parentScope
+			scope = scope.parent
 		
 		fnDecl.mangledName = mangled
 
-def typeCheckMod(state, scope, mod):
-	mod.parentScope = scope
+class SymbolInfo:
+	def __init__(self, symbol):
+		self.symbol = symbol
+		self.wasDeclared = False
+		self.wasTouched = False
+		self.lastUses = set()
+		self.dropInIf = []
+		self.dropInElse = []
+		self.moved = False
+		self.maybeMoved = False
+		
+		if type(symbol) in (FnParamAST, FnDeclAST, ModAST):
+			self.uninitialized = False
+			self.maybeUninitialized = False
+		elif type(symbol) == LetAST:
+			self.uninitialized = symbol.expr == None
+			self.maybeUninitialized = False
+		else:
+			assert 0
+	
+	def clone(self):
+		info = SymbolInfo(self.symbol)
+		info.wasTouched = self.wasTouched
+		info.lastUses = self.lastUses
+		info.dropInIf = self.dropInIf
+		info.dropInElse = self.dropInElse
+		info.moved = self.moved
+		info.maybeMoved = self.maybeMoved
+		info.uninitialized = self.uninitialized
+		info.maybeUninitialized = self.maybeUninitialized
+		
+		return info
+
+class Scope:
+	def __init__(self, ast, parent, isLoop, isIf, ifBranchInfo, ifExpr, fnDecl):
+		self.ast = ast
+		self.parent = parent
+		self.isLoop = isLoop
+		self.isIf = isIf
+		self.ifExpr = ifExpr
+		self.isElse = ifBranchInfo != None
+		self.ifBranchInfo = ifBranchInfo
+		self.isFn = fnDecl != None
+		self.fnDecl = fnDecl if fnDecl else parent.fnDecl if parent else None
+		self.isMod = type(ast) == ModAST
+		self.mod = ast if self.isMod else parent.mod
+		self.symbolTable = {}
+		self.symbolInfo = {}
+		
+		if self.parent:
+			for info in self.parent.symbolInfo.values():
+				info = info.clone()
+				info.wasTouched = False
+				self.symbolInfo[info.symbol] = info
+		else:
+			for builtin in BUILTIN_TYPES:
+				self.symbolTable[builtin.name] = builtin
+		
+		if self.isFn:
+			for symbol in fnDecl.params:
+				self.symbolTable[symbol.name] = symbol
+				info = SymbolInfo(symbol)
+				info.wasDeclared = True
+				self.symbolInfo[symbol] = info
+		elif self.isMod:
+			for decl in self.mod.decls:
+				if decl.name in self.symbolTable:
+					logError(state, decl.nameTok.span, 'cannot redeclare `{}` as a different symbol'.format(decl.name))
+				else:
+					self.symbolTable[decl.name] = decl
+					self.symbolInfo[decl] = SymbolInfo(decl)
+					if type(decl) == ModAST:
+						self.loadModSymbolInfo(decl)
+	
+	def loadModSymbolInfo(self, mod):
+		for decl in mod.decls:
+			self.symbolInfo[decl] = SymbolInfo(decl)
+			if type(decl) == ModAST:
+				self.loadModSymbolInfo(decl)
+	
+	def declSymbol(self, symbol):
+		info = SymbolInfo(symbol)
+		info.wasDeclared = True
+		self.symbolInfo[symbol] = info
+		self.symbolTable[symbol.name] = symbol
+	
+	def refSymbol(self, ref):
+		info = self.symbolInfo[ref.symbol]
+		info.wasTouched = True
+		info.moved = not ref.symbol.resolvedSymbolType.isCopyable
+		info.lastUses = set([ref])
+		info.dropInIf = []
+		info.dropInElse = []
+	
+	def assignSymbol(self, ref):
+		info = self.symbolInfo[ref.symbol]
+		info.wasTouched = True
+		info.lastUses = set([ref])
+		info.dropInIf = []
+		info.dropInElse = []
+		info.uninitialized = False
+	
+	def lookupSymbol(self, name):
+		scope = self
+		while scope != None:
+			if name in scope.symbolTable:
+				return scope.symbolTable[name]
+			scope = scope.parent
+		return None
+
+def analyzeMod(state, mod):
+	state.pushScope(mod)
 	
 	for decl in mod.importDecls:
 		invokeAttrs(state, decl)
@@ -707,27 +807,179 @@ def typeCheckMod(state, scope, mod):
 		invokeAttrs(state, decl)
 	
 	for decl in mod.structDecls:
-		typeCheckStructDecl(state, mod, decl)
+		analyzeStructDecl(state, decl)
 	
 	for decl in mod.fnDecls:
-		typeCheckFnSig(state, mod, decl)
+		analyzeFnSig(state, decl)
 		mangleFnName(state, decl)
 	
 	for decl in mod.modDecls:
-		typeCheckMod(state, mod, decl)
+		analyzeMod(state, decl)
 	
 	for decl in mod.fnDecls:
-		typeCheckFnBody(state, decl)
+		analyzeFnBody(state, decl)
+	
+	state.popScope()
 
 class AnalyzerState:
-	def __init__(self, mod):
-		self.mod = mod
+	def __init__(self):
+		self.ifBranchInfo = None
+		self.scope = None
+		self.loopNest = 0
 		self.failed = False
+		self.lastUses = []
+	
+	def pushScope(self, ast, isLoop=False, isIf=False, isElse=False, ifExpr=None, fnDecl=None):
+		if self.loopNest > 0 or isLoop:
+			self.loopNest += 1
+		
+		if isElse:
+			assert self.ifBranchInfo != None
+			ifBranchInfo = { info.symbol: info for info in self.ifBranchInfo.values() \
+				if info.wasTouched and not info.wasDeclared }
+		else:
+			ifBranchInfo = None
+		
+		self.scope = Scope(ast, self.scope, isLoop, isIf, ifBranchInfo, ifExpr, fnDecl)
+	
+	def popScope(self):
+		propagate = True
+		symbolInfo = {}
+		for info in self.scope.symbolInfo.values():
+			if info.wasDeclared:
+				for lastUse in info.lastUses:
+					lastUse.lastUse = True
+					# print(revealSpan(lastUse.span))
+				for ifExpr in info.dropInIf:
+					ifExpr.block.dropSymbols.append(info.symbol)
+					# print(revealSpan(Span.cursor(ifExpr.block.span), 'drop "{}" here'.format(info.symbol.name)))
+				for ifExpr in info.dropInElse:
+					ifExpr.elseBlock.dropSymbols.append(info.symbol)
+					# print(revealSpan(Span.cursor(ifExpr.elseBlock.span), 'drop "{}" here'.format(info.symbol.name)))
+			elif info.wasTouched:
+				symbolInfo[info.symbol] = info
+		
+		if self.scope.isMod:
+			propagate = False
+		if self.scope.isFn:
+			propagate = False
+			for symbol in self.scope.symbolTable.values():
+				if type(symbol) == LetAST and symbol.unused:
+					logWarning(self, symbol.span, 'unused symbol')
+		elif self.scope.isIf:
+			propagate = False
+			self.ifBranchInfo = symbolInfo
+		elif self.scope.isElse:
+			symbols = set()
+			symbols.update(symbolInfo.keys())
+			symbols.update(self.scope.ifBranchInfo.keys())
+			
+			for symbol in symbols:
+				if symbol in symbolInfo and symbol in self.scope.ifBranchInfo:
+					branchInfo = self.scope.ifBranchInfo[symbol]
+					info = symbolInfo[symbol]
+					info.wasTouched = True
+					info.lastUses.update(branchInfo.lastUses)
+					info.maybeMoved = info.maybeMoved or \
+						branchInfo.maybeMoved or (info.moved != branchInfo.moved)
+					info.moved = info.maybeMoved
+					info.maybeUninitialized = info.maybeUninitialized or \
+						branchInfo.maybeUninitialized or (info.uninitialized != branchInfo.uninitialized)
+					info.uninitialized = info.maybeUninitialized
+				else:
+					if symbol in symbolInfo:
+						info = symbolInfo[symbol]
+						info.dropInIf.append(self.scope.ifExpr)
+					else:
+						info = self.scope.ifBranchInfo[symbol].clone()
+						info.dropInElse.append(self.scope.ifExpr)
+						symbolInfo[symbol] = info
+					
+					parentInfo = self.scope.parent.symbolInfo[symbol]
+					if parentInfo.moved != info.moved:
+						info.moved = True
+						info.maybeMoved = True
+					if parentInfo.uninitialized != info.uninitialized:
+						info.uninitialized = True
+						info.maybeUninitialized = True
+		
+		if self.loopNest > 0:
+			self.loopNest -= 1
+		
+		self.scope = self.scope.parent
+		if propagate:
+			for info in symbolInfo.values():
+				if info.symbol in self.scope.symbolInfo:
+					info = info.clone()
+					info.wasDeclared = self.scope.symbolInfo[info.symbol].wasDeclared
+					self.scope.symbolInfo[info.symbol] = info
+	
+	def declSymbol(self, symbol):
+		self.scope.declSymbol(symbol)
+	
+	def refSymbol(self, ref):
+		info = self.scope.symbolInfo[ref.symbol]
+		if info.uninitialized:
+			maybeText = "may not have" if info.maybeUninitialized else "has not"
+			logError(self, ref.span, '"{}" {} been initialized'.format(ref.name, maybeText))
+		elif info.moved:
+			maybeText = "may have" if info.maybeMoved else "has"
+			logError(self, ref.span, 'the value in "{}" {} been moved'.format(ref.name, maybeText))
+		else:
+			self.scope.refSymbol(ref)
+	
+	def assignSymbol(self, ref):
+		info = self.scope.symbolInfo[ref.symbol]
+		if not ref.symbol.mut and not info.uninitialized:
+			logError(self, ref.span, 'assignment target is not mutable')
+		else:
+			self.scope.assignSymbol(ref)
+	
+	def lookupSymbol(self, ref, inTypePosition=False):
+		symbolTok = ref.path[0]
+		path = ref.path[1:]
+		
+		symbol = self.scope.lookupSymbol(symbolTok.content)
+		
+		if symbol != None:
+			for tok in path:
+				if type(symbol) != ModAST:
+					logError(self, symbolTok.span, '`{}` is not a module'.format(symbol.name))
+					return None
+				
+				symbolTok = tok
+				if tok.content not in symbol.symbolTable:
+					symbol = None
+					break
+				
+				symbol = symbol.symbolTable[tok.content]
+		
+		if symbol and inTypePosition and type(symbol) == StructDeclAST:
+			symbol = symbol.resolvedSymbolType
+		
+		if inTypePosition:
+			if symbol == None:
+				logError(self, symbolTok.span, 'cannot resolve type `{}`'.format(symbolTok.content))
+			elif not isinstance(symbol,  types.ResolvedType):
+				logError(self, symbolTok.span, '`{}` is not a type'.format(symbolTok.content))
+				symbol = None
+		else:
+			if symbol == None:
+				logError(self, symbolTok.span, 'cannot resolve the symbol `{}`'.format(symbolTok.content))
+			elif isinstance(symbol,  types.ResolvedType):
+				logError(self, symbolTok.span, 'found a type reference where a value was expected')
+				symbol = None
+			elif type(symbol) == ModAST:
+				logError(self, symbolTok.span, 'found a module name where a value was expected')
+				symbol = None
+		
+		return symbol
+		
+		
 
 def analyze(mod):
-	state = AnalyzerState(mod)
-	
-	typeCheckMod(state, None, mod)
+	state = AnalyzerState()
+	analyzeMod(state, mod)
 	
 	if state.failed:
 		exit(1)

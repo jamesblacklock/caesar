@@ -50,9 +50,9 @@ fn main()
 		printf("You did not type the letter 'a'. You typed '%c'\n", c + 
 			10 * 2 - 11 * 2 + 2)
 	
-	let n: Int32
+	let n: Int32 = 0
 	printf("count down from: ")
-	scanf("%d", n&)
+	scanf("%d", &n)
 	
 	let mut count = 0
 	while count <= n

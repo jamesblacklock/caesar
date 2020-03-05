@@ -12,6 +12,10 @@ class Span:
 	@staticmethod
 	def merge(span1, span2):
 		return Span(span1.source, span1.startLine, span1.startColumn, span2.endLine, span2.endColumn)
+	
+	@staticmethod
+	def cursor(span):
+		return Span(span.source, span.startLine, span.startColumn, span.startLine, span.startColumn)
 
 class AnsiColor:
 	BLACK = '30'

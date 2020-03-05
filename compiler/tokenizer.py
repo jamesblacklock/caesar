@@ -119,7 +119,7 @@ def lexSpace(state):
 
 def lexComment(state):
 	def singleLineTest(state, testState):
-		if state.char == '\n':
+		if state.char == '\n' or state.char == '':
 			testState.done = True
 	
 	def multiLineTest(state, testState):

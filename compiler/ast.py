@@ -25,7 +25,7 @@ INFIX_PRECEDENCE = {
 	TokenType.AMP:       500, 
 	TokenType.PIPE:      500, 
 	TokenType.CARET:     500, 
-	TokenType.ELLIPSIS: 400, 
+	TokenType.ELLIPSIS:  400, 
 	TokenType.RNGOPEN:   400, 
 	TokenType.EQ:        300, 
 	TokenType.NEQ:       300, 
@@ -34,8 +34,10 @@ INFIX_PRECEDENCE = {
 	TokenType.GREATEREQ: 300, 
 	TokenType.LESSEQ:    300,
 	TokenType.AND:       200, 
-	TokenType.OR:        100
+	TokenType.OR:        100,
 }
+
+UNARY_PRECEDENCE = 1000
 
 class InfixOp(Enum):
 	ARROW = 'ARROW'
@@ -249,34 +251,33 @@ class ModLevelDeclAST:
 		self.doccomment = doccomment
 		self.attrs = attrs
 		self.extern = extern
-		self.parentScope = None
 
 class ModAST(ModLevelDeclAST):
-	def __init__(self, state, doccomment, nameTok, decls, span, name=None):
+	def __init__(self, doccomment, nameTok, decls, span, name=None):
 		super().__init__(doccomment, None, False, nameTok, span)
 		if name: self.name = name
 		self.span = span
 		self.importDecls = []
+		self.mainFnDecl = None
 		self.fnDecls = []
 		self.modDecls = []
 		self.structDecls = []
 		self.staticDecls = []
 		self.symbolTable = {}
+		self.decls = decls
 		
 		for decl in decls:
+			self.symbolTable[decl.name] = decl
 			if type(decl) == FnDeclAST:
 				self.fnDecls.append(decl)
+				if decl.name == 'main':
+					self.mainFnDecl = decl
 			elif type(decl) == ModAST:
 				self.modDecls.append(decl)
 			elif type(decl) == StructDeclAST:
 				self.structDecls.append(decl)
 			else:
 				raise RuntimeError('unimplemented!')
-			
-			if decl.name in self.symbolTable:
-				logError(state, decl.nameTok.span, 'cannot redeclare `{}` as a different symbol'.format(decl.name))
-			else:
-				self.symbolTable[decl.name] = decl
 
 class AttrAST:
 	def __init__(self, name, args, span):
@@ -301,7 +302,8 @@ class FieldDeclAST:
 		self.resolvedSymbolType = None
 
 class FnDeclAST(ModLevelDeclAST):
-	def __init__(self, doccomment, attrs, extern, nameTok, params, cVarArgs, returnType, body, span, cVarArgsSpan):
+	def __init__(self, doccomment, attrs, extern, nameTok, 
+		params, cVarArgs, returnType, body, span, cVarArgsSpan):
 		super().__init__(doccomment, attrs, extern, nameTok, span)
 		self.params = params
 		self.cVarArgs = cVarArgs
@@ -309,7 +311,6 @@ class FnDeclAST(ModLevelDeclAST):
 		self.returnType = returnType
 		self.body = body
 		self.cconv = CConv.CAESAR
-		self.symbolTable = {}
 		self.resolvedSymbolType = None
 
 class FnParamAST:
@@ -318,6 +319,7 @@ class FnParamAST:
 		self.typeRef = typeRef
 		self.span = span
 		self.resolvedSymbolType = None
+		self.unused = True
 
 class CVarArgsParamAST:
 	def __init__(self, span):
@@ -337,7 +339,9 @@ class LetAST:
 		self.span = span
 		self.resolvedSymbolType = None
 		self.doesReturn = False
+		self.doesBreak = False
 		self.noBinding = False
+		self.unused = True
 
 class TypeRefAST:
 	def __init__(self, path, indirectionLevel, span):
@@ -354,34 +358,35 @@ class AsgnAST:
 		self.rvalue = rvalue
 		self.span = span
 		self.doesReturn = False
+		self.doesBreak = False
 
 class LoopAST:
 	def __init__(self, block, span):
 		self.block = block
 		self.span = span
-		self.parentScope = None
-		self.symbolTable = {}
 
 class WhileAST:
 	def __init__(self, expr, block, span):
 		self.expr = expr
 		self.block = block
 		self.span = span
-		self.parentScope = None
-		self.symbolTable = {}
 
 class BreakAST:
 	def __init__(self, span):
 		self.span = span
+		self.dropSymbols = []
 
 class ContinueAST:
 	def __init__(self, span):
 		self.span = span
+		self.dropSymbols = []
 
 class ValueExprAST:
 	def __init__(self):
 		self.resolvedType = None
 		self.doesReturn = False
+		self.doesBreak = False
+		self.resultUnused = False
 
 class StrLitAST(ValueExprAST):
 	def __init__(self, value, span):
@@ -467,14 +472,15 @@ class BlockAST(ValueExprAST):
 		super().__init__()
 		self.exprs = block.list
 		self.span = block.span
-		self.parentScope = None
-		self.symbolTable = {}
+		self.dropSymbols = []
 
 class ValueRefAST(ValueExprAST):
 	def __init__(self, path, span):
 		super().__init__()
 		self.path = path
+		self.lastUse = False
 		self.nameTok = path[-1]
+		self.symbol = None
 		self.name = self.nameTok.content
 		self.span = span
 
@@ -517,6 +523,13 @@ class AddressAST(ValueExprAST):
 		self.expr = expr
 		self.span = span
 
+class SignAST(ValueExprAST):
+	def __init__(self, expr, negate, span):
+		super().__init__()
+		self.expr = expr
+		self.negate = negate
+		self.span = span
+
 class CoercionAST(ValueExprAST):
 	def __init__(self, expr, typeRef, span):
 		super().__init__()
@@ -535,11 +548,9 @@ class IfAST(ValueExprAST):
 	def __init__(self, expr, ifBlock, elseBlock, span):
 		super().__init__()
 		self.expr = expr
-		self.ifBlock = ifBlock
+		self.block = ifBlock
 		self.elseBlock = elseBlock
 		self.span = span
-		self.parentScope = None
-		self.symbolTable = {}
 
 class VoidAST(ValueExprAST):
 	def __init__(self, span):

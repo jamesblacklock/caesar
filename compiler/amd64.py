@@ -1,396 +1,933 @@
 import ctypes
-from .ir                                         import Move, Addr, Add, Call, Cmp, Div, Ret, IfElse, Break, \
-	                                                     While, Loop, InfixOp, Sub, Mul, Coerce, Cont, Storage, \
-                                                         I8, I16, I32, I64, U8, U16, U32, U64, IPTR, F32, F64
+from io                                import StringIO
+from enum                              import Enum
+from .ir                               import Dup, Write, Global, Imm, Static, Deref, Add, Sub, Mul, Div, Eq, NEq, \
+                                              Less, LessEq, Greater, GreaterEq, Call, Extend, IExtend, Truncate, \
+                                              FExtend, FTruncate, IToF, UToF, FToI, FToU, Ret, BrIf, Br, Swap, Pop, \
+                                              Raise, BlockMarker, Neg, I8, I16, I32, I64, IPTR, F32, F64
 
+class Storage(Enum):
+	IMM = 'IMM'
+	GLOBAL = 'GLOBAL'
+	REG = 'REG'
+	STACK = 'STACK'
 
-ARG_REGS = ['rdi', 'rsi', 'rdx', 'rcx', 'r8', 'r9']
+class Usage(Enum):
+	SRC = 'SRC'
+	DEST = 'DEST'
+	ADDR = 'ADDR'
+	DEREF = 'DEREF'
 
-class LoopInfo:
-	def __init__(self, startLabel, endLabel, parent):
-		self.startLabel = startLabel
-		self.endLabel = endLabel
-		self.parent = parent
-
-def targetToOperand(target, fnIR, offset=0):
-	byteSize = target.type.byteSize
-	isFloat = target.type.isFloatType
-	
-	size = ''#None
-	# if byteSize == 1:
-	# 	size = 'byte '
-	# elif byteSize == 2:
-	# 	size = 'word '
-	# elif byteSize == 4:
-	# 	size = 'dword '
-	# elif byteSize == 8:
-	# 	size = 'qword '
-	# else:
-	# 	assert 0
-	
-	if target.storage == Storage.LOCAL:
-		return '{}[rsp + {}]'.format(size, (fnIR.sp - target.value)*8 + offset)
-	elif target.storage == Storage.STATIC:
-		return '{}{}__static__{}'.format(size, fnIR.name, target.value)
-	elif target.storage == Storage.IMM:
-		value = target.value
-		if target.type.isFloatType:
-			if target.type.byteSize == 4:
-				value = hex(ctypes.c_uint32.from_buffer(ctypes.c_float(value)).value)
-			else:
-				value = hex(ctypes.c_uint64.from_buffer(ctypes.c_double(value)).value)
-		return '{}{}'.format(size, value)
-	elif target.value in fnIR.paramNames:
-		return '{}[rsp + {}] ; param: {}'.format(size, (fnIR.sp - fnIR.paramNames.index(target.value))*8 + offset, target.value)
-	elif target.value in fnIR.locals:
-		return '{}[rsp + {}] ; local: {}'.format(size, (fnIR.sp + offset - fnIR.locals[target.value])*8 + offset, target.value)
+def sizeInd(type):
+	if type.byteSize == 1:
+		return 'byte'
+	elif type.byteSize == 2:
+		return 'word'
+	elif type.byteSize == 4:
+		return 'dword'
 	else:
-		return target.value
+		return 'qword'
 
-def getReg(type, ind=0):
-	intReg = ['a', 'c', 'd']
+class Target:
+	def __init__(self, fType, storage):
+		self.type = fType
+		self.storage = storage
+		self.active = False
+		self.operandIndex = None
 	
-	if type == I8 or type == U8:
-		return '{}l'.format(intReg[ind])
-	elif type == I16 or type == U16:
-		return '{}x'.format(intReg[ind])
-	elif type == I32 or type == U32:
-		return 'e{}x'.format(intReg[ind])
-	elif type == I64 or type == U64:
-		return 'r{}x'.format(intReg[ind])
-	elif type == F32 or type == F64:
-		return 'xmm{}'.format(ind)
+	@staticmethod
+	def fromIR(ir):
+		if type(ir) == Global or type(ir) == Static:
+			return GlobalTarget(ir.type, ir.label)
+		elif type(ir) == Imm:
+			return ImmTarget(ir.type, ir.value)
+		else:
+			assert 0
+
+class ImmTarget(Target):
+	def __init__(self, fType, value):
+		super().__init__(fType, Storage.IMM)
+		self.value = value
+	
+	def render(self, usage, fType, sp):
+		assert usage == Usage.SRC
+		return '{} {}'.format(sizeInd(fType), self.value)
+
+class GlobalTarget(Target):
+	def __init__(self, fType, label):
+		super().__init__(fType, Storage.GLOBAL)
+		self.label = label
+	
+	def render(self, usage, fType, sp):
+		if usage == Usage.SRC:
+			return '{} {}'.format(sizeInd(fType), self.label)
+		elif usage == Usage.DEST:
+			return '[{}]'.format(self.label)
+		else:
+			assert 0
+
+class TopStackTarget(Target):
+	def __init__(self, fType, offset):
+		super().__init__(fType, Storage.STACK)
+		self.offset = offset
+	
+	def render(self, usage, fType, sp):
+		addr = '[rsp + {}]'.format(self.offset * 8)
+		if usage == Usage.ADDR:
+			return addr
+		elif usage in (Usage.SRC, Usage.DEST):
+			return '{} {}'.format(sizeInd(fType), addr)
+		else:
+			assert 0
+
+class StackTarget(Target):
+	def __init__(self, fType, offset):
+		super().__init__(fType, Storage.STACK)
+		self.offset = offset
+	
+	def render(self, usage, fType, sp):
+		if sp == None:
+			addr = '[%% {} %%]'.format(self.offset)
+		else:
+			addr = '[rsp + {}]'.format((sp - self.offset)*8)
+		
+		if usage == Usage.ADDR:
+			return addr
+		elif usage in (Usage.SRC, Usage.DEST):
+			return '{} {}'.format(sizeInd(fType), addr)
+		else:
+			assert 0
+
+class RegTarget(Target):
+	def __init__(self, calleeSaved, q, d, w, l, h=None):
+		super().__init__(None, Storage.REG)
+		self.calleeSaved = calleeSaved
+		self.l = l; self.h = h
+		self.w = w; self.d = d
+		self.q = q
+	
+	def render(self, usage, fType, sp):
+		if usage == Usage.DEREF or fType.byteSize == 8:
+			s = self.q
+		elif fType.byteSize == 4:
+			s = self.d
+		elif fType.byteSize == 2:
+			s = self.w
+		elif fType.byteSize == 1:
+			s = self.l
+		else:
+			assert 0
+		
+		if usage == Usage.DEREF:
+			return '{} [{}]'.format(sizeInd(fType), s)
+		elif usage in (Usage.SRC, Usage.DEST):
+			return s
+		else:
+			assert 0
+
+class Operand:
+	def __init__(self, target, usage, fType=None):
+		self.target = target
+		self.usage = usage
+		self.type = fType if fType else target.type
+	
+	def render(self, sp):
+		return self.target.render(self.usage, self.type, sp)
+
+class Instr:
+	def __init__(self, opcode, operands=[], isLabel=False, isComment=False):
+		self.opcode = opcode
+		self.operands = operands
+		self.isLabel = isLabel
+		self.isComment = isComment
+	
+	def render(self, sp):
+		assert sp != None
+		return self.__str__(sp)
+	
+	def __str__(self, sp=None):
+		ops = (' ' + ', '.join([op.render(sp) for op in self.operands])) if self.operands else ''
+		instrText = '{}{}'.format(self.opcode, ops)
+		indent = '\t' if self.isLabel else '\t\t'
+		prefix = '; ' if self.isComment else ''
+		postfix = ':' if self.isLabel and not self.isComment else ''
+		return '{}{}{}{}'.format(indent, prefix, instrText, postfix)
+
+class GeneratorState:
+	def __init__(self, fnIR):
+		self.fnIR = fnIR
+		
+		self.blockDef = None
+		self.blockInputs = [None for _ in fnIR.blockDefs]
+		self.instr = []
+		self.operandStack = []
+		
+		self.rax = RegTarget(False, 'rax',  'eax',   'ax',   'al', 'ah')
+		self.rbx = RegTarget( True, 'rbx',  'ebx',   'bx',   'bl', 'bh')
+		self.rcx = RegTarget(False, 'rcx',  'ecx',   'cx',   'cl', 'ch')
+		self.rdx = RegTarget(False, 'rdx',  'edx',   'dx',   'dl', 'dh')
+		self.rsi = RegTarget(False, 'rsi',  'esi',   'si',  'sil')
+		self.rdi = RegTarget(False, 'rdi',  'edi',   'di',  'dil')
+		self.rbp = RegTarget( True, 'rbp',  'ebp',   'bp',  'bpl')
+		self.rsp = RegTarget(False, 'rsp',  'esp',   'sp',  'spl')
+		self.r8  = RegTarget(False,  'r8',  'r8d',  'r8w',  'r8b')
+		self.r9  = RegTarget(False,  'r9',  'r9d',  'r9w',  'r9b')
+		self.r10 = RegTarget(False, 'r10', 'r10d', 'r10w', 'r10b')
+		self.r11 = RegTarget(False, 'r11', 'r11d', 'r11w', 'r11b')
+		self.r12 = RegTarget( True, 'r12', 'r12d', 'r12w', 'r12b')
+		self.r13 = RegTarget( True, 'r13', 'r13d', 'r13w', 'r13b')
+		self.r14 = RegTarget( True, 'r14', 'r14d', 'r14w', 'r14b')
+		self.r15 = RegTarget( True, 'r15', 'r15d', 'r15w', 'r15b')
+		self.intRegs = [
+			self.rax, self.rbx, self.rbp, self.r10, self.r11, 
+			self.r12, self.r13, self.r14, self.r15
+		]
+		self.intArgRegs = [
+			self.rdi, self.rsi, self.rdx, self.rcx, self.r8, 
+			self.r9
+		]
+		self.sp = 0
+		self.callStack = []
+		self.setupStackFrame()
+	
+	def allocateStack(self, count=1):
+		for _ in range(0, count):
+			self.sp += 1
+			target = StackTarget(None, self.sp)
+			self.callStack.append(target)
+	
+	def setupStackFrame(self):
+		intRegs = list(reversed(self.intArgRegs))
+		floatRegs = []
+		stackArgTypes = []
+		
+		for (i, fType) in enumerate(self.fnIR.paramTypes):
+			if fType.isFloatType and len(floatRegs) > 0:
+				assert 0
+			elif len(intRegs) > 0:
+				reg = intRegs.pop()
+				reg.type = fType
+				self.pushOperand(reg)
+				continue
+			
+			stackArgTypes.append(fType)
+		
+		if len(stackArgTypes) > 0:
+			stackArgTargets = []
+			for (i, src) in enumerate(stackArgTypes):
+				assert not fType.isFloatType
+				target = StackTarget(fType, i - len(stackArgTypes) - 1)
+				stackArgTargets.append(target)
+				self.callStack.append(target)
+			
+			for target in reversed(stackArgTargets):
+				self.pushOperand(target)
+		
+		retAddr = StackTarget(I64, -1)
+		retAddr.active = True
+		self.callStack.append(retAddr)
+		
+		oldRbp = StackTarget(I64, 0)
+		oldRbp.active = True
+		self.callStack.append(oldRbp)
+		
+		self.sp = 0
+	
+	def appendInstr(self, opcode, *operands, isLabel=False, isComment=False):
+		instr = Instr(opcode, operands, isLabel, isComment)
+		self.instr.append(instr)
+		#print(instr)
+	
+	def findReg(self, type=None, exclude=[]):
+		for reg in self.intRegs:
+			if reg.active or reg.calleeSaved or reg in exclude:
+				continue
+			if type: reg.type = type
+			return reg
+	
+	def findTarget(self, type=None, alwaysUseStack=False, exclude=[]):
+		if not alwaysUseStack:
+			target = self.findReg(type, exclude=exclude)
+			if target:
+				return target
+		
+		for target in self.callStack:
+			if target in exclude:
+				continue
+			if not target.active:
+				if type: target.type = type
+				return target
+		
+		self.sp += 1
+		target = StackTarget(type, self.sp)
+		self.callStack.append(target)
+		return target
+	
+	def pushIROperand(self, ir):
+		target = Target.fromIR(ir)
+		target.active = True
+		target.operandIndex = len(self.operandStack)
+		self.operandStack.append(target)
+	
+	def clearOperands(self):
+		for _ in range(0, len(self.operandStack)):
+			self.popOperand()
+	
+	def pushOperand(self, target):
+		assert not target.active
+		assert target.operandIndex == None
+		assert target.type != None
+		
+		target.active = True
+		target.operandIndex = len(self.operandStack)
+		self.operandStack.append(target)
+	
+	def raiseOperand(self, index):
+		opStackLen = len(self.operandStack)
+		index = opStackLen - 1 - index
+		assert index >= 0
+		
+		target = self.operandStack.pop(index)
+		self.operandStack.append(target)
+		
+		for i in range(index, len(self.operandStack)):
+			self.operandStack[i].operandIndex = i
+	
+	def swapOperand(self, offset):
+		index = len(self.operandStack) - 1 - offset
+		assert index >= 0
+		
+		target = self.operandStack[index]
+		target.active = False
+		target.operandIndex = None
+		target = self.operandStack.pop()
+		target.operandIndex = index
+		self.operandStack[index] = target
+	
+	def popOperand(self):
+		target = self.operandStack.pop()
+		target.active = False
+		target.operandIndex = None
+		return target
+	
+	def getOperand(self, offset):
+		index = len(self.operandStack) - 1 - offset
+		assert index >= 0
+		return self.operandStack[index]
+	
+	def moveOperand(self, src, dest):
+		dest.active = True
+		dest.operandIndex = src.operandIndex
+		dest.type = src.type
+		self.operandStack[dest.operandIndex] = dest
+		
+		src.active = False
+		src.operandIndex = None
+
+def irToAsm(state, ir):
+	#state.appendInstr(ir.pretty(state.fnIR), isComment=True, isLabel=(type(ir) == BlockMarker))
+	
+	if type(ir) in (Global, Static, Imm):
+		state.pushIROperand(ir)
+	elif type(ir) == Pop:
+		state.popOperand()
+	elif type(ir) == Dup:
+		dup(state, ir)
+	elif type(ir) == Swap:
+		swap(state, ir)
+	elif type(ir) == Raise:
+		raise_(state, ir)
+	elif type(ir) == Write:
+		write(state, ir)
+	elif type(ir) == Deref:
+		deref(state, ir)
+	elif type(ir) == Extend:
+		extend(state, ir)
+	elif type(ir) == IExtend:
+		iextend(state, ir)
+	elif type(ir) == Truncate:
+		truncate(state, ir)
+	elif type(ir) == Neg:
+		neg(state, ir)
+	elif type(ir) == Add:
+		add(state, ir)
+	elif type(ir) == Sub:
+		sub(state, ir)
+	elif type(ir) == Mul:
+		mul(state, ir)
+	elif type(ir) == Div:
+		div(state, ir)
+	elif type(ir) in (Eq, NEq, Less, LessEq, Greater, GreaterEq):
+		cmp(state, ir)
+	elif type(ir) == Call:
+		call(state, ir)
+	elif type(ir) == BlockMarker:
+		blockMarker(state, ir)
+	elif type(ir) == BrIf:
+		brIf(state, ir)
+	elif type(ir) == Br:
+		br(state, ir)
+	elif type(ir) == Ret:
+		ret(state, ir)
 	else:
 		assert 0
 
-def irToAsm(instr, fnIR, loopInfo=None):
-	if type(instr) == Move:
-		reg = getReg(instr.dest.type)
-		lines = []
+def moveData(state, src, dest, transferRegister):
+	assert dest.storage in (Storage.STACK, Storage.REG)
+	
+	if src.storage in (Storage.STACK, Storage.GLOBAL) and dest.storage == Storage.STACK:
+		assert transferRegister != None
+		state.appendInstr('mov', 
+			Operand(transferRegister, Usage.DEST, src.type), 
+			Operand(src, Usage.SRC))
+		transferRegister.type = src.type
+		src = transferRegister
+	
+	state.appendInstr('mov', 
+		Operand(dest, Usage.DEST, src.type), 
+		Operand(src, Usage.SRC))
+
+def dup(state, ir):
+	src = state.getOperand(ir.offset)
+	
+	if src.storage == Storage.GLOBAL:
+		dest = GlobalTarget(src.type, src.label)
+	elif type(ir) == Imm:
+		dest = ImmTarget(src.type, src.value)
+	else:
+		dest = state.findTarget(src.type)
+		saveReg(state, state.rax, exclude=[src, dest])
+		moveData(state, src, dest, state.rax)
+	
+	state.pushOperand(dest)
+
+def swap(state, ir):
+	state.swapOperand(ir.offset)
+
+def raise_(state, ir):
+	state.raiseOperand(ir.offset)
+
+def blockMarker(state, ir):
+	assert state.blockInputs[ir.index] != None
+	state.clearOperands()
+	inputTargets = state.blockInputs[ir.index]
+	inputTypes = state.fnIR.blockDefs[ir.index].inputs
+	
+	for target, fType in zip(inputTargets, inputTypes):
+		target.type = fType
+		state.pushOperand(target)
+	
+	state.blockDef = state.fnIR.blockDefs[ir.index]
+	state.appendInstr(state.blockDef.label, isLabel=True)
+
+def deref(state, ir):
+	target = state.getOperand(0)
+	
+	if target.storage == Storage.REG:
+		reg = target
+	else:
+		reg = state.findReg(target.type)
+		if reg == None:
+			saveReg(state, state.rax)
+			reg = state.rax
+			reg.type = ir.type
 		
-		if not instr.dest.type.isFloatType:
-			if instr.srcDeref:
-				lines.append('lea rax, {}'.format(targetToOperand(instr.src, fnIR)))
-				for _ in range(0, instr.srcDeref):
-					lines.append('mov rcx, [rax]\n\t\tmov rax, rcx')
-				
-				lines.append('mov {}, [rax]'.format(reg))
-			else:
-				lines.append('mov {}, {}'.format(reg, targetToOperand(instr.src, fnIR, instr.src.offset)))
-			
-			lines.append('lea rdx, {}'.format(targetToOperand(instr.dest, fnIR)))
-			for _ in range(0, instr.destDeref):
-				lines.append('mov rcx, [rdx]\n\t\tmov rdx, rcx')
-			
-			lines.append('mov [rdx], {}'.format(reg))
+		# if type(target) == StackTarget:
+		# 	state.appendInstr('lea', 
+		# 		Operand(reg, Usage.DEST, target.type), 
+		# 		Operand(target, Usage.ADDR))
+		# else:
+		state.appendInstr('mov', 
+			Operand(reg, Usage.DEST, target.type), 
+			Operand(target, Usage.SRC))
+	
+	state.appendInstr('mov', 
+		Operand(reg, Usage.DEREF), 
+		Operand(reg, Usage.SRC, target.type))
+	
+	state.popOperand()
+	state.pushOperand(reg)
+
+# def moveToReg(state, target, default, exclude=[]):
+# 	if target.storage != Storage.REG:
+# 		reg = findRegOrSave(state, target.type, default, exclude=exclude)
+# 		state.appendInstr(Instr('\t\tmov {}, {}\n'.format(reg.asDest(), target.asSrc())))
+# 		target = reg
+	
+# 	return target
+
+def write(state, ir):
+	src = state.getOperand(0)
+	dest = state.getOperand(1)
+	
+	if dest.storage != Storage.REG:
+		reg = state.findReg(I64)
+		if reg == None:
+			saveReg(state, state.rax, exclude=[src, state.rbp])
+			reg = state.rax
+			reg.type = I64
+		
+		state.appendInstr('mov', 
+			Operand(reg, Usage.DEST), 
+			Operand(dest, Usage.SRC, I64))
+		dest = reg
+	
+	if src.storage != Storage.REG:
+		reg = state.findReg(src.type)
+		if reg == None:
+			saveReg(state, state.rbp, exclude=[dest])
+			reg = state.rbp
+			reg.type = src.type
+		
+		state.appendInstr('mov', 
+			Operand(reg, Usage.DEST), 
+			Operand(src, Usage.SRC))
+		src = reg
+	
+	state.appendInstr('mov', 
+		Operand(dest, Usage.DEREF, src.type), 
+		Operand(src, Usage.SRC))
+	
+	state.popOperand()
+	state.popOperand()
+
+def extend(state, ir, signed=False):
+	src = state.getOperand(0)
+	
+	if src.storage == Storage.IMM:
+		src.type = ir.type
+		return
+	
+	if src.storage == Storage.REG:
+		dest = src
+	else:
+		dest = state.findReg(ir.type)
+		if dest == None:
+			saveReg(state, state.rax)
+			dest = state.rax
+	
+	opcode = ('movsx' if signed else 'movzx')
+	if src.type.byteSize == 4: opcode += 'd'
+	
+	state.appendInstr(opcode, 
+		Operand(dest, Usage.DEST, ir.type), 
+		Operand(src, Usage.SRC))
+	
+	dest.type = ir.type
+	
+	state.popOperand()
+	state.pushOperand(dest)
+
+def iextend(state, ir):
+	extend(state, ir, True)
+
+def truncate(state, ir):
+	state.getOperand(0).type = ir.type
+
+def neg(state, ir):
+	target = state.getOperand(0)
+	if target.storage == Storage.IMM:
+		target.value = -src.value
+	else:
+		state.appendInstr('neg', Operand(target, Usage.SRC))
+
+def addOrSub(state, ir, isAdd):
+	src = state.getOperand(0)
+	dest = state.getOperand(1)
+	
+	if src.storage == Storage.IMM and dest.storage == Storage.IMM:
+		state.popOperand()
+		dest.value = (dest.value + src.value) if isAdd else (dest.value - src.value)
+		return
+	elif dest.storage == Storage.IMM and isAdd:
+		dest, src = src, dest
+	
+	if dest.storage in (Storage.STACK, Storage.IMM) and src.storage == Storage.STACK:
+		saveReg(state, state.rax)
+		state.rax.type = dest.type
+		state.appendInstr('mov', 
+			Operand(state.rax, Usage.DEST), 
+			Operand(dest, Usage.SRC))
+		dest = state.rax
+	
+	state.appendInstr('add' if isAdd else 'sub',
+			Operand(dest, Usage.DEST), 
+			Operand(src, Usage.SRC))
+	
+	state.popOperand()
+	state.popOperand()
+	state.pushOperand(dest)
+
+def add(state, ir):
+	addOrSub(state, ir, True)
+
+def sub(state, ir):
+	addOrSub(state, ir, False)
+
+def mulOrDiv(state, ir, isMul):
+	src = state.getOperand(0)
+	dest = state.getOperand(1)
+	
+	if src.storage == Storage.IMM and dest.storage == Storage.IMM:
+		state.popOperand()
+		dest.value = (dest.value * src.value) if isMul else (dest.value / src.value)
+		return
+	
+	if isMul and src == state.rax:
+		dest, src = src, dest
+	
+	if src != state.rdx:
+		saveReg(state, state.rdx)
+	
+	if dest != state.rax:
+		saveReg(state, state.rax)
+		state.rax.type = dest.type
+		state.appendInstr('mov', 
+			Operand(state.rax, Usage.DEST), 
+			Operand(dest, Usage.SRC))
+		dest = state.rax
+		
+		src = state.getOperand(0)
+	
+	if src.storage == Storage.IMM:
+		newSrc = state.findTarget(src.type, exclude=[state.rax])
+		state.appendInstr('mov', 
+			Operand(newSrc, Usage.DEST), 
+			Operand(src, Usage.SRC))
+		src = newSrc
+	
+	state.appendInstr('mul' if isMul else 'div', 
+		Operand(src, Usage.SRC))
+	
+	state.popOperand()
+	state.popOperand()
+	state.pushOperand(dest)
+
+def mul(state, ir):
+	mulOrDiv(state, ir, True)
+
+def div(state, ir):
+	mulOrDiv(state, ir, False)
+
+def cmp(state, ir):
+	saveReg(state, state.rcx)
+	state.rcx.type = I8
+	
+	r = state.getOperand(0)
+	l = state.getOperand(1)
+	
+	if l.storage == Storage.IMM and l.storage == Storage.IMM:
+		state.popOperand()
+		if type(ir) == Eq:
+			l.value = l.value == r.value
+		elif type(ir) == NEq:
+			l.value = l.value == r.value
+		elif type(ir) == Less:
+			l.value = l.value == r.value
+		elif type(ir) == LessEq:
+			l.value = l.value == r.value
+		elif type(ir) == Greater:
+			l.value = l.value == r.value
+		elif type(ir) == GreaterEq:
+			l.value = l.value == r.value
 		else:
 			assert 0
-			# src = targetToOperand(instr.src, fnIR)
-			# opcode = 'movss' if instr.src.type.byteSize == 4 else 'movsd'
-			
-			# if instr.srcDeref:
-			# 	lines.append('mov rax, {}'.format(reg, src))
-				
-			# 	for _ in range(0, instr.srcDeref-1):
-			# 		lines.append('mov rcx, [rax]\n\t\tmov rax, rcx')
-				
-			# 	src = '[rax]'
-			
-			# lines.append('{} {}, {}'.format(opcode, reg, src))
-			# lines.append('{} {}, {}'.format(opcode, targetToOperand(instr.dest, fnIR), reg))
-		
-		return '\n\t\t'.join(lines)
-	elif type(instr) == Addr:
-		reg = getReg(IPTR)
-		lines = []
-		lines.append('lea {}, {}'.format(reg, targetToOperand(instr.src, fnIR)))
-		lines.append('mov {}, {}'.format(targetToOperand(instr.dest, fnIR), reg))
-		return '\n\t\t'.join(lines)
-	elif type(instr) == Call:
-		lines = []
-		for (i, arg) in enumerate(instr.args[0:len(ARG_REGS)]):
-			regType = I64 if arg.type.isSigned else U64
-			lines.append(coerce(arg, regType, fnIR))
-			lines.append('mov {}, {}'.format(ARG_REGS[i], getReg(regType)))
-		stackArgs = instr.args[len(ARG_REGS):]
-		size = 8*len(stackArgs)
-		if size % 16 != 0:
-			size += 8
-		if len(stackArgs) > 0:
-			lines.append('sub rsp, {}'.format(size))
-			for (i, arg) in enumerate(stackArgs):
-				regType = I64 if arg.type.isSigned else U64
-				lines.append(coerce(arg, regType, fnIR, size))
-				lines.append('mov [rsp + {}], {}'.format(8*i, getReg(regType)))
-		if instr.cVarArgs:
-			lines.append('mov al, 0')
-		lines.append('call {}'.format(instr.callee.value))
-		if len(stackArgs) > 0:
-			lines.append('add rsp, {}'.format(size))
-		if instr.dest:
-			lines.append('mov {}, {}'.format(targetToOperand(instr.dest, fnIR), getReg(instr.dest.type)))
-		return '\n\t\t'.join(lines)
-	elif type(instr) == Ret:
-		output = '' if instr.target == None else 'mov {}, {}\n\t\t'.format(
-			getReg(instr.target.type), targetToOperand(instr.target, fnIR))
-		return '{}jmp {}__end'.format(output, fnIR.name)
-	elif type(instr) == IfElse:
-		reg = getReg(instr.target.type)
-		elseLabel = '{}__elselabel__{}'.format(fnIR.name, fnIR.labelsCount)
-		fnIR.labelsCount += 1
-		endLabel = '{}__endiflabel__{}'.format(fnIR.name, fnIR.labelsCount)
-		fnIR.labelsCount += 1
-		
-		ifRetVal = ''
-		elseRetVal = ''
-		destReg = None
-		if instr.dest:
-			destReg = getReg(instr.dest.type)
-			if len(instr.ifBlock) > 0 and instr.ifBlock[-1].producesValue:
-				ifRetVal = '\t\tmov {}, {} ; save if expr value\n'.format(
-					destReg, targetToOperand(instr.ifBlock[-1].dest, fnIR))
-			if instr.elseBlock and len(instr.elseBlock) > 0 and instr.elseBlock[-1].producesValue:
-				elseRetVal = '\t\tmov {}, {} ; save else expr value\n'.format(
-					destReg, targetToOperand(instr.elseBlock[-1].dest, fnIR))
-		
-		lines = []
-		lines.append('mov {}, {}'.format(reg, targetToOperand(instr.target, fnIR)))
-		lines.append('cmp {}, 0'.format(reg))
-		lines.append('jz {}'.format(elseLabel))
-		lines.append('{}{}'.format(irBlockToAsm(instr.ifBlock, fnIR, loopInfo), ifRetVal))
-		lines.append('jmp {}'.format(endLabel))
-		lines.append('{}:\n{}{}\t{}:'.format(elseLabel, irBlockToAsm(instr.elseBlock, fnIR, loopInfo), elseRetVal, endLabel))
-		if instr.dest:
-			lines.append('mov {}, {}'.format(targetToOperand(instr.dest, fnIR), destReg))
-		return '\n\t\t'.join(lines)
-	elif type(instr) == Loop:
-		startLabel = '{}__looplabel__{}'.format(fnIR.name, fnIR.labelsCount)
-		endLabel = '{}__endlooplabel__{}'.format(fnIR.name, fnIR.labelsCount)
-		fnIR.labelsCount += 1
-		result = '\n\t{}:\n{}\t\tjmp {}\n\t{}:'.format(
-			startLabel, 
-			irBlockToAsm(instr.block, fnIR, LoopInfo(startLabel, endLabel, loopInfo)), 
-			startLabel, 
-			endLabel
-		)
-		return result
-	elif type(instr) == While:
-		reg = getReg(instr.target.type)
-		startLabel = '{}__whilelabel__{}'.format(fnIR.name, fnIR.labelsCount)
-		endLabel = '{}__endwhilelabel__{}'.format(fnIR.name, fnIR.labelsCount)
-		fnIR.labelsCount += 1
-		result = '\n\t{}:\n{}\t\tmov {}, {}\n\t\tcmp {}, 0\n\t\tjz {}\n{}\t\tjmp {}\n\t{}:'.format(
-			startLabel, 
-			irBlockToAsm(instr.condBlock, fnIR, loopInfo), 
-			reg, 
-			targetToOperand(instr.target, fnIR), 
-			reg, 
-			endLabel, 
-			irBlockToAsm(instr.block, fnIR, LoopInfo(startLabel, endLabel, loopInfo)), 
-			startLabel, 
-			endLabel
-		)
-		return result
-	elif type(instr) == Break:
-		if loopInfo == None:
-			assert 0
-		return 'jmp {}'.format(loopInfo.endLabel)
-	elif type(instr) == Cont:
-		if loopInfo == None:
-			assert 0
-		return 'jmp {}'.format(loopInfo.startLabel)
-	elif type(instr) == Cmp:
-		reg = getReg(instr.l.type)
-		reg2 = getReg(instr.l.type, 1)
-		opcode = 'setz'
-		if instr.op == InfixOp.NEQ:
-			opcode = 'setnz'
-		elif instr.op == InfixOp.LESS:
-			opcode = 'setl'
-		elif instr.op == InfixOp.LESSEQ:
-			opcode = 'setle'
-		elif instr.op == InfixOp.GREATER:
-			opcode = 'setg'
-		elif instr.op == InfixOp.GREATEREQ:
-			opcode = 'setge'
-		return 'xor {}, {}\n\t\tmov {}, {}\n\t\tcmp {}, {}\n\t\t{} cl\n\t\tmov {}, {}'.format(
-			reg2,
-			reg2,
-			reg,
-			targetToOperand(instr.l, fnIR),
-			reg,
-			targetToOperand(instr.r, fnIR),
-			opcode,
-			targetToOperand(instr.dest, fnIR),
-			reg2)
-	elif type(instr) == Add:
-		reg = getReg(instr.l.type)
-		return 'mov {}, {}\n\t\tadd {}, {}\n\t\tmov {}, {}'.format(
-			reg,
-			targetToOperand(instr.l, fnIR),
-			reg,
-			targetToOperand(instr.r, fnIR),
-			targetToOperand(instr.dest, fnIR),
-			reg)
-	elif type(instr) == Sub:
-		reg = getReg(instr.l.type)
-		return 'mov {}, {}\n\t\tsub {}, {}\n\t\tmov {}, {}'.format(
-			reg,
-			targetToOperand(instr.l, fnIR),
-			reg,
-			targetToOperand(instr.r, fnIR),
-			targetToOperand(instr.dest, fnIR),
-			reg)
-	elif type(instr) == Mul:
-		reg = getReg(instr.l.type)
-		reg2 = getReg(instr.l.type, 1)
-		return 'mov {}, {}\n\t\tmov {}, {}\n\t\tmul {}\n\t\tmov {}, {}'.format(
-			reg,
-			targetToOperand(instr.l, fnIR),
-			reg2,
-			targetToOperand(instr.r, fnIR),
-			reg2,
-			targetToOperand(instr.dest, fnIR),
-			reg)
-	elif type(instr) == Div:
-		reg = getReg(instr.l.type)
-		reg2 = getReg(instr.l.type, 1)
-		return 'mov {}, {}\n\t\tmov {}, {}\n\t\tdiv {}\n\t\tmov {}, {}'.format(
-			reg,
-			targetToOperand(instr.l, fnIR),
-			reg2,
-			targetToOperand(instr.r, fnIR),
-			reg2,
-			targetToOperand(instr.dest, fnIR),
-			reg)
-	elif type(instr) == Coerce:
-		lines = []
-		lines.append(coerce(instr.src, instr.dest.type, fnIR))
-		lines.append('mov {}, {}'.format(targetToOperand(instr.dest, fnIR), getReg(instr.dest.type)))
-		return '\n\t\t'.join(lines)
+		l.type = I8
+		return
+	
+	if type(ir) == Eq:
+		opcode = 'sete'
+	elif type(ir) == NEq:
+		opcode = 'setne'
+	elif type(ir) == Less:
+		opcode = 'setl'
+	elif type(ir) == LessEq:
+		opcode = 'setle'
+	elif type(ir) == Greater:
+		opcode = 'setg'
+	elif type(ir) == GreaterEq:
+		opcode = 'setge'
 	else:
 		assert 0
+	
+	if l.storage == Storage.STACK and r.storage == Storage.STACK:
+		saveReg(state, state.rax)
+		state.appendInstr('mov', 
+			Operand(state.rax, Usage.DEST, l.type), 
+			Operand(l, Usage.SRC))
+		l = state.rax
+	
+	state.appendInstr('xor', 
+		Operand(state.rcx, Usage.DEST, I64), 
+		Operand(state.rcx, Usage.DEST, I64))
+	state.appendInstr('cmp', 
+		Operand(l, Usage.DEST), 
+		Operand(r, Usage.SRC))
+	state.appendInstr(opcode, 
+		Operand(state.rcx, Usage.DEST))
 
-def coerce(src, destType, fnIR, offset=0, regInd=0):
-	if src.type.isFloatType == False and destType.isFloatType == False:
-		if src.type.byteSize < destType.byteSize:
-			if src.type.byteSize == 4:
-				reg = getReg(I64 if src.type.isSigned else I32, regInd)
-				opcode = 'movsxd' if src.type.isSigned else 'mov'
-				return '{} {}, dword {}'.format(
-					opcode, 
-					reg, 
-					targetToOperand(src, fnIR, offset))
+	state.popOperand()
+	state.popOperand()
+	state.pushOperand(state.rcx)
+
+def call(state, ir):
+	saveReg(state, state.rax)
+	for reg in state.intRegs:
+		if reg.calleeSaved:
+			continue
+		saveReg(state, reg)
+	
+	funcAddr = state.getOperand(0)
+	
+	intArgRegs = list(reversed(state.intArgRegs))
+	floatRegs = []
+	stackArgs = []
+	
+	for i in reversed(range(1, ir.argCt + 1)):
+		src = state.getOperand(i)
+		if src.type.isFloatType and len(floatRegs) > 0:
+			assert 0
+		elif len(intArgRegs) > 0:
+			reg = intArgRegs.pop()
+			saveReg(state, reg)
+			reg.type = src.type
+			state.appendInstr('mov', 
+				Operand(reg, Usage.DEST), 
+				Operand(src, Usage.SRC))
+			continue
+		
+		assert not src.type.isFloatType
+		stackArgs.append(src)
+	
+	if len(stackArgs) > 0:
+		requiredStackSpace = len(stackArgs)
+		for stackSlot in reversed(state.callStack):
+			if stackSlot.active:
+				break
 			else:
-				reg = getReg(destType, regInd)
-				opcode = 'movsx' if src.type.isSigned else 'movzx'
-				size = 'byte' if src.type.byteSize == 1 else 'word'
-				return '{} {}, {} {}'.format(
-					opcode, 
-					reg, 
-					size, 
-					targetToOperand(src, fnIR, offset))
-		else:
-			reg = getReg(src.type, regInd)
-			return 'mov {}, {}'.format(reg, targetToOperand(src, fnIR, offset))
+				requiredStackSpace -= 1
+		
+		state.allocateStack(requiredStackSpace)
+		
+		for (i, src) in enumerate(stackArgs):
+			moveData(state, src, TopStackTarget(src.type, i), state.rax)
+	
+	if ir.cVarArgs:
+		state.appendInstr('mov', 
+				Operand(state.rax, Usage.DEST, I8), 
+				Operand(ImmTarget(I8, 0), Usage.SRC))
+	
+	state.appendInstr('call', Operand(funcAddr, Usage.SRC))
+	
+	for _ in range(0, ir.argCt + 1):
+		state.popOperand()
+	
+	if len(ir.retTypes) > 0:
+		if len(ir.retTypes) > 1:
+			assert 0
+		
+		state.rax.type = ir.retTypes[0]
+		state.pushOperand(state.rax)
+
+def brOrBrIf(state, ir, isBrIf):
+	offset = 1 if isBrIf else 0
+	blockDef = state.fnIR.blockDefs[ir.index]
+	inputTypes = blockDef.inputs
+	outputTargets = list(reversed([state.getOperand(i + offset) for i in range(0, len(inputTypes))]))
+	reg = state.r11
+	
+	if state.blockInputs[ir.index] == None:
+		inputTargets = []
+		for target in outputTargets:
+			needNewTarget = False
+			if target == reg:
+				needNewTarget = True
+			elif target.storage in (Storage.GLOBAL, Storage.IMM):
+				needNewTarget = True
+			
+			if needNewTarget:
+				target = state.findTarget(target.type, exclude=[reg, *inputTargets])
+			
+			inputTargets.append(target)
+		
+		state.blockInputs[ir.index] = inputTargets
+		if isBrIf: state.blockInputs[ir.elseIndex] = inputTargets
 	else:
-		raise RuntimeError('unimplemented!')
+		inputTargets = state.blockInputs[ir.index]
+		for input, output, fType in zip(inputTargets, outputTargets, inputTypes):
+			if input != output and input.active:
+				target = state.findTarget(input.type, exclude=inputTargets)
+				moveData(state, input, target, reg)
+				state.moveOperand(input, target)
+				assert input not in state.operandStack
+			input.type = fType
+		
+		# output targets may have changed if "moveOperand" was called, so they must be reloaded
+		outputTargets = list(reversed([state.getOperand(i + offset) for i in range(0, len(inputTypes))]))
+	
+	saveReg(state, reg, exclude=inputTargets)
+	
+	for src, dest in zip(outputTargets, inputTargets):
+		assert src.type == dest.type
+		if src == dest:
+			continue
+		moveData(state, src, dest, reg)
+	
+	if isBrIf:
+		target = state.popOperand()
+		if type(target) != RegTarget:
+			reg.type = target.type
+			state.appendInstr('mov', 
+				Operand(reg, Usage.DEST), 
+				Operand(target, Usage.SRC))
+			target = reg
+		
+		state.appendInstr('test', 
+			Operand(target, Usage.DEST), 
+			Operand(target, Usage.SRC))
+		
+		state.appendInstr('jnz {}'.format(state.fnIR.blockDefs[ir.index].label))
+		state.appendInstr('jmp {}'.format(state.fnIR.blockDefs[ir.elseIndex].label))
+	else:
+		state.appendInstr('jmp {}'.format(state.fnIR.blockDefs[ir.index].label))
+	
+	for _ in outputTargets:
+		state.popOperand()
 
-def irBlockToAsm(irBlock, fnIR, loopInfo=None):
-	lines = []
-	for instr in irBlock:
-		lines.append('\t\t\n\t\t; {}\n\t\t'.format(str(instr).split('\n')[0]) + irToAsm(instr, fnIR, loopInfo) + '\n')
-	return ''.join(lines)
+def br(state, ir):
+	brOrBrIf(state, ir, False)
 
-def delcareExterns(mod, lines):	
+def brIf(state, ir):
+	brOrBrIf(state, ir, True)
+	
+def ret(state, ir):
+	if len(state.fnIR.retTypes) > 0:
+		assert len(state.fnIR.retTypes) < 2
+		src = state.getOperand(0)
+		if src != state.rax:
+			state.rax.active = False
+			state.rax.operandIndex = None
+			state.rax.type = src.type
+			state.appendInstr('mov', 
+				Operand(state.rax, Usage.DEST), 
+				Operand(src, Usage.SRC))
+			state.popOperand()
+			state.pushOperand(state.rax)
+	
+	state.appendInstr('jmp {}__ret'.format(state.fnIR.name))
+
+def saveReg(state, src, exclude=[]):
+	if not src.active:
+		return
+	
+	dest = state.findTarget(src.type, True, exclude=exclude)
+	state.moveOperand(src, dest)
+	state.appendInstr('mov', 
+		Operand(dest, Usage.DEST), 
+		Operand(src, Usage.SRC))
+
+def delcareExterns(mod, output):	
 	for decl in mod.modDecls:
-		delcareExterns(decl, lines)
+		delcareExterns(decl, output)
 	
 	for decl in mod.fnDecls:
 		if decl.extern:
-			lines.append('extern {}\n'.format(decl.mangledName))
+			output.write('extern {}\n'.format(decl.mangledName))
 
-def declareFns(mod, lines):
+def declareFns(mod, output):
 	for decl in mod.modDecls:
-		declareFns(decl, lines)
+		declareFns(decl, output)
 	
 	for decl in mod.fnDecls:
 		if not decl.extern:
-			lines.append('global {}\n'.format(decl.mangledName))
+			output.write('global {}\n'.format(decl.mangledName))
 
-def defineStatics(mod, lines):
+def defineStatics(mod, output):
 	for decl in mod.modDecls:
-		defineStatics(decl, lines)
+		defineStatics(decl, output)
 	
 	for decl in mod.fnDecls:
 		if decl.extern:
 			continue
 		
-		for (i, d) in enumerate(decl.ir.staticDefs):
-			lines.append('\t{}__static__{}: db {},0\n'.format(decl.ir.name, i, ','.join([str(b) for b in d])))
+		for staticDef in decl.ir.staticDefs:
+			bytes = ''.join([str(b) + ',' for b in staticDef.value])
+			output.write('\t{}: db {}0\n'.format(staticDef.label, bytes))
 
-def defineFns(mod, lines):
+def defineFns(mod, output):
 	for decl in mod.modDecls:
-		defineFns(decl, lines)
+		defineFns(decl, output)
 	
 	for decl in mod.fnDecls:
 		if decl.extern:
 			continue
 		
-		lines.append('\t{}:\n'.format(decl.ir.name))
-		stackSize = decl.ir.sp * 8
+		output.write('\t{}:\n'.format(decl.ir.name))
+		
+		state = GeneratorState(decl.ir)
+		for instr in decl.ir.instr:
+			irToAsm(state, instr)
+		
+		# stackOffset = 8 * len(stackArgs)
+		# if stackOffset % 16 != 0:
+		# 	stackOffset += 8
+		# if stackOffset > 0:
+		# 	state.appendInstr(Instr('\t\tadd rsp, {}\n'.format(stackOffset)))
+		
+		stackSize = state.sp * 8
 		if stackSize % 16 == 0:
 			stackSize += 8
 		if stackSize > 0:
-			lines.append('\t\tsub rsp, {}\n'.format(stackSize))
+			output.write('\t\tsub rsp, {}\n'.format(stackSize))
 		
-		for (i, param) in enumerate(decl.ir.paramNames):
-			if i < len(ARG_REGS):
-				lines.append('\t\tmov [rsp + {}], {} ; param: {}\n'.format(
-					(decl.ir.sp - i)*8, ARG_REGS[i], param))
-			else:
-				# the `+ 2` points back into the previous stack frame, behind the return address
-				stackOffset = i - len(ARG_REGS) + 2
-				lines.append('\t\tmov rax, [rsp + {}]\n'.format(
-					(decl.ir.sp + stackOffset)*8))
-				lines.append('\t\tmov [rsp + {}], rax ; param: {}\n'.format(
-					(decl.ir.sp - i)*8, param))
+		for instr in state.instr:
+			output.write(instr.render(state.sp))
+			output.write('\n')
 		
-		lines.append(irBlockToAsm(decl.ir.block, decl.ir))
-		
-		lines.append('\t{}__end:\n'.format(decl.ir.name))
+		output.write('\t{}__ret:\n'.format(decl.ir.name))
 		
 		if stackSize > 0:
-			lines.append('\t\tadd rsp, {}\n'.format(stackSize))
+			output.write('\t\tadd rsp, {}\n'.format(stackSize))
 		
-		lines.append('\t\tret\n')
+		output.write('\t\tret\n')
+
+import sys
+
+class OutputWriter:
+	def __init__(self):
+		self.output = StringIO()
+	
+	def write(self, s):
+		sys.stdout.write(s)
+		self.output.write(s)
+	
+	def getvalue(self):
+		return self.output.getvalue()
 
 def generateAsm(mod):
-	lines = []
-	delcareExterns(mod, lines)
+	output = OutputWriter()
 	
-	if 'main' in mod.symbolTable:
-		lines.append('\nglobal _start\n')
+	delcareExterns(mod, output)
 	
-	declareFns(mod, lines)
+	if mod.mainFnDecl != None:
+		output.write('\nglobal _start\n')
 	
-	lines.append('\nsection .data\n')
-	defineStatics(mod, lines)
+	declareFns(mod, output)
 	
-	lines.append('\nsection .text\n')
+	output.write('\nsection .data\n')
+	defineStatics(mod, output)
 	
-	if 'main' in mod.symbolTable:
-		lines.extend(
-		[
-			'\t_start:\n',
-			'\t\tsub rsp, 8\n',
-			'\t\tcall {}\n'.format(mod.symbolTable['main'].mangledName),
-			'\t\tmov rax, 0x02000001\n',
-			'\t\tmov rdi, 0\n',
-			'\t\tsyscall\n'
-		])
+	output.write('\nsection .text\n')
 	
-	defineFns(mod, lines)
+	if mod.mainFnDecl != None:
+		output.write('\t_start:\n')
+		output.write('\t\tsub rsp, 8\n')
+		output.write('\t\tcall {}\n'.format(mod.mainFnDecl.mangledName))
+		output.write('\t\tmov rax, 0x02000001\n')
+		output.write('\t\tmov rdi, 0\n')
+		output.write('\t\tsyscall\n')
 	
-	return ''.join(lines)
+	defineFns(mod, output)
+	
+	return output.getvalue()
 

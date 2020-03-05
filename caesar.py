@@ -195,7 +195,9 @@ def main(args):
 			outfile.close()
 			
 			if args.obj or args.bin or args.lib or args.dylib or args.run:
-				os.system('nasm -f macho64 {} -o {}'.format(asmFileNames[i], objFileNames[i]))
+				asmExitCode = os.system('nasm -f macho64 {} -o {}'.format(asmFileNames[i], objFileNames[i]))
+				if asmExitCode != 0:
+					exit(1)
 		except Exception as e:
 			print(e)
 			exit(1)

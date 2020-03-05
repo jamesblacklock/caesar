@@ -10,8 +10,8 @@ from .ast                import CConv, FnDeclAST, LetAST, FnCallAST, ReturnAST, 
                                 ValueExprAST, FnParamAST, BlockAST, AsgnAST, WhileAST, DerefAST, \
                                 IndexOpAST, VoidAST, CVarArgsParamAST, InfixOp, AddressAST, LoopAST, \
                                 BreakAST, ContinueAST, CharLitAST, FieldDeclAST, StructDeclAST, \
-                                FieldLitAST, StructLitAST, FieldAccessAST, INFIX_PRECEDENCE
-from .types              import BUILTIN_TYPES
+                                FieldLitAST, StructLitAST, FieldAccessAST, INFIX_PRECEDENCE, \
+                                SignAST, UNARY_PRECEDENCE
 
 class ParserState:
 	def __init__(self, source, tokens):
@@ -510,12 +510,13 @@ def parseIf(state):
 	
 	ifBlock = BlockAST(parseBlock(state, parseFnBodyExpr))
 	span = Span.merge(span, ifBlock.span)
-	elseBlock = None
 	
 	offset = state.offset
 	state.skipEmptyLines()
 	if state.tok.type == TokenType.ELSE or \
-		state.tok.type == TokenType.INDENT and state.tokens[state.offset+1].type == TokenType.ELSE:
+		state.tok.type == TokenType.INDENT and \
+		len(state.tok.content) == state.indentLevel and \
+		state.tokens[state.offset+1].type == TokenType.ELSE:
 		if state.tok.type == TokenType.INDENT:
 			expectIndent(state)
 		state.advance()
@@ -524,13 +525,15 @@ def parseIf(state):
 		if state.tok.type == TokenType.IF:
 			tok = state.tok
 			elseIf = parseIf(state)
-			elseBlock = BlockAST(Block([elseIf], elseIf.span) if elseIf else Block([], tok.span))
+			elseIfBlock = Block([elseIf], elseIf.span) if elseIf else Block([], tok.span)
+			elseBlock = BlockAST(elseIfBlock)
 		else:
 			elseBlock = BlockAST(parseBlock(state, parseFnBodyExpr))
 		
 		span = Span.merge(span, elseBlock.span)
 	else:
 		state.rollback(offset)
+		elseBlock = BlockAST(Block([], Span.cursor(state.tok.span)))
 	
 	return IfAST(expr, ifBlock, elseBlock, span)
 
@@ -609,14 +612,16 @@ def parseDeref(state, expr):
 	
 	return DerefAST(expr, derefCount, span)
 
-def parseAddress(state, expr):
-	span = Span.merge(state.tok.span, state.tok.span)
+def parseAddress(state):
+	span = state.tok.span
 	state.advance()
 	state.skipSpace()
+	expr = parseValueExpr(state)
 	
-	if type(expr) != ValueRefAST:
-		logError(state, span, 'taking address of a temporary is not yet implemented')
+	if type(expr) == AddressAST:
+		logError(state, span, 'cannot take the address of an address')
 	
+	span = Span.merge(span, state.tok.span)
 	return AddressAST(expr, span)
 
 def parseIndex(state, expr):
@@ -643,7 +648,7 @@ def parseInfixOp(state, l, mustIndent, spaceAroundOp):
 	
 	eol = False
 	
-	if op == TokenType.CARET or op == TokenType.AMP:
+	if op == TokenType.CARET:
 		isUnary = False
 		
 		if state.tok.type == TokenType.NEWLINE:
@@ -657,10 +662,10 @@ def parseInfixOp(state, l, mustIndent, spaceAroundOp):
 		
 		if isUnary:
 			state.rollback(offset)
-			if op == TokenType.CARET:
-				return parseDeref(state, l)
-			else:
-				return parseAddress(state, l)
+			# if op == TokenType.CARET:
+			return parseDeref(state, l)
+			# else:
+			# 	assert 0
 	else:
 		eol = state.skipEmptyLines()
 	
@@ -759,7 +764,8 @@ def parseSign(state):
 		expr = FloatLitAST(state.tok.content, negate, Span.merge(span, state.tok.span))
 		state.advance()
 	else:
-		assert 0
+		expr = parseValueExpr(state, UNARY_PRECEDENCE)
+		expr = SignAST(expr, negate, Span.merge(span, expr.span))
 	
 	return expr
 
@@ -838,6 +844,8 @@ def parseValueExpr(state, precedence=0):
 		state.advance()
 	elif state.tok.type == TokenType.PLUS or state.tok.type == TokenType.MINUS:
 		expr = parseSign(state)
+	elif state.tok.type == TokenType.AMP:
+		expr = parseAddress(state)
 	elif state.tok.type == TokenType.INTEGER:
 		expr = IntLitAST(state.tok.content, False, state.tok.span)
 		state.advance()
@@ -875,8 +883,6 @@ def parseValueExpr(state, precedence=0):
 			expr = parseInfixOp(state, expr, expr.span.startLine == expr.span.endLine, spaceBeforeOp)
 		elif state.tok.type == TokenType.CARET:
 			expr = parseDeref(state, expr)
-		elif state.tok.type == TokenType.AMP:
-			expr = parseAddress(state, expr)
 		else:
 			break
 	
@@ -1072,10 +1078,6 @@ def parseModLevelDecl(state):
 		logError(state, state.tok.span, 'static variables at the module level are unimplemented')
 		return None
 
-def addBuiltinsToModule(modAST):
-	for builtin in BUILTIN_TYPES:
-		modAST.symbolTable[builtin.name] = builtin
-
 def parseModule(state, doccomment):
 	span = state.tok.span
 	state.advance()
@@ -1087,8 +1089,7 @@ def parseModule(state, doccomment):
 		state.advance()
 	
 	block = parseBlock(state, parseModLevelDecl)
-	modAST = ModAST(state, doccomment, nameTok, block.list, Span.merge(span, block.span))
-	addBuiltinsToModule(modAST)
+	modAST = ModAST(doccomment, nameTok, block.list, Span.merge(span, block.span))
 	return modAST
 
 def parseTopLevelModule(state):
@@ -1099,8 +1100,7 @@ def parseTopLevelModule(state):
 		logError(state, Span(state.source, 1, 1, 1, 1), 'illegal module name: `{}`'.format(name))
 	
 	block = parseBlock(state, parseModLevelDecl, topLevelBlock=True)
-	modAST = ModAST(state, None, None, block.list, block.span, name)
-	addBuiltinsToModule(modAST)
+	modAST = ModAST(None, None, block.list, block.span, name)
 	return modAST
 
 def parse(source, tokens):

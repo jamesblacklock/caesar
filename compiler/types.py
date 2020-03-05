@@ -9,6 +9,7 @@ class ResolvedType:
 		self.name = name
 		self.byteSize = byteSize
 		self.isPrimitiveType = isPrimitiveType
+		self.isCopyable = isPrimitiveType or isFnType
 		self.isVoidType = isVoidType
 		self.isFnType = isFnType
 		self.isPtrType = isPtrType
@@ -39,7 +40,7 @@ class ResolvedFnType(ResolvedType):
 			', ' if cVarArgs and len(resolvedParamTypes) > 0 else '',
 			'...' if cVarArgs else '',
 			resolvedReturnType.name)
-		super().__init__(name, 0, isFnType=True)
+		super().__init__(name, PLATFORM_WORD_SIZE, isFnType=True, isPtrType=True)
 		self.resolvedReturnType = resolvedReturnType
 		self.resolvedParamTypes = resolvedParamTypes
 		self.cVarArgs = cVarArgs
@@ -88,8 +89,8 @@ Int64   = ResolvedType('Int64',   8, isPrimitiveType=True, isIntType=True, isSig
 UInt64  = ResolvedType('UInt64',  8, isPrimitiveType=True, isIntType=True)
 ISize   = ResolvedType('ISize',   PLATFORM_WORD_SIZE, isPrimitiveType=True, isIntType=True, isSigned=True)
 USize   = ResolvedType('USize',   PLATFORM_WORD_SIZE, isPrimitiveType=True, isIntType=True)
-Float32 = ResolvedType('Float32', 4, isPrimitiveType=True, isFloatType=True)
-Float64 = ResolvedType('Float64', 8, isPrimitiveType=True, isFloatType=True)
+Float32 = ResolvedType('Float32', 4, isPrimitiveType=True, isFloatType=True, isSigned=True)
+Float64 = ResolvedType('Float64', 8, isPrimitiveType=True, isFloatType=True, isSigned=True)
 
 BUILTIN_TYPES = [
 	Void,
@@ -173,8 +174,8 @@ def getValidAssignType(expectedType, foundType, allowVoidCercion=False):
 				if t not in foundType.resolvedTypes:
 					return None
 			return expectedType
-		else:
-			return foundType in expectedType.resolvedTypes
+		elif foundType in expectedType.resolvedTypes:
+			return expectedType
 	elif expectedType.isIntType and foundType.isIntType and \
 		expectedType.byteSize == foundType.byteSize and expectedType.isSigned == foundType.isSigned:
 		return expectedType
