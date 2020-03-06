@@ -29,6 +29,12 @@ def sizeInd(type):
 	else:
 		return 'qword'
 
+def floatToHex(value, byteSize):
+	if target.type.byteSize == 4:
+		return hex(ctypes.c_uint32.from_buffer(ctypes.c_float(value)).value)
+	else:
+		return hex(ctypes.c_uint64.from_buffer(ctypes.c_double(value)).value)
+
 class Target:
 	def __init__(self, fType, storage):
 		self.type = fType

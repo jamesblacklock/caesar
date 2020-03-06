@@ -5,3 +5,4 @@ __pycache__
 .vscode
 test*
 test*.asm
+test?.csr
