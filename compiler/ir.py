@@ -269,17 +269,16 @@ class FToU(Instr):
 	def __str__(self):
 		return 'ftou {}'.format(self.type)
 
-# class Addr(Instr):
-# 	def __init__(self, ast):
-		
-#    def affectStack(self, statek):
-#       state.pushOperand(self.type)
-		
-#    def affectStack(self, state):
-#       assert 0
+class Addr(Instr):
+	def __init__(self, ast, offset):
+		self.ast = ast
+		self.offset = offset
 	
-# 	def __str__(self):
-# 		return 'addr'
+	def affectStack(self, state):
+		state.pushOperand(IPTR)
+	
+	def __str__(self):
+		return 'addr {}'.format(self.offset)
 
 class Call(Instr):
 	def __init__(self, ast, argCt, retTypes, cVarArgs):
@@ -618,9 +617,9 @@ def fnCallToIR(state, ast):
 			assert 0
 		elif fType.byteSize < 4:
 			if expr.resolvedType.isSigned:
-				state.appendInstr(IExtend(ast, I64))
+				state.appendInstr(IExtend(ast, IPTR))
 			else:
-				state.appendInstr(Extend(ast, I64))
+				state.appendInstr(Extend(ast, IPTR))
 	
 	exprToIR(state, ast.expr)
 	if ast.resolvedType == types.Void:
@@ -847,9 +846,14 @@ def returnToIR(state, ast):
 	state.appendInstr(Ret(ast))
 
 def addressToIR(state, ast):
-	assert 0
-	if type(addr.expr) != ValueRefAST:
+	offset = None
+	if type(ast.expr) != ValueRefAST or isinstance(ast.expr.symbol, ModLevelDeclAST):
 		exprToIR(state, ast.expr)
+		offset = 0
+	else:
+		offset = state.localOffset(ast.expr.symbol)
+	
+	state.appendInstr(Addr(ast, offset))
 
 def exprToIR(state, expr):
 	if type(expr) == VoidAST:

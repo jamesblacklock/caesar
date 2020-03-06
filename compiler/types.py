@@ -75,22 +75,22 @@ class ResolvedPtrType(ResolvedType):
 		self.baseType = baseType
 		self.indirectionLevel = indirectionLevel
 
-Void    = ResolvedType('Void',    0, isVoidType=True)
-Bool    = ResolvedType('Bool',    1, isPrimitiveType=True)
-Byte    = ResolvedType('Byte',    1, isPrimitiveType=True)
-Int8    = ResolvedType('Int8',    1, isPrimitiveType=True, isIntType=True, isSigned=True)
-UInt8   = ResolvedType('UInt8',   1, isPrimitiveType=True, isIntType=True)
-Int16   = ResolvedType('Int16',   2, isPrimitiveType=True, isIntType=True, isSigned=True)
-UInt16  = ResolvedType('UInt16',  2, isPrimitiveType=True, isIntType=True)
-Int32   = ResolvedType('Int32',   4, isPrimitiveType=True, isIntType=True, isSigned=True)
-UInt32  = ResolvedType('UInt32',  4, isPrimitiveType=True, isIntType=True)
-Char    = ResolvedType('Char',    4, isPrimitiveType=True)
-Int64   = ResolvedType('Int64',   8, isPrimitiveType=True, isIntType=True, isSigned=True)
-UInt64  = ResolvedType('UInt64',  8, isPrimitiveType=True, isIntType=True)
-ISize   = ResolvedType('ISize',   PLATFORM_WORD_SIZE, isPrimitiveType=True, isIntType=True, isSigned=True)
-USize   = ResolvedType('USize',   PLATFORM_WORD_SIZE, isPrimitiveType=True, isIntType=True)
-Float32 = ResolvedType('Float32', 4, isPrimitiveType=True, isFloatType=True, isSigned=True)
-Float64 = ResolvedType('Float64', 8, isPrimitiveType=True, isFloatType=True, isSigned=True)
+Void    = ResolvedType('void',    0, isVoidType=True)
+Bool    = ResolvedType('bool',    1, isPrimitiveType=True)
+Byte    = ResolvedType('byte',    1, isPrimitiveType=True)
+Int8    = ResolvedType('int8',    1, isPrimitiveType=True, isIntType=True, isSigned=True)
+UInt8   = ResolvedType('uint8',   1, isPrimitiveType=True, isIntType=True)
+Int16   = ResolvedType('int16',   2, isPrimitiveType=True, isIntType=True, isSigned=True)
+UInt16  = ResolvedType('uint16',  2, isPrimitiveType=True, isIntType=True)
+Int32   = ResolvedType('int32',   4, isPrimitiveType=True, isIntType=True, isSigned=True)
+UInt32  = ResolvedType('uint32',  4, isPrimitiveType=True, isIntType=True)
+Char    = ResolvedType('char',    4, isPrimitiveType=True)
+Int64   = ResolvedType('int64',   8, isPrimitiveType=True, isIntType=True, isSigned=True)
+UInt64  = ResolvedType('uint64',  8, isPrimitiveType=True, isIntType=True)
+ISize   = ResolvedType('isize',   PLATFORM_WORD_SIZE, isPrimitiveType=True, isIntType=True, isSigned=True)
+USize   = ResolvedType('usize',   PLATFORM_WORD_SIZE, isPrimitiveType=True, isIntType=True)
+Float32 = ResolvedType('float32', 4, isPrimitiveType=True, isFloatType=True, isSigned=True)
+Float64 = ResolvedType('float64', 8, isPrimitiveType=True, isFloatType=True, isSigned=True)
 
 BUILTIN_TYPES = [
 	Void,

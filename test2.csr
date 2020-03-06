@@ -1,22 +1,22 @@
-@FFI("C") extern fn printf(fmt: Byte&, ...) -> Int32
-@FFI("C") extern fn atoi(str: Byte&) -> Int32
+@FFI("C") extern fn printf(fmt: byte&, ...) -> int32
+@FFI("C") extern fn atoi(str: byte&) -> int32
 
 struct T
-	x: Int64
-	y: Int64
-	z: Int64
+	x: int64
+	y: int64
+	z: int64
 
 struct S
-	a: Int32
-	b: Int32
+	a: int32
+	b: int32
 
-fn main(argc: UInt64, argv: Byte&&)
+fn main(argc: uint64, argv: byte&&)
 	if argc != 3
 		printf("Usage: %s <number> <number>\n", argv^)
 	
 	# S::h::offset
 	# S::e::size
-	# UInt64::size
+	# uint64::size
 	
 	let s = S
 		a: atoi(argv[8])

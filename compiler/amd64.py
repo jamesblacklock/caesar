@@ -1,10 +1,11 @@
 import ctypes
 from io                                import StringIO
 from enum                              import Enum
-from .ir                               import Dup, Write, Global, Imm, Static, Deref, Add, Sub, Mul, Div, Eq, NEq, \
-                                              Less, LessEq, Greater, GreaterEq, Call, Extend, IExtend, Truncate, \
-                                              FExtend, FTruncate, IToF, UToF, FToI, FToU, Ret, BrIf, Br, Swap, Pop, \
-                                              Raise, BlockMarker, Neg, I8, I16, I32, I64, IPTR, F32, F64
+from .ir                               import Dup, Write, Global, Imm, Static, Deref, Add, Sub, Mul, \
+                                              Div, Eq, NEq, Less, LessEq, Greater, GreaterEq, Call, \
+                                              Extend, IExtend, Truncate, FExtend, FTruncate, IToF, \
+                                              UToF, FToI, FToU, Ret, BrIf, Br, Swap, Pop, Raise, \
+                                              BlockMarker, Neg, Addr, I8, I16, I32, I64, IPTR, F32, F64
 
 class Storage(Enum):
 	IMM = 'IMM'
@@ -337,6 +338,8 @@ def irToAsm(state, ir):
 		swap(state, ir)
 	elif type(ir) == Raise:
 		raise_(state, ir)
+	elif type(ir) == Addr:
+		addr(state, ir)
 	elif type(ir) == Write:
 		write(state, ir)
 	elif type(ir) == Deref:
@@ -407,6 +410,21 @@ def swap(state, ir):
 def raise_(state, ir):
 	state.raiseOperand(ir.offset)
 
+def addr(state, ir):
+	src = state.getOperand(ir.offset)
+	if src.storage != Storage.STACK:
+		newSrc = state.findTarget(src.type, True)
+		state.moveOperand(src, newSrc)
+		moveData(state, src, newSrc, None)
+		src = newSrc
+	
+	dest = state.findTarget(IPTR)
+	state.appendInstr('lea', 
+		Operand(dest, Usage.DEST), 
+		Operand(src, Usage.ADDR))
+	
+	state.pushOperand(dest)
+
 def blockMarker(state, ir):
 	assert state.blockInputs[ir.index] != None
 	state.clearOperands()
@@ -432,11 +450,6 @@ def deref(state, ir):
 			reg = state.rax
 			reg.type = ir.type
 		
-		# if type(target) == StackTarget:
-		# 	state.appendInstr('lea', 
-		# 		Operand(reg, Usage.DEST, target.type), 
-		# 		Operand(target, Usage.ADDR))
-		# else:
 		state.appendInstr('mov', 
 			Operand(reg, Usage.DEST, target.type), 
 			Operand(target, Usage.SRC))
@@ -447,14 +460,6 @@ def deref(state, ir):
 	
 	state.popOperand()
 	state.pushOperand(reg)
-
-# def moveToReg(state, target, default, exclude=[]):
-# 	if target.storage != Storage.REG:
-# 		reg = findRegOrSave(state, target.type, default, exclude=exclude)
-# 		state.appendInstr(Instr('\t\tmov {}, {}\n'.format(reg.asDest(), target.asSrc())))
-# 		target = reg
-	
-# 	return target
 
 def write(state, ir):
 	src = state.getOperand(0)
@@ -713,9 +718,9 @@ def call(state, ir):
 			moveData(state, src, TopStackTarget(src.type, i), state.rax)
 	
 	if ir.cVarArgs:
-		state.appendInstr('mov', 
+		state.appendInstr('xor', 
 				Operand(state.rax, Usage.DEST, I8), 
-				Operand(ImmTarget(I8, 0), Usage.SRC))
+				Operand(state.rax, Usage.DEST, I8))
 	
 	state.appendInstr('call', Operand(funcAddr, Usage.SRC))
 	

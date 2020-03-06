@@ -1,27 +1,27 @@
 #! /usr/local/bin/python3 ./caesar.py --run
 
 @FFI("C")
-extern fn printf(format: Byte&, ...) -> Int32
+extern fn printf(format: byte&, ...) -> int32
 
 @FFI("C")
-extern fn scanf(format: Byte&, ...) -> Int32
+extern fn scanf(format: byte&, ...) -> int32
 
 @FFI("C")
-extern fn time(ret: Int64&) -> Int64
+extern fn time(ret: int64&) -> int64
 
 @FFI("C")
-extern fn getchar() -> Int32
+extern fn getchar() -> int32
 
-fn doTheThing(n: Int16) -> Int16 #=hello=#
+fn doTheThing(n: int16) -> int16 #=hello=#
 	printf("Normal function-call syntax%s\n", ".")
 	"Here is a number: %d\n" -> printf(n)
 	
 	return 17
 
-fn theMeaningOfLifeTheUniverseAndEverything() -> Int16 { if true {-42} else {return 42} }
+fn theMeaningOfLifeTheUniverseAndEverything() -> int16 { if true {-42} else {return 42} }
 
 mod testMod
-	fn otherFn() -> Int32 { printf("enter a char: "), getchar() }
+	fn otherFn() -> int32 { printf("enter a char: "), getchar() }
 
 #========================================================
 	This is the documentation for the `main` function, 
@@ -30,15 +30,15 @@ mod testMod
 fn main()
 	moreThanSixArgs(5,6,7,8,9,10,11,12,-99999)
 	
-	let i: Int32 = if true {42} else {return}
+	let i: int32 = if true {42} else {return}
 	
-	let null = 0 as Int64&
-	let xyz: Int8 = { printf("123\n"), 123 }
+	let null = 0 as int64&
+	let xyz: int8 = { printf("123\n"), 123 }
 	
 	doTheThing( doTheThing( theMeaningOfLifeTheUniverseAndEverything() ) )
 	printf("The time is: %d\nAnd here is the value of a local variable: %d\n", time(null), xyz)
 	
-	let mut c: Int32 = 
+	let mut c: int32 = 
 		if true
 			testMod::otherFn()
 		else
@@ -50,7 +50,7 @@ fn main()
 		printf("You did not type the letter 'a'. You typed '%c'\n", c + 
 			10 * 2 - 11 * 2 + 2)
 	
-	let n: Int32 = 0
+	let n: int32 = 0
 	printf("count down from: ")
 	scanf("%d", &n)
 	
@@ -67,7 +67,7 @@ fn main()
 			98, 121, 101)
 
 fn moreThanSixArgs(
-	a: Int8, b: Int32, c: Int32, d: Int32
-	e: Int32, f: Int32, g: Int32, h: Int32
-	i: Int32)
+	a: int8, b: int32, c: int32, d: int32
+	e: int32, f: int32, g: int32, h: int32
+	i: int32)
 	printf("%d %d %d %d %d %d %d %d %d\n", a, i, b, c, d, e, f, g, h)
