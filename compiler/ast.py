@@ -293,7 +293,8 @@ class StructDeclAST(ModLevelDeclAST):
 		self.resolvedSymbolType = None
 
 class FieldDeclAST:
-	def __init__(self, nameTok, typeRef, span):
+	def __init__(self, attrs, nameTok, typeRef, span):
+		self.attrs = attrs
 		self.nameTok = nameTok
 		self.name = nameTok.content
 		self.typeRef = typeRef
@@ -493,6 +494,7 @@ class FieldAccessAST(ValueExprAST):
 		self.name = self.nameTok.content
 		self.span = span
 		self.fieldOffset = None
+		self.field = None
 
 class InfixOpAST(ValueExprAST):
 	def __init__(self, l, r, op, span, opSpan):

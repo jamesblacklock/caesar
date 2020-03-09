@@ -5,32 +5,55 @@ from .ast                import CConv, FnDeclAST, LetAST, FnCallAST, ReturnAST, 
 								BlockAST, AsgnAST, WhileAST, DerefAST, IndexOpAST, VoidAST, \
 								AddressAST, FloatLitAST, BreakAST, ContinueAST, InfixOp, LoopAST, \
                                 CharLitAST, StructLitAST, FieldAccessAST, StructDeclAST, FnParamAST, \
-                                SignAST
+                                SignAST, FieldDeclAST
 from .                   import types
 from .types              import getValidAssignType
 from .err                import logError, logWarning
 from .span               import Span
 from .types              import BUILTIN_TYPES
 
-def ffiAttr(decl, params):
+def ffiAttr(state, decl, params, span):
 	if len(params) != 1 or params[0].content != '"C"':
-		raise RuntimeError('FFI currently only supports the "C" convention')
+		logError(state, span, '"ffi" currently only supports the "C" convention')
+		return
 	if type(decl) != FnDeclAST:
-		raise RuntimeError('FFI attribute can only be applied to functions')
+		logError(state, span, '"ffi" attribute may only be applied to functions')
+		return
 	
 	decl.cconv = CConv.C
 
+def alignAttr(state, decl, params, span):
+	align = params[0].content if len(params) == 1 else None
+	if align != None:
+		try:
+			align = int(align)
+		except ValueError:
+			align = None
+	
+	if align == None:
+		logError(state, span, '"align" takes a single integer parameter')
+		return
+	elif align < 1 or (align & (align - 1)) != 0:
+		logError(state, span, 'alignment must be a power of 2 greater than or equal to 1')
+		return
+	elif type(decl) != FieldDeclAST:
+		logError(state, span, 'the "align" attribute may only be applied to struct & field declarations')
+		return
+	
+	decl.align = align
+
 builtinAttrs = {
-	'FFI': ffiAttr
+	'ffi': ffiAttr,
+	'align': alignAttr
 }
 
 def invokeAttrs(state, decl):
 	for attr in decl.attrs:
 		if attr.name not in builtinAttrs:
-			logError(state, attr.span, 'attribute "{}" does not exist'.format(attr.name))
+			logError(state, attr.span, 'unrecognized attribute: "{}"'.format(attr.name))
 			continue
 		
-		builtinAttrs[attr.name](decl, attr.args)
+		builtinAttrs[attr.name](state, decl, attr.args, attr.span)
 
 def analyzeValueExpr(state, expr, implicitType=None):
 	if type(expr) == StrLitAST:
@@ -85,13 +108,13 @@ def resolveTypeRef(state, typeRef):
 	
 	typeRef.resolvedType = resolvedType
 
-def analyzeValueRef(state, valueRef, isLValue=False):
+def analyzeValueRef(state, valueRef, noRef=False):
 	valueRef.symbol = state.lookupSymbol(valueRef, False)
 	if valueRef.symbol:
 		valueRef.symbol.unused = False
 		valueRef.resolvedType = valueRef.symbol.resolvedSymbolType
 		
-		if not isLValue:
+		if not noRef:
 			state.refSymbol(valueRef)
 	else:
 		valueRef.resolvedType = None
@@ -386,7 +409,9 @@ def analyzeReturn(state, retExpr):
 
 def analyzeAsgn(state, asgnExpr):
 	if type(asgnExpr.lvalue) == ValueRefAST:
-		analyzeValueRef(state, asgnExpr.lvalue, isLValue=True)
+		analyzeValueRef(state, asgnExpr.lvalue, noRef=True)
+	elif type(asgnExpr.lvalue) == FieldAccessAST:
+		analyzeFieldAccess(state, asgnExpr.lvalue, noRef=True)
 	else:
 		analyzeValueExpr(state, asgnExpr.lvalue)
 	analyzeValueExpr(state, asgnExpr.rvalue, asgnExpr.lvalue.resolvedType)
@@ -398,15 +423,16 @@ def analyzeAsgn(state, asgnExpr):
 		logError(state, asgnExpr.rvalue.span, 'invalid types in assignment (expected {}, found {})'
 			.format(asgnExpr.lvalue.resolvedType, asgnExpr.rvalue.resolvedType))
 	
-	ref = asgnExpr.lvalue
-	if type(ref) == DerefAST:
-		ref = ref.expr
-	
-	if type(ref) != ValueRefAST:
+	if type(asgnExpr.lvalue) == ValueRefAST:
+		if asgnExpr.lvalue.symbol != None:
+			state.assignSymbol(asgnExpr.lvalue)
+	elif type(asgnExpr.lvalue) == FieldAccessAST:
+		if type(asgnExpr.lvalue.expr) == ValueRefAST and asgnExpr.lvalue.expr.symbol != None:
+			state.assignSymbol(asgnExpr.lvalue.expr, asgnExpr.lvalue.field, asgnExpr.lvalue)
+	elif type(asgnExpr.lvalue) == DerefAST:
+		pass
+	else:
 		assert 0
-	
-	if ref.symbol != None:
-		state.assignSymbol(ref)
 
 def analyzeWhile(state, whileExpr):
 	# the test needs to be considered in a new scope because it can be run 
@@ -509,34 +535,40 @@ def analyzeStructLit(state, expr):
 			logError(state, field.expr.span, 
 				'expected type {}, found {}'.format(fieldType, field.expr.resolvedType))
 	
-	uninit = [field for field in fieldDict if field not in fieldNames]
-	if len(uninit) > 0:
-		fieldsStr = None
-		if len(uninit) == 1:
-			fieldsStr = uninit[0]
-		elif len(uninit) == 2:
-			fieldsStr = '{} and {}'.format(*uninit)
-		elif len(uninit) < 5:
-			fieldsStr = '{}, and {}'.format(', '.join(uninit[:-1]), uninit[-1])
-		else:
-			fieldsStr = '{}, and {} other fields'.format(', '.join(uninit[:3]), len(uninit) - 3)
-		message = 'missing {} {} in initializer of `{}`'.format(
-			'field' if len(uninit) == 1 else 'fields',
-			fieldsStr,
-			expr.name
-		)
-		logError(state, expr.nameTok.span, message)
+	# uninit = [field for field in fieldDict if field not in fieldNames]
+	# if len(uninit) > 0:
+	# 	fieldsStr = None
+	# 	if len(uninit) == 1:
+	# 		fieldsStr = uninit[0]
+	# 	elif len(uninit) == 2:
+	# 		fieldsStr = '{} and {}'.format(*uninit)
+	# 	elif len(uninit) < 5:
+	# 		fieldsStr = '{}, and {}'.format(', '.join(uninit[:-1]), uninit[-1])
+	# 	else:
+	# 		fieldsStr = '{}, and {} other fields'.format(', '.join(uninit[:3]), len(uninit) - 3)
+	# 	message = 'missing {} {} in initializer of `{}`'.format(
+	# 		'field' if len(uninit) == 1 else 'fields',
+	# 		fieldsStr,
+	# 		expr.name
+	# 	)
+	# 	logError(state, expr.nameTok.span, message)
 	
 	expr.resolvedType = resolvedType
 
-def analyzeFieldAccess(state, expr):
-	analyzeValueExpr(state, expr.expr)
+def analyzeFieldAccess(state, expr, noRef=False):
+	isRef = False
+	if type(expr.expr) == ValueRefAST:
+		isRef = not noRef
+		analyzeValueRef(state, expr.expr, noRef=True)
+	else:
+		analyzeValueExpr(state, expr.expr)
 	
 	t = expr.expr.resolvedType
 	if t == None:
 		return
 	
 	fieldOffset = 0
+	field = None
 	errSpan = expr.expr.span
 	for tok in expr.path:
 		if not t.isStructType:
@@ -548,13 +580,17 @@ def analyzeFieldAccess(state, expr):
 			return
 		
 		field = t.fieldDict[tok.content]
-		fieldOffset = field.offset
+		fieldOffset += field.offset
 		t = field.resolvedSymbolType
 		if t == None:
 			return
 	
+	expr.field = field
 	expr.fieldOffset = fieldOffset
 	expr.resolvedType = t
+	
+	if isRef:
+		state.refSymbol(expr.expr, field, expr.span)
 
 def analyzeLoopCtl(state, expr):
 	if state.loopNest == 0:
@@ -643,6 +679,7 @@ def analyzeFnBody(state, fnDecl):
 
 def analyzeStructDecl(state, decl):
 	fields = []
+	maxAlign = 0
 	offset = 0
 	fieldNames = set()
 	
@@ -654,14 +691,18 @@ def analyzeStructDecl(state, decl):
 		
 		resolveTypeRef(state, field.typeRef)
 		
-		align = types.getAlignment(field.typeRef.resolvedType)
-		if offset % align > 0:
-			offset += align - offset % align
+		field.align = types.getAlignment(field.typeRef.resolvedType)
+		maxAlign = max(maxAlign, field.align)
+		invokeAttrs(state, field)
+		
+		if offset % field.align > 0:
+			offset += field.align - offset % field.align
 		
 		fields.append(types.Field(field.name, field.typeRef.resolvedType, offset))
 		offset += field.typeRef.resolvedType.byteSize
 	
-	decl.resolvedSymbolType = types.ResolvedStructType(decl.name, fields)
+	offset += maxAlign - offset % maxAlign
+	decl.resolvedSymbolType = types.ResolvedStructType(decl.name, maxAlign, offset, fields)
 
 def mangleFnName(state, fnDecl):
 	if fnDecl.cconv == CConv.C:
@@ -681,6 +722,14 @@ def mangleFnName(state, fnDecl):
 		
 		fnDecl.mangledName = mangled
 
+class FieldInfo:
+	def __init__(self, field, initialized):
+		self.field = field
+		self.moved = False
+		self.maybeMoved = False
+		self.uninitialized = not initialized
+		self.maybeUninitialized = False
+
 class SymbolInfo:
 	def __init__(self, symbol):
 		self.symbol = symbol
@@ -691,13 +740,25 @@ class SymbolInfo:
 		self.dropInElse = []
 		self.moved = False
 		self.maybeMoved = False
+		self.fieldInfo = {}
 		
-		if type(symbol) in (FnParamAST, FnDeclAST, ModAST):
+		def addFieldInfo(fields, expr):
+			allInit = expr and type(expr) != StructLitAST
+			fieldDict = expr.fieldDict if type(expr) == StructLitAST else {}
+			for field in fields:
+				self.fieldInfo[field] = FieldInfo(field, allInit or field.name in fieldDict)
+				fieldExpr = fieldDict[field.name].expr if field.name in fieldDict else None
+				if field.resolvedSymbolType.isStructType:
+					addFieldInfo(field.resolvedSymbolType.fields, fieldExpr)
+		
+		if type(symbol) in (FnParamAST, FnDeclAST, ModAST, StructDeclAST):
 			self.uninitialized = False
 			self.maybeUninitialized = False
 		elif type(symbol) == LetAST:
 			self.uninitialized = symbol.expr == None
 			self.maybeUninitialized = False
+			if symbol.resolvedSymbolType.isStructType:
+				addFieldInfo(symbol.resolvedSymbolType.fields, symbol.expr)
 		else:
 			assert 0
 	
@@ -767,21 +828,26 @@ class Scope:
 		self.symbolInfo[symbol] = info
 		self.symbolTable[symbol.name] = symbol
 	
-	def refSymbol(self, ref):
+	def refSymbol(self, ref, field=None):
 		info = self.symbolInfo[ref.symbol]
 		info.wasTouched = True
-		info.moved = not ref.symbol.resolvedSymbolType.isCopyable
 		info.lastUses = set([ref])
 		info.dropInIf = []
 		info.dropInElse = []
+		if field:
+			info.fieldInfo[field].moved = not field.resolvedSymbolType.isCopyable
+		else:
+			info.moved = not ref.symbol.resolvedSymbolType.isCopyable
 	
-	def assignSymbol(self, ref):
+	def assignSymbol(self, ref, field=None):
 		info = self.symbolInfo[ref.symbol]
 		info.wasTouched = True
 		info.lastUses = set([ref])
 		info.dropInIf = []
 		info.dropInElse = []
 		info.uninitialized = False
+		if field:
+			info.fieldInfo[field].uninitialized = False
 	
 	def lookupSymbol(self, name):
 		scope = self
@@ -917,23 +983,36 @@ class AnalyzerState:
 	def declSymbol(self, symbol):
 		self.scope.declSymbol(symbol)
 	
-	def refSymbol(self, ref):
+	def refSymbol(self, ref, field=None, fieldSpan=None):
 		info = self.scope.symbolInfo[ref.symbol]
 		if info.uninitialized:
 			maybeText = "may not have" if info.maybeUninitialized else "has not"
 			logError(self, ref.span, '"{}" {} been initialized'.format(ref.name, maybeText))
+			return
 		elif info.moved:
 			maybeText = "may have" if info.maybeMoved else "has"
 			logError(self, ref.span, 'the value in "{}" {} been moved'.format(ref.name, maybeText))
-		else:
-			self.scope.refSymbol(ref)
+			return
+		elif field:
+			fieldInfo = info.fieldInfo[field]
+			if fieldInfo.uninitialized:
+				maybeText = "may not have" if fieldInfo.maybeUninitialized else "has not"
+				logError(self, fieldSpan, 'the field "{}" {} been initialized'.format(field.name, maybeText))
+				return
+			elif fieldInfo.moved:
+				maybeText = "may have" if fieldInfo.maybeMoved else "has"
+				logError(self, fieldSpan, 'the value in field "{}" {} been moved'.format(field.name, maybeText))
+				return
+		
+		self.scope.refSymbol(ref, field)
 	
-	def assignSymbol(self, ref):
+	def assignSymbol(self, ref, field=None, fieldSpan=None):
 		info = self.scope.symbolInfo[ref.symbol]
 		if not ref.symbol.mut and not info.uninitialized:
 			logError(self, ref.span, 'assignment target is not mutable')
-		else:
-			self.scope.assignSymbol(ref)
+			return
+		
+		self.scope.assignSymbol(ref, field)
 	
 	def lookupSymbol(self, ref, inTypePosition=False):
 		symbolTok = ref.path[0]

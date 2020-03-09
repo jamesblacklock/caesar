@@ -66,10 +66,10 @@ class GlobalTarget(Target):
 		self.label = label
 	
 	def render(self, usage, fType, sp):
-		if usage == Usage.SRC:
+		if usage in (Usage.SRC, Usage.DEST):
 			return '{} {}'.format(sizeInd(fType), self.label)
-		elif usage == Usage.DEST:
-			return '[{}]'.format(self.label)
+		elif usage == Usage.ADDR:
+			return '[rel {}]'.format(self.label)
 		else:
 			assert 0
 
@@ -553,7 +553,27 @@ def addOrSub(state, ir, isAdd):
 	elif dest.storage == Storage.IMM and isAdd:
 		dest, src = src, dest
 	
-	if dest.storage in (Storage.STACK, Storage.IMM) and src.storage == Storage.STACK:
+	if src.storage == Storage.GLOBAL:
+		reg = state.r10 if dest == state.rax else state.rax
+		saveReg(state, reg)
+		reg.type = src.type
+		state.appendInstr('mov', 
+			Operand(reg, Usage.DEST), 
+			Operand(src, Usage.SRC))
+		src = reg
+	
+	if dest.storage == Storage.GLOBAL:
+		reg = state.r10 if src == state.rax else state.rax
+		saveReg(state, reg)
+		reg.type = dest.type
+		state.appendInstr('mov', 
+			Operand(reg, Usage.DEST), 
+			Operand(dest, Usage.SRC))
+		dest = reg
+	
+	needReg = dest.storage not in (Storage.REG, Storage.STACK) and src.storage not in (Storage.REG, Storage.STACK)
+	needReg = needReg or dest.storage == Storage.STACK and src.storage == Storage.STACK
+	if needReg:
 		saveReg(state, state.rax)
 		state.rax.type = dest.type
 		state.appendInstr('mov', 

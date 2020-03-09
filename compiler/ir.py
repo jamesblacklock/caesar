@@ -5,19 +5,21 @@ from .ast                     import FnDeclAST, FnCallAST, ValueRefAST, StrLitAS
                                      IndexOpAST, VoidAST, AddressAST, FloatLitAST, BreakAST, \
                                      ContinueAST, LoopAST, CharLitAST, StructLitAST, FieldAccessAST, \
                                      ValueExprAST, FnParamAST, ModLevelDeclAST, SignAST, CMP_OPS
-from .                        import types
 
 # def structBytes(structLit):
 # 	bytes = []
 # 	for field in structLit.resolvedType.fields:
 
 class FundamentalType:
-	def __init__(self, byteSize, isFloatType):
+	def __init__(self, byteSize, isFloatType=False, isCompositeType=False):
 		self.byteSize = byteSize
 		self.isFloatType = isFloatType
+		self.isCompositeType = isCompositeType
 	
 	def __str__(self):
-		return '{}{}'.format('f' if self.isFloatType else 'i', self.byteSize * 8)
+		return '{}{}'.format(
+			'f' if self.isFloatType else 's' if self.isCompositeType else 'i', 
+			self.byteSize * 8)
 	
 	def __repr__(self):
 		return str(self)
@@ -38,15 +40,15 @@ class FundamentalType:
 				return I32
 			elif resolvedType.byteSize == 8:
 				return I64
-		
-		assert 0
+		else:
+			return FundamentalType(resolvedType.byteSize, isCompositeType=True)
 
-I8   = FundamentalType(1, False)
-I16  = FundamentalType(2, False)
-I32  = FundamentalType(4, False)
-I64  = FundamentalType(8, False)
-F32  = FundamentalType(4, True)
-F64  = FundamentalType(8, True)
+I8   = FundamentalType(1)
+I16  = FundamentalType(2)
+I32  = FundamentalType(4)
+I64  = FundamentalType(8)
+F32  = FundamentalType(4, isFloatType=True)
+F64  = FundamentalType(8, isFloatType=True)
 
 IPTR = I64 # platform dependent
 
@@ -77,6 +79,17 @@ class Imm(Instr):
 	
 	def __str__(self):
 		return 'imm {}.{}'.format(self.value, self.type)
+
+class Struct(Instr):
+	def __init__(self, ast, cType):
+		self.ast = ast
+		self.cType = cType
+		
+	def affectStack(self, state):
+		state.pushOperand(self.cType)
+	
+	def __str__(self):
+		return 'struct {}'.format(self.cType)
 
 class Raise(Instr):
 	def __init__(self, ast, offset):
@@ -308,7 +321,7 @@ class Deref(Instr):
 		state.replaceTopOperand(self.type)
 	
 	def __str__(self):
-		return 'deref'
+		return 'deref -> {}'.format(self.type)
 
 class Write(Instr):
 	def __init__(self, ast):
@@ -320,6 +333,31 @@ class Write(Instr):
 	
 	def __str__(self):
 		return 'write'
+
+class WriteField(Instr):
+	def __init__(self, ast, offset):
+		super().__init__(ast)
+		self.offset = offset
+	
+	def affectStack(self, state):
+		state.popOperand()
+		state.popOperand()
+	
+	def __str__(self):
+		return 'write_field {}'.format(self.offset)
+
+class ReadField(Instr):
+	def __init__(self, ast, offset, fType):
+		super().__init__(ast)
+		self.offset = offset
+		self.type = fType
+	
+	def affectStack(self, state):
+		state.popOperand()
+		state.pushOperand(self.type)
+	
+	def __str__(self):
+		return 'read_field {} -> {}'.format(self.offset, self.type)
 
 class Ret(Instr):
 	def __init__(self, ast):
@@ -474,6 +512,11 @@ class Div(Instr):
 		return 'div'
 
 def letToIR(state, ast):
+	if ast.resolvedSymbolType.isVoidType:
+		if ast.expr:
+			exprToIR(state, ast.expr)
+		return
+	
 	if ast.expr:
 		exprToIR(state, ast.expr)
 		if ast.unused:
@@ -491,7 +534,7 @@ def derefToIR(state, ast):
 		if i+1 < ast.derefCount:
 			fType = IPTR
 		else:
-			FundamentalType.fromResolvedType(ast.resolvedType)
+			fType = FundamentalType.fromResolvedType(ast.resolvedType)
 		
 		state.appendInstr(Deref(ast, fType))
 
@@ -504,40 +547,50 @@ def signToIR(state, ast):
 			state.appendInstr(Neg(ast))
 
 def asgnToIR(state, ast):
+	if ast.lvalue.resolvedType.isVoidType:
+		exprToIR(state, ast.rvalue)
+		return
+	
+	deref = False
+	field = False
 	if type(ast.lvalue) == DerefAST:
+		deref = True
 		exprToIR(state, ast.lvalue.expr)
 		for _ in range(0, ast.lvalue.derefCount-1):
 			state.appendInstr(Deref(ast.lvalue, IPTR))
-	else:
-		assert type(ast.lvalue) != IndexOpAST and len(ast.lvalue.path) == 1
+	elif type(ast.lvalue) == IndexOpAST:
+		deref = True
+		exprToIR(state, ast.lvalue.expr)
+		exprToIR(state, ast.lvalue.index)
+		state.appendInstr(Add(ast.lvalue))
+	elif type(ast.lvalue) == FieldAccessAST:
+		field = True
+		if type(ast.lvalue.expr) != ValueRefAST:
+			exprToIR(state, ast.lvalue)
 	
 	exprToIR(state, ast.rvalue)
 	
-	if type(ast.lvalue) == DerefAST:
+	if deref:
 		state.appendInstr(Write(ast))
+	elif field:
+		if type(ast.lvalue.expr) == ValueRefAST:
+			stackOffset = state.localOffset(ast.lvalue.expr.symbol) + 1
+		else:
+			stackOffset = 2
+		
+		state.appendInstr(Imm(field, IPTR, ast.lvalue.fieldOffset))
+		state.appendInstr(WriteField(ast, stackOffset))
 	elif ast.lvalue.symbol not in state.operandsBySymbol:
 		state.nameTopOperand(ast.lvalue.symbol)
 	else:
 		state.appendInstr(Swap(ast, state.localOffset(ast.lvalue.symbol)))
 
-# def indexToIR(scope, ind, fn, block):
-# 	exprToIR(scope, ind.expr, fn, block)
-# 	l = block[-1].dest.clone()
-	
-# 	exprToIR(scope, ind.index, fn, block)
-# 	r = block[-1].dest.clone()
-	
-# 	state.regCt += 1
-# 	dest = Target(Storage.LOCAL, IPTR, state.regCt)
-	
-# 	block.append(Add(ind, l, r, dest, IPTR))
-	
-# 	state.regCt += 1
-	
-# 	src = block[-1].dest
-# 	dest = Target(Storage.LOCAL, FundamentalType.fromResolvedType(ind.resolvedType), state.regCt)
-	
-# 	block.append(Move(ind, src, dest, dest.type, 1))
+def indexToIR(state, ast):
+	exprToIR(state, ast.expr)
+	exprToIR(state, ast.index)
+	state.appendInstr(Add(ast))
+	fType = FundamentalType.fromResolvedType(ast.resolvedType)
+	state.appendInstr(Deref(ast, fType))
 
 def boolLitToIR(state, ast):
 	state.appendInstr(Imm(ast, I8, 1 if ast.value else 0))
@@ -558,43 +611,39 @@ def intLitToIR(state, ast):
 	
 # 	block.append(Move(lit, src, dest, type))
 
-# def structLitToIR(scope, lit, fn, block):
-# 	state.regCt += 1
+def structLitToIR(state, ast):
+	def initFields(structLit, baseOffset):
+		for field in structLit.resolvedType.fields:
+			if field.name in structLit.fieldDict:
+				init = structLit.fieldDict[field.name]
+				if type(init.expr) == StructLitAST:
+					initFields(init.expr, field.offset)
+					continue
+				
+				exprToIR(state, init.expr)
+				state.appendInstr(Imm(field, IPTR, baseOffset + field.offset))
+				state.appendInstr(WriteField(ast, 2))
 	
-# 	for field in lit.resolvedType.fields:
-# 		init = lit.fieldDict[field.name]
-		
-# 		exprToIR(scope, init.expr, fn, block)
-# 		if field.resolvedSymbolType == types.Void:
-# 			return
-		
-# 		type = FundamentalType.fromResolvedType(field.resolvedSymbolType)
-# 		src = block[-1].dest.clone()
-# 		dest = Target(Storage.LOCAL, type, state.regCt, offset=field.offset)
-		
-# 		block.append(Move(init, src, dest, type))
+	cType = FundamentalType.fromResolvedType(ast.resolvedType)
+	state.appendInstr(Struct(ast, cType))
+	initFields(ast, 0)
 
 def strLitToIR(state, ast):
 	label = '{}__static__{}'.format(state.name, len(state.staticDefs))
 	state.staticDefs.append(StaticDef(label, ast.value))
 	state.appendInstr(Static(ast, IPTR, label))
 
-# def fieldAccessToIR(scope, expr, fn, block):
-# 	exprToIR(scope, expr.expr, fn, block)
+def fieldAccessToIR(state, ast):
+	state.appendInstr(Imm(ast, IPTR, ast.fieldOffset))
 	
-# 	if expr.resolvedType == types.Void:
-# 		return
+	if type(ast.expr) == ValueRefAST:
+		stackOffset = state.localOffset(ast.expr.symbol)
+	else:
+		exprToIR(state, ast.expr)
+		stackOffset = 1
 	
-# 	type = FundamentalType.fromResolvedType(expr.resolvedType)
-	
-# 	src = block[-1].dest.clone()
-# 	src.offset = expr.fieldOffset
-# 	src.type = type
-	
-# 	state.regCt += 1
-# 	dest = Target(Storage.LOCAL, type, state.regCt)
-	
-# 	block.append(Move(expr, src, dest, src.type))
+	fType = FundamentalType.fromResolvedType(ast.resolvedType)
+	state.appendInstr(ReadField(ast, stackOffset, fType))
 
 def fnCallToIR(state, ast):
 	normalArgs = ast.args
@@ -609,7 +658,7 @@ def fnCallToIR(state, ast):
 	
 	for expr in cVarArgs:
 		exprToIR(state, expr)
-		if expr.resolvedType == types.Void:
+		if expr.resolvedType.isVoidType:
 			continue
 		
 		fType = FundamentalType.fromResolvedType(expr.resolvedType)
@@ -622,7 +671,7 @@ def fnCallToIR(state, ast):
 				state.appendInstr(Extend(ast, IPTR))
 	
 	exprToIR(state, ast.expr)
-	if ast.resolvedType == types.Void:
+	if ast.resolvedType.isVoidType:
 		retTypes = []
 	else:
 		retTypes = [FundamentalType.fromResolvedType(ast.resolvedType)]
@@ -692,7 +741,7 @@ def cmpToIR(state, ast):
 def coercionToIR(state, ast):
 	exprToIR(state, ast.expr)
 	
-	if ast.typeRef.resolvedType == types.Void:
+	if ast.typeRef.resolvedType.isVoidType:
 		return
 	
 	fromType = FundamentalType.fromResolvedType(ast.expr.resolvedType)
@@ -868,12 +917,12 @@ def exprToIR(state, expr):
 		strLitToIR(state, expr)
 	elif type(expr) == CharLitAST:
 		charLitToIR(state, expr)
-	# elif type(expr) == StructLitAST:
-	# 	structLitToIR(state, expr)
+	elif type(expr) == StructLitAST:
+		structLitToIR(state, expr)
 	elif type(expr) == ValueRefAST:
 		valueRefToIR(state, expr)
-	# elif type(expr) == FieldAccessAST:
-	# 	fieldAccessToIR(state, expr)
+	elif type(expr) == FieldAccessAST:
+		fieldAccessToIR(state, expr)
 	elif type(expr) == SignAST:
 		signToIR(state, expr)
 	elif type(expr) == DerefAST:
@@ -892,8 +941,8 @@ def exprToIR(state, expr):
 		continueToIR(state, expr)
 	elif type(expr) == CoercionAST:
 		coercionToIR(state, expr)
-	# elif type(expr) == IndexOpAST:
-	# 	indexToIR(state, expr)
+	elif type(expr) == IndexOpAST:
+		indexToIR(state, expr)
 	elif type(expr) == InfixOpAST:
 		if expr.op == InfixOp.PLUS:
 			addToIR(state, expr)
@@ -921,7 +970,7 @@ def exprToIR(state, expr):
 		assert 0
 	
 	if isinstance(expr, ValueExprAST) and expr.resultUnused:
-		if expr.resolvedType == types.Void:
+		if expr.resolvedType.isVoidType:
 			pass
 		elif type(expr) in (ValueRefAST, IfAST, BlockAST):
 			pass
@@ -986,7 +1035,7 @@ class IRState:
 		
 		inputSymbols = []
 		for param in fnDecl.params:
-			if param.resolvedSymbolType == types.Void:
+			if param.resolvedSymbolType.isVoidType:
 				continue
 			
 			fType = FundamentalType.fromResolvedType(param.resolvedSymbolType)
@@ -1000,7 +1049,7 @@ class IRState:
 			', '.join([str(t) for t in self.retTypes])))
 		
 		for param in reversed(fnDecl.params):
-			if param.resolvedSymbolType == types.Void:
+			if param.resolvedSymbolType.isVoidType:
 				continue
 			
 			if param.unused:
@@ -1009,7 +1058,7 @@ class IRState:
 					self.appendInstr(Raise(param, offset))
 				self.appendInstr(Pop(param))
 		
-		if fnDecl.resolvedSymbolType.resolvedReturnType == types.Void:
+		if fnDecl.resolvedSymbolType.resolvedReturnType.isVoidType:
 			self.retTypes = []
 		else:
 			fType = FundamentalType.fromResolvedType(fnDecl.resolvedSymbolType.resolvedReturnType)

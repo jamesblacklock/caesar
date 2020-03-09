@@ -265,11 +265,17 @@ def parseFnDeclReturnType(state):
 
 def parseStructDecl(state, doccomment, attrs, anon):
 	def parseFieldDecl(state):
+		span = state.tok.span
+		
+		fieldAttrs = []
+		if state.tok.type == TokenType.AT:
+			fieldAttrs = parseAttrs(state)
+			permitLineBreak(state)
+		
 		if expectType(state, TokenType.NAME) == False:
 			return None
 		
 		nameTok = state.tok
-		span = state.tok.span
 		
 		state.advance()
 		state.skipSpace()
@@ -290,7 +296,7 @@ def parseStructDecl(state, doccomment, attrs, anon):
 		if not onOneLine:
 			state.popIndentLevel()
 		
-		return FieldDeclAST(nameTok, typeRef, span)
+		return FieldDeclAST(fieldAttrs, nameTok, typeRef, span)
 	
 	span = state.tok.span
 	state.advance()
@@ -474,7 +480,7 @@ def parseBlock(state, parseItem, blockMarkers=BlockMarkers.BRACE,
 	return Block(list, Span.merge(startSpan, endSpan), trailingSeparator)
 
 def parseTypeRef(state):
-	if expectType(state, TokenType.NAME) == False:
+	if expectType(state, TokenType.NAME, TokenType.VOID) == False:
 		return None
 	
 	path = parsePath(state)
@@ -898,7 +904,7 @@ def parseValueExprOrAsgn(state):
 	
 	state.skipSpace()
 	if state.tok.type == TokenType.ASGN:
-		if type(expr) != ValueRefAST and type(expr) != DerefAST and type(expr) != IndexOpAST:
+		if type(expr) not in (ValueRefAST, DerefAST, IndexOpAST, FieldAccessAST):
 			logError(state, state.tok.span, "invalid assignment target in assignment")
 		
 		state.advance()

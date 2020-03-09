@@ -52,19 +52,17 @@ class Field:
 		self.offset = offset
 
 class ResolvedStructType(ResolvedType):
-	def __init__(self, name, fields):
-		byteSize = 0
+	def __init__(self, name, align, byteSize, fields):
+		self.align = align
+		self.byteSize = byteSize
 		self.fieldDict = {}
 		self.fields = fields
 		
 		if fields:
-			lastField = fields[-1]
-			byteSize = lastField.offset + lastField.resolvedSymbolType.byteSize
-			
 			for field in fields:
 				self.fieldDict[field.name] = field
 		
-		super().__init__(name, byteSize, isStructType=True)
+		super().__init__(name, byteSize, isStructType=True, isVoidType=(byteSize == 0))
 
 PLATFORM_WORD_SIZE = 8
 
@@ -201,11 +199,10 @@ def hasDefiniteType(ast):
 
 def getAlignment(t):
 	if t.byteSize == 0:
-		return 1
+		assert 0
 	elif t.isPrimitiveType:
 		return t.byteSize
 	elif t.isStructType:
-		assert len(t.fields) > 0
-		return getAlignment(t.fields[0].resolvedSymbolType)
+		return t.align
 	else:
 		assert 0
