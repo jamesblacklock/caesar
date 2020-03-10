@@ -5,13 +5,16 @@ from .ir                               import Dup, Write, Global, Imm, Static, D
                                               Div, Eq, NEq, Less, LessEq, Greater, GreaterEq, Call, \
                                               Extend, IExtend, Truncate, FExtend, FTruncate, IToF, \
                                               UToF, FToI, FToU, Ret, BrIf, Br, Swap, Pop, Raise, \
+                                              Struct, WriteField, ReadField, \
                                               BlockMarker, Neg, Addr, I8, I16, I32, I64, IPTR, F32, F64
+from .ir                               import FundamentalType
 
 class Storage(Enum):
 	IMM = 'IMM'
 	GLOBAL = 'GLOBAL'
 	REG = 'REG'
 	STACK = 'STACK'
+	NONE = 'NONE'
 
 class Usage(Enum):
 	SRC = 'SRC'
@@ -42,10 +45,18 @@ class Target:
 		self.active = False
 		self.operandIndex = None
 	
+	def setActive(self, set):
+		self.active = set
+	
+	def render(self, usage, fType, sp):
+		assert 0
+	
 	@staticmethod
 	def fromIR(ir):
 		if type(ir) == Global or type(ir) == Static:
 			return GlobalTarget(ir.type, ir.label)
+		elif type(ir) == Struct:
+			return Target(ir.type, Storage.NONE)
 		elif type(ir) == Imm:
 			return ImmTarget(ir.type, ir.value)
 		else:
@@ -104,6 +115,31 @@ class StackTarget(Target):
 			return '{} {}'.format(sizeInd(fType), addr)
 		else:
 			assert 0
+
+class MultiStackTarget(Target):
+	def __init__(self, fType, targets):
+		super().__init__(fType, Storage.STACK)
+		self.offset = targets[0].offset
+		self.targets = targets
+	
+	def setActive(self, set):
+		self.active = set
+		for t in self.targets:
+			t.setActive(set)
+	
+	def render(self, usage, fType, sp):
+		if sp == None:
+			addr = '[%% {} %%]'.format(self.targets[0].offset)
+		else:
+			addr = '[rsp + {}]'.format((sp - self.targets[0].offset)*8)
+		
+		if usage == Usage.ADDR:
+			return addr
+		elif usage in (Usage.SRC, Usage.DEST):
+			return '{} {}'.format(sizeInd(fType), addr)
+		else:
+			assert 0
+	
 
 class RegTarget(Target):
 	def __init__(self, calleeSaved, q, d, w, l, h=None):
@@ -198,10 +234,14 @@ class GeneratorState:
 		self.setupStackFrame()
 	
 	def allocateStack(self, count=1):
+		targets = []
 		for _ in range(0, count):
 			self.sp += 1
 			target = StackTarget(None, self.sp)
 			self.callStack.append(target)
+			targets.append(target)
+		
+		return targets
 	
 	def setupStackFrame(self):
 		intRegs = list(reversed(self.intArgRegs))
@@ -231,11 +271,11 @@ class GeneratorState:
 				self.pushOperand(target)
 		
 		retAddr = StackTarget(I64, -1)
-		retAddr.active = True
+		retAddr.setActive(True)
 		self.callStack.append(retAddr)
 		
 		oldRbp = StackTarget(I64, 0)
-		oldRbp.active = True
+		oldRbp.setActive(True)
 		self.callStack.append(oldRbp)
 		
 		self.sp = 0
@@ -243,7 +283,7 @@ class GeneratorState:
 	def appendInstr(self, opcode, *operands, isLabel=False, isComment=False):
 		instr = Instr(opcode, operands, isLabel, isComment)
 		self.instr.append(instr)
-		#print(instr)
+		print(instr)
 	
 	def findReg(self, type=None, exclude=[]):
 		for reg in self.intRegs:
@@ -252,27 +292,45 @@ class GeneratorState:
 			if type: reg.type = type
 			return reg
 	
-	def findTarget(self, type=None, alwaysUseStack=False, exclude=[]):
+	def findTarget(self, type, alwaysUseStack=False, exclude=[]):
+		if type.byteSize > 16:
+			alwaysUseStack = True
+		
 		if not alwaysUseStack:
 			target = self.findReg(type, exclude=exclude)
 			if target:
 				return target
 		
-		for target in self.callStack:
-			if target in exclude:
-				continue
-			if not target.active:
-				if type: target.type = type
-				return target
+		offset = 0
+		count = max(1, type.byteSize // 8)
+		targets = None
+		while offset < len(self.callStack):
+			targets = []
+			for i in range(0, count):
+				t = self.callStack[offset + i] if offset + i >= len(self.callStack) else None
+				if not t or t in exclude or t.active:
+					offset += i
+					targets = None
+					break
+				
+				targets.append(t)
+			
+			if targets != None:
+				break
+			
+			offset += 1
 		
-		self.sp += 1
-		target = StackTarget(type, self.sp)
-		self.callStack.append(target)
-		return target
+		if targets == None:
+			targets = self.allocateStack(count)
+		
+		for t in targets:
+			t.type = type
+		
+		return targets[0] if count == 1 else MultiStackTarget(type, targets)
 	
 	def pushIROperand(self, ir):
 		target = Target.fromIR(ir)
-		target.active = True
+		target.setActive(True)
 		target.operandIndex = len(self.operandStack)
 		self.operandStack.append(target)
 	
@@ -285,7 +343,7 @@ class GeneratorState:
 		assert target.operandIndex == None
 		assert target.type != None
 		
-		target.active = True
+		target.setActive(True)
 		target.operandIndex = len(self.operandStack)
 		self.operandStack.append(target)
 	
@@ -305,7 +363,7 @@ class GeneratorState:
 		assert index >= 0
 		
 		target = self.operandStack[index]
-		target.active = False
+		target.setActive(False)
 		target.operandIndex = None
 		target = self.operandStack.pop()
 		target.operandIndex = index
@@ -313,7 +371,7 @@ class GeneratorState:
 	
 	def popOperand(self):
 		target = self.operandStack.pop()
-		target.active = False
+		target.setActive(False)
 		target.operandIndex = None
 		return target
 	
@@ -323,18 +381,18 @@ class GeneratorState:
 		return self.operandStack[index]
 	
 	def moveOperand(self, src, dest):
-		dest.active = True
+		dest.setActive(True)
 		dest.operandIndex = src.operandIndex
 		dest.type = src.type
 		self.operandStack[dest.operandIndex] = dest
 		
-		src.active = False
+		src.setActive(False)
 		src.operandIndex = None
 
 def irToAsm(state, ir):
-	#state.appendInstr(ir.pretty(state.fnIR), isComment=True, isLabel=(type(ir) == BlockMarker))
+	# state.appendInstr(ir.pretty(state.fnIR), isComment=True, isLabel=(type(ir) == BlockMarker))
 	
-	if type(ir) in (Global, Static, Imm):
+	if type(ir) in (Global, Static, Imm, Struct):
 		state.pushIROperand(ir)
 	elif type(ir) == Pop:
 		state.popOperand()
@@ -350,6 +408,10 @@ def irToAsm(state, ir):
 		write(state, ir)
 	elif type(ir) == Deref:
 		deref(state, ir)
+	elif type(ir) == ReadField:
+		read_field(state, ir)
+	elif type(ir) == WriteField:
+		write_field(state, ir)
 	elif type(ir) == Extend:
 		extend(state, ir)
 	elif type(ir) == IExtend:
@@ -382,6 +444,7 @@ def irToAsm(state, ir):
 		assert 0
 
 def moveData(state, src, dest, transferRegister):
+	assert src.type.byteSize <= 8
 	assert dest.storage in (Storage.STACK, Storage.REG)
 	
 	if src.storage in (Storage.STACK, Storage.GLOBAL) and dest.storage == Storage.STACK:
@@ -498,6 +561,57 @@ def write(state, ir):
 	state.appendInstr('mov', 
 		Operand(dest, Usage.DEREF, src.type), 
 		Operand(src, Usage.SRC))
+	
+	state.popOperand()
+	state.popOperand()
+
+def moveStruct(state, src, dest):
+	sizeRemaining = dest.type.byteSize
+	offset = 0
+	while sizeRemaining > 0:
+		byteSize = 8 if sizeRemaining >= 8 else sizeRemaining
+		fType = FundamentalType(byteSize)
+		partialSrc = StackTarget(fType, src.offset + offset)
+		partialDest = StackTarget(fType, dest.offset + offset)
+		moveData(state, partialSrc, partialDest, state.rax)
+		offset += byteSize
+		sizeRemaining -= byteSize
+
+def read_field(state, ir):
+	offsetTarget = state.getOperand(0)
+	structTarget = state.getOperand(ir.offset)
+	readTarget = state.findTarget(ir.type)
+	
+	assert offsetTarget.storage == Storage.IMM
+	
+	fieldTarget = StackTarget(ir.type, structTarget.offset + offsetTarget.value)
+	
+	if ir.type.byteSize <= 8:
+		moveData(state, fieldTarget, readTarget, state.rax)
+	else:
+		moveStruct(state, fieldTarget, readTarget)
+	
+	state.popOperand()
+	state.pushOperand(readTarget)
+
+def write_field(state, ir):
+	offsetTarget = state.getOperand(0)
+	valueTarget = state.getOperand(1)
+	structTarget = state.getOperand(ir.offset)
+	
+	if structTarget.storage == Storage.NONE:
+		newStructTarget = state.findTarget(structTarget.type, True)
+		state.moveOperand(structTarget, newStructTarget)
+		structTarget = newStructTarget
+	
+	assert offsetTarget.storage == Storage.IMM
+	
+	fieldTarget = StackTarget(valueTarget.type, structTarget.offset + offsetTarget.value)
+	
+	if valueTarget.type.byteSize <= 8:
+		moveData(state, valueTarget, fieldTarget, state.rax)
+	else:
+		moveStruct(state, valueTarget, fieldTarget)
 	
 	state.popOperand()
 	state.popOperand()
@@ -836,7 +950,7 @@ def ret(state, ir):
 		assert len(state.fnIR.retTypes) < 2
 		src = state.getOperand(0)
 		if src != state.rax:
-			state.rax.active = False
+			state.rax.setActive(False)
 			state.rax.operandIndex = None
 			state.rax.type = src.type
 			state.appendInstr('mov', 

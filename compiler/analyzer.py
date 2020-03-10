@@ -313,6 +313,13 @@ def analyzeIndex(state, expr):
 	
 	if not expr.index.resolvedType.isIntType:
 		logError(state, expr.index.span, 'index must be an integer (found {})'.format(expr.index.resolvedType))
+	
+	indLevel = expr.expr.resolvedType.indirectionLevel
+	baseType = expr.expr.resolvedType.baseType
+	if indLevel == 1:
+		expr.resolvedType = baseType
+	else:
+		expr.resolvedType = types.ResolvedPtrType(baseType, indLevel - 1)
 
 def analyzeFnSig(state, fnDecl):
 	resolvedReturnType = types.Void

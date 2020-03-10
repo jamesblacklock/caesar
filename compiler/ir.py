@@ -81,15 +81,15 @@ class Imm(Instr):
 		return 'imm {}.{}'.format(self.value, self.type)
 
 class Struct(Instr):
-	def __init__(self, ast, cType):
+	def __init__(self, ast, fType):
 		self.ast = ast
-		self.cType = cType
+		self.type = fType
 		
 	def affectStack(self, state):
-		state.pushOperand(self.cType)
+		state.pushOperand(self.type)
 	
 	def __str__(self):
-		return 'struct {}'.format(self.cType)
+		return 'struct {}'.format(self.type)
 
 class Raise(Instr):
 	def __init__(self, ast, offset):
@@ -523,10 +523,10 @@ def letToIR(state, ast):
 			state.appendInstr(Pop(ast))
 		else:
 			state.nameTopOperand(ast)
-	else:
-		fType = FundamentalType.fromResolvedType(ast.resolvedSymbolType)
-		state.appendInstr(Imm(ast, fType, 0))
-		state.nameTopOperand(ast)
+	# else:
+	# 	fType = FundamentalType.fromResolvedType(ast.resolvedSymbolType)
+	# 	state.appendInstr(Imm(ast, fType, 0))
+	# 	state.nameTopOperand(ast)
 
 def derefToIR(state, ast):
 	exprToIR(state, ast.expr)
@@ -613,19 +613,19 @@ def intLitToIR(state, ast):
 
 def structLitToIR(state, ast):
 	def initFields(structLit, baseOffset):
-		for field in structLit.resolvedType.fields:
-			if field.name in structLit.fieldDict:
-				init = structLit.fieldDict[field.name]
-				if type(init.expr) == StructLitAST:
-					initFields(init.expr, field.offset)
-					continue
-				
-				exprToIR(state, init.expr)
-				state.appendInstr(Imm(field, IPTR, baseOffset + field.offset))
-				state.appendInstr(WriteField(ast, 2))
+		fieldDict = structLit.resolvedType.fieldDict
+		for init in structLit.fields:
+			fieldInfo = fieldDict[init.name]
+			if type(init.expr) == StructLitAST:
+				initFields(init.expr, fieldInfo.offset)
+				continue
+			
+			exprToIR(state, init.expr)
+			state.appendInstr(Imm(init, IPTR, baseOffset + fieldInfo.offset))
+			state.appendInstr(WriteField(ast, 2))
 	
-	cType = FundamentalType.fromResolvedType(ast.resolvedType)
-	state.appendInstr(Struct(ast, cType))
+	fType = FundamentalType.fromResolvedType(ast.resolvedType)
+	state.appendInstr(Struct(ast, fType))
 	initFields(ast, 0)
 
 def strLitToIR(state, ast):
