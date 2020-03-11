@@ -524,8 +524,8 @@ def deref(state, ir):
 			Operand(target, Usage.SRC))
 	
 	state.appendInstr('mov', 
-		Operand(reg, Usage.DEREF), 
-		Operand(reg, Usage.SRC, target.type))
+		Operand(reg, Usage.DEST, target.type), 
+		Operand(reg, Usage.DEREF, target.type))
 	
 	state.popOperand()
 	state.pushOperand(reg)
@@ -571,8 +571,8 @@ def moveStruct(state, src, dest, transferRegister):
 	while sizeRemaining > 0:
 		byteSize = 8 if sizeRemaining >= 8 else sizeRemaining
 		fType = FundamentalType(byteSize)
-		partialSrc = StackTarget(fType, src.offset + offset)
-		partialDest = StackTarget(fType, dest.offset + offset)
+		partialSrc = StackTarget(fType, src.offset - offset)
+		partialDest = StackTarget(fType, dest.offset - offset)
 		moveData(state, partialSrc, partialDest, transferRegister)
 		offset += byteSize
 		sizeRemaining -= byteSize
@@ -589,7 +589,7 @@ def read_field(state, ir):
 	
 	assert offsetTarget.storage == Storage.IMM
 	
-	fieldTarget = StackTarget(ir.type, structTarget.offset + offsetTarget.value)
+	fieldTarget = StackTarget(ir.type, structTarget.offset - offsetTarget.value)
 	
 	if ir.type.byteSize <= 8:
 		moveData(state, fieldTarget, readTarget, reg)
@@ -616,7 +616,7 @@ def write_field(state, ir):
 	
 	assert offsetTarget.storage == Storage.IMM
 	
-	fieldTarget = StackTarget(valueTarget.type, structTarget.offset + offsetTarget.value)
+	fieldTarget = StackTarget(valueTarget.type, structTarget.offset - offsetTarget.value)
 	
 	if valueTarget.type.byteSize <= 8:
 		moveData(state, valueTarget, fieldTarget, reg)

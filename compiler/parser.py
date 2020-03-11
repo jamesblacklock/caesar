@@ -805,16 +805,19 @@ def isStructLitStart(state):
 	offset = state.offset
 	state.skipSpace()
 	result = False
+	expectBrace = False
 	
 	if state.tok.type == TokenType.LBRACE:
 		state.advance()
 		result = True
+		expectBrace = True
 	elif state.skipEmptyLines() and isIndentIncrease(state):
 		result = True
 	
 	if result == True:
 		state.skip(TokenType.SPACE, TokenType.INDENT, TokenType.COMMENT, TokenType.NEWLINE)
 		result = state.tok.type == TokenType.NAME and state.nextTok.type == TokenType.COLON
+		result = result or expectBrace and state.tok.type == TokenType.RBRACE
 	
 	state.rollback(offset)
 	return result
