@@ -588,6 +588,12 @@ def asgnToIR(state, ast):
 def indexToIR(state, ast):
 	exprToIR(state, ast.expr)
 	exprToIR(state, ast.index)
+	if ast.expr.resolvedType.indirectionLevel == 1:
+		mul = ast.expr.resolvedType.baseType.byteSize
+	else:
+		mul = IPTR.byteSize
+	state.appendInstr(Imm(ast, IPTR, mul))
+	state.appendInstr(Mul(ast))
 	state.appendInstr(Add(ast))
 	fType = FundamentalType.fromResolvedType(ast.resolvedType)
 	state.appendInstr(Deref(ast, fType))
@@ -699,13 +705,44 @@ def valueRefToIR(state, ast):
 
 def addToIR(state, ast):
 	exprToIR(state, ast.l)
-	exprToIR(state, ast.r)
-	state.appendInstr(Add(ast))
+	
+	if ast.l.resolvedType.isPtrType:
+		exprToIR(state, ast.r)
+		if ast.l.resolvedType.indirectionLevel == 1:
+			mul = ast.l.resolvedType.baseType.byteSize
+		else:
+			mul = IPTR.byteSize
+		state.appendInstr(Imm(ast, IPTR, mul))
+		state.appendInstr(Mul(ast))
+		state.appendInstr(Add(ast))
+	elif ast.r.resolvedType.isPtrType:
+		if ast.r.resolvedType.indirectionLevel == 1:
+			mul = ast.r.resolvedType.baseType.byteSize
+		else:
+			mul = IPTR.byteSize
+		state.appendInstr(Imm(ast, IPTR, mul))
+		state.appendInstr(Mul(ast))
+		exprToIR(state, ast.r)
+		state.appendInstr(Add(ast))
+	else:
+		exprToIR(state, ast.r)
+		state.appendInstr(Add(ast))
 
 def subToIR(state, ast):
 	exprToIR(state, ast.l)
-	exprToIR(state, ast.r)
-	state.appendInstr(Sub(ast))
+	
+	if ast.l.resolvedType.isPtrType:
+		exprToIR(state, ast.r)
+		if ast.l.resolvedType.indirectionLevel == 1:
+			mul = ast.l.resolvedType.baseType.byteSize
+		else:
+			mul = IPTR.byteSize
+		state.appendInstr(Imm(ast, IPTR, mul))
+		state.appendInstr(Mul(ast))
+		state.appendInstr(Sub(ast))
+	else:
+		exprToIR(state, ast.r)
+		state.appendInstr(Sub(ast))
 
 def mulToIR(state, ast):
 	exprToIR(state, ast.l)
