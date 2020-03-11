@@ -90,7 +90,7 @@ class TopStackTarget(Target):
 		self.offset = offset
 	
 	def render(self, usage, fType, sp):
-		addr = '[rsp + {}]'.format(self.offset * 8)
+		addr = '[rsp + {}]'.format(self.offset)
 		if usage == Usage.ADDR:
 			return addr
 		elif usage in (Usage.SRC, Usage.DEST):
@@ -107,7 +107,7 @@ class StackTarget(Target):
 		if sp == None:
 			addr = '[%% {} %%]'.format(self.offset)
 		else:
-			addr = '[rsp + {}]'.format((sp - self.offset)*8)
+			addr = '[rsp + {}]'.format(sp - self.offset)
 		
 		if usage == Usage.ADDR:
 			return addr
@@ -236,7 +236,7 @@ class GeneratorState:
 	def allocateStack(self, count=1):
 		targets = []
 		for _ in range(0, count):
-			self.sp += 1
+			self.sp += 8
 			target = StackTarget(None, self.sp)
 			self.callStack.append(target)
 			targets.append(target)
@@ -283,7 +283,7 @@ class GeneratorState:
 	def appendInstr(self, opcode, *operands, isLabel=False, isComment=False):
 		instr = Instr(opcode, operands, isLabel, isComment)
 		self.instr.append(instr)
-		print(instr)
+		# print(instr)
 	
 	def findReg(self, type=None, exclude=[]):
 		for reg in self.intRegs:
@@ -565,7 +565,7 @@ def write(state, ir):
 	state.popOperand()
 	state.popOperand()
 
-def moveStruct(state, src, dest):
+def moveStruct(state, src, dest, transferRegister):
 	sizeRemaining = dest.type.byteSize
 	offset = 0
 	while sizeRemaining > 0:
@@ -573,11 +573,16 @@ def moveStruct(state, src, dest):
 		fType = FundamentalType(byteSize)
 		partialSrc = StackTarget(fType, src.offset + offset)
 		partialDest = StackTarget(fType, dest.offset + offset)
-		moveData(state, partialSrc, partialDest, state.rax)
+		moveData(state, partialSrc, partialDest, transferRegister)
 		offset += byteSize
 		sizeRemaining -= byteSize
 
 def read_field(state, ir):
+	reg = state.findReg()
+	if reg == None:
+		saveReg(state, state.rax)
+		reg = state.rax
+	
 	offsetTarget = state.getOperand(0)
 	structTarget = state.getOperand(ir.offset)
 	readTarget = state.findTarget(ir.type)
@@ -587,14 +592,19 @@ def read_field(state, ir):
 	fieldTarget = StackTarget(ir.type, structTarget.offset + offsetTarget.value)
 	
 	if ir.type.byteSize <= 8:
-		moveData(state, fieldTarget, readTarget, state.rax)
+		moveData(state, fieldTarget, readTarget, reg)
 	else:
-		moveStruct(state, fieldTarget, readTarget)
+		moveStruct(state, fieldTarget, readTarget, reg)
 	
 	state.popOperand()
 	state.pushOperand(readTarget)
 
 def write_field(state, ir):
+	reg = state.findReg()
+	if reg == None:
+		saveReg(state, state.rax)
+		reg = state.rax
+	
 	offsetTarget = state.getOperand(0)
 	valueTarget = state.getOperand(1)
 	structTarget = state.getOperand(ir.offset)
@@ -609,9 +619,9 @@ def write_field(state, ir):
 	fieldTarget = StackTarget(valueTarget.type, structTarget.offset + offsetTarget.value)
 	
 	if valueTarget.type.byteSize <= 8:
-		moveData(state, valueTarget, fieldTarget, state.rax)
+		moveData(state, valueTarget, fieldTarget, reg)
 	else:
-		moveStruct(state, valueTarget, fieldTarget)
+		moveStruct(state, valueTarget, fieldTarget, reg)
 	
 	state.popOperand()
 	state.popOperand()
@@ -855,7 +865,7 @@ def call(state, ir):
 		state.allocateStack(requiredStackSpace)
 		
 		for (i, src) in enumerate(stackArgs):
-			moveData(state, src, TopStackTarget(src.type, i), state.rax)
+			moveData(state, src, TopStackTarget(src.type, i * 8), state.rax)
 	
 	if ir.cVarArgs:
 		state.appendInstr('xor', 
