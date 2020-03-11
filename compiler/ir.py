@@ -1081,9 +1081,9 @@ class IRState:
 		
 		self.setupLocals(self.paramTypes, inputSymbols)
 		
-		print('{}({}) -> ({})'.format(self.name,
-			', '.join([str(t) for t in self.paramTypes]),
-			', '.join([str(t) for t in self.retTypes])))
+		# print('{}({}) -> ({})'.format(self.name,
+		# 	', '.join([str(t) for t in self.paramTypes]),
+		# 	', '.join([str(t) for t in self.retTypes])))
 		
 		for param in reversed(fnDecl.params):
 			if param.resolvedSymbolType.isVoidType:
@@ -1105,11 +1105,11 @@ class IRState:
 		self.instr.append(instr)
 		instr.affectStack(self)
 		
-		instrText = '{}{}'.format(
-			'   ' if type(instr) != BlockMarker else '', instr.pretty(self))
-		space = ' ' * (72 - len(instrText))
-		print('{}{}# [{}]'.format(instrText, space, 
-			', '.join([(t.symbol.name + ': ' if t.symbol else '') + str(t.type) for t in self.operandStack])))
+		# instrText = '{}{}'.format(
+		# 	'   ' if type(instr) != BlockMarker else '', instr.pretty(self))
+		# space = ' ' * (72 - len(instrText))
+		# print('{}{}# [{}]'.format(instrText, space, 
+		# 	', '.join([(t.symbol.name + ': ' if t.symbol else '') + str(t.type) for t in self.operandStack])))
 	
 	def defBlock(self, inputs, hasBackwardsCallers=False):
 		index = len(self.blockDefs)
