@@ -7,17 +7,17 @@ from .ast                import CConv, FnDeclAST, LetAST, FnCallAST, ReturnAST, 
                                 CharLitAST, StructLitAST, FieldAccessAST, StructDeclAST, FnParamAST, \
                                 SignAST, FieldDeclAST
 from .                   import types
-from .types              import getValidAssignType
+from .types              import getValidAssignType, ResolvedType
 from .err                import logError, logWarning
 from .span               import Span
 from .types              import BUILTIN_TYPES
 
 def ffiAttr(state, decl, params, span):
 	if len(params) != 1 or params[0].content != '"C"':
-		logError(state, span, '"ffi" currently only supports the "C" convention')
+		logError(state, span, '`ffi` currently only supports the "C" convention')
 		return
 	if type(decl) != FnDeclAST:
-		logError(state, span, '"ffi" attribute may only be applied to functions')
+		logError(state, span, '`ffi` attribute may only be applied to functions')
 		return
 	
 	decl.cconv = CConv.C
@@ -31,13 +31,13 @@ def alignAttr(state, decl, params, span):
 			align = None
 	
 	if align == None:
-		logError(state, span, '"align" takes a single integer parameter')
+		logError(state, span, '`align` takes a single integer parameter')
 		return
 	elif align < 1 or (align & (align - 1)) != 0:
 		logError(state, span, 'alignment must be a power of 2 greater than or equal to 1')
 		return
 	elif type(decl) != FieldDeclAST:
-		logError(state, span, 'the "align" attribute may only be applied to struct & field declarations')
+		logError(state, span, 'the `align` attribute may only be applied to struct & field declarations')
 		return
 	
 	decl.align = align
@@ -50,7 +50,7 @@ builtinAttrs = {
 def invokeAttrs(state, decl):
 	for attr in decl.attrs:
 		if attr.name not in builtinAttrs:
-			logError(state, attr.span, 'unrecognized attribute: "{}"'.format(attr.name))
+			logError(state, attr.span, 'unrecognized attribute: `{}`'.format(attr.name))
 			continue
 		
 		builtinAttrs[attr.name](state, decl, attr.args, attr.span)
@@ -203,7 +203,7 @@ def analyzeSign(state, ast):
 	if ast.expr.resolvedType == None:
 		return
 	elif not ast.expr.resolvedType.isSigned:
-		logError(state, ast.expr.span, 'type "{}" has no sign'.format(ast.expr.resolvedType.name))
+		logError(state, ast.expr.span, 'type `{}` has no sign'.format(ast.expr.resolvedType.name))
 
 def analyzeInfixOp(state, infixOp, implicitType):
 	opErr = lambda: \
@@ -925,10 +925,10 @@ class AnalyzerState:
 					# print(revealSpan(lastUse.span))
 				for ifExpr in info.dropInIf:
 					ifExpr.block.dropSymbols.append(info.symbol)
-					# print(revealSpan(Span.cursor(ifExpr.block.span), 'drop "{}" here'.format(info.symbol.name)))
+					# print(revealSpan(Span.cursor(ifExpr.block.span), 'drop `{}` here'.format(info.symbol.name)))
 				for ifExpr in info.dropInElse:
 					ifExpr.elseBlock.dropSymbols.append(info.symbol)
-					# print(revealSpan(Span.cursor(ifExpr.elseBlock.span), 'drop "{}" here'.format(info.symbol.name)))
+					# print(revealSpan(Span.cursor(ifExpr.elseBlock.span), 'drop `{}` here'.format(info.symbol.name)))
 			elif info.wasTouched:
 				symbolInfo[info.symbol] = info
 		
@@ -993,22 +993,22 @@ class AnalyzerState:
 	def refSymbol(self, ref, field=None, fieldSpan=None):
 		info = self.scope.symbolInfo[ref.symbol]
 		if info.uninitialized:
-			maybeText = "may not have" if info.maybeUninitialized else "has not"
-			logError(self, ref.span, '"{}" {} been initialized'.format(ref.name, maybeText))
+			maybeText = 'may not have' if info.maybeUninitialized else 'has not'
+			logError(self, ref.span, '`{}` {} been initialized'.format(ref.name, maybeText))
 			return
 		elif info.moved:
-			maybeText = "may have" if info.maybeMoved else "has"
-			logError(self, ref.span, 'the value in "{}" {} been moved'.format(ref.name, maybeText))
+			maybeText = 'may have' if info.maybeMoved else 'has'
+			logError(self, ref.span, 'the value in `{}` {} been moved'.format(ref.name, maybeText))
 			return
 		elif field:
 			fieldInfo = info.fieldInfo[field]
 			if fieldInfo.uninitialized:
-				maybeText = "may not have" if fieldInfo.maybeUninitialized else "has not"
-				logError(self, fieldSpan, 'the field "{}" {} been initialized'.format(field.name, maybeText))
+				maybeText = 'may not have' if fieldInfo.maybeUninitialized else 'has not'
+				logError(self, fieldSpan, 'the field `{}` {} been initialized'.format(field.name, maybeText))
 				return
 			elif fieldInfo.moved:
-				maybeText = "may have" if fieldInfo.maybeMoved else "has"
-				logError(self, fieldSpan, 'the value in field "{}" {} been moved'.format(field.name, maybeText))
+				maybeText = 'may have' if fieldInfo.maybeMoved else 'has'
+				logError(self, fieldSpan, 'the value in field `{}` {} been moved'.format(field.name, maybeText))
 				return
 		
 		self.scope.refSymbol(ref, field)
@@ -1029,16 +1029,19 @@ class AnalyzerState:
 		
 		if symbol != None:
 			for tok in path:
-				if type(symbol) != ModAST:
+				# if type(symbol) == StructDeclAST:
+				# 	symbol = symbol.resolvedSymbolType.fieldDict[tok.content]
+				# el
+				if type(symbol) == ModAST:
+					symbolTok = tok
+					if tok.content not in symbol.symbolTable:
+						symbol = None
+						break
+					
+					symbol = symbol.symbolTable[tok.content]
+				else:
 					logError(self, symbolTok.span, '`{}` is not a module'.format(symbol.name))
 					return None
-				
-				symbolTok = tok
-				if tok.content not in symbol.symbolTable:
-					symbol = None
-					break
-				
-				symbol = symbol.symbolTable[tok.content]
 		
 		if symbol and inTypePosition and type(symbol) == StructDeclAST:
 			symbol = symbol.resolvedSymbolType

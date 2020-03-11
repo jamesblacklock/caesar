@@ -1023,12 +1023,6 @@ def defineFns(mod, output):
 		for instr in decl.ir.instr:
 			irToAsm(state, instr)
 		
-		# stackOffset = 8 * len(stackArgs)
-		# if stackOffset % 16 != 0:
-		# 	stackOffset += 8
-		# if stackOffset > 0:
-		# 	state.appendInstr(Instr('\t\tadd rsp, {}\n'.format(stackOffset)))
-		
 		stackSize = state.sp * 8
 		if stackSize % 16 == 0:
 			stackSize += 8
@@ -1053,7 +1047,7 @@ class OutputWriter:
 		self.output = StringIO()
 	
 	def write(self, s):
-		sys.stdout.write(s)
+		# sys.stdout.write(s)
 		self.output.write(s)
 	
 	def getvalue(self):
