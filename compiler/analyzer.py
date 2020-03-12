@@ -1,12 +1,13 @@
 from .                   import ast
-from .ast                import CConv, FnDeclAST, LetAST, FnCallAST, ReturnAST, IfAST, TypeRefAST, \
+from .ast                import CConv, FnDeclAST, LetAST, FnCallAST, ReturnAST, IfAST, SignAST, \
                                 StrLitAST, IntLitAST, BoolLitAST, TupleLitAST, ValueRefAST, \
 								InfixOpAST, FnCallAST, IfAST, CoercionAST, ModAST, ValueExprAST, \
 								BlockAST, AsgnAST, WhileAST, DerefAST, IndexOpAST, VoidAST, \
 								AddressAST, FloatLitAST, BreakAST, ContinueAST, InfixOp, LoopAST, \
                                 CharLitAST, StructLitAST, FieldAccessAST, StructDeclAST, FnParamAST, \
-                                SignAST, FieldDeclAST
-from .                   import types
+                                FieldDeclAST, NamedTypeRefAST, PtrTypeRefAST, ArrayTypeRefAST, \
+                                ArrayLitAST, TupleTypeRefAST
+from .                   import types, token
 from .types              import getValidAssignType, ResolvedType
 from .err                import logError, logWarning
 from .span               import Span
@@ -75,7 +76,9 @@ def analyzeValueExpr(state, expr, implicitType=None):
 	elif type(expr) == AddressAST:
 		analyzeAddress(state, expr, implicitType)
 	elif type(expr) == TupleLitAST:
-		raise RuntimeError('unimplemented!')
+		analyzeTupleLit(state, expr, implicitType)
+	elif type(expr) == ArrayLitAST:
+		analyzeArrayLit(state, expr, implicitType)
 	elif type(expr) == ValueRefAST:
 		analyzeValueRef(state, expr)
 	elif type(expr) == InfixOpAST:
@@ -98,15 +101,23 @@ def analyzeValueExpr(state, expr, implicitType=None):
 		assert 0
 
 def resolveTypeRef(state, typeRef):
-	resolvedType = state.lookupSymbol(typeRef, True)
+	if type(typeRef) == NamedTypeRefAST:
+		typeRef.resolvedType = state.lookupSymbol(typeRef, True)
+	elif type(typeRef) == PtrTypeRefAST:
+		resolveTypeRef(state, typeRef.baseType)
+		typeRef.resolvedType = types.ResolvedPtrType(
+			typeRef.baseType.resolvedType, typeRef.indirectionLevel)
+	elif type(typeRef) == ArrayTypeRefAST:
+		resolveTypeRef(state, typeRef.baseType)
+		typeRef.resolvedType = types.ResolvedArrayType(
+			typeRef.baseType.resolvedType, typeRef.count)
+	elif type(typeRef) == TupleTypeRefAST:
+		analyzeTupleTypeRef(state, typeRef)
+	else:
+		assert 0
 	
-	if resolvedType == None:
-		resolvedType = types.ResolvedType(typeRef.name, 0)
-	
-	if typeRef.indirectionLevel > 0:
-		resolvedType = types.ResolvedPtrType(resolvedType, typeRef.indirectionLevel)
-	
-	typeRef.resolvedType = resolvedType
+	if typeRef.resolvedType == None:
+		typeRef.resolvedType = types.ResolvedType(typeRef.name, 0)
 
 def analyzeValueRef(state, valueRef, noRef=False):
 	valueRef.symbol = state.lookupSymbol(valueRef, False)
@@ -165,7 +176,39 @@ def analyzeFloatLit(state, lit, implicitType):
 	# 	lit.resolvedType = types.Float64
 	
 	# if not types.canAccommodate(lit.resolvedType, lit.value):
-	# 	logError(state, lit.span, 'flaoting point value out of range for type {}'.format(lit.resolvedType))
+	# 	logError(state, lit.span, 'floating point value out of range for type {}'.format(lit.resolvedType))
+
+def analyzeTupleLit(state, tup, implicitType):
+	implicitTypes = [None for _ in tup.values]
+	if implicitType and implicitType.isCompositeType:
+		for i in range(0, min(len(implicitType.fields), len(tup.values))):
+			implicitTypes[i] = implicitType.fields[i].resolvedSymbolType
+	
+	resolvedTypes = []
+	for (expr, t) in zip(tup.values, implicitTypes):
+		analyzeValueExpr(state, expr, t)
+		resolvedTypes.append(expr.resolvedType)
+	
+	layout = generateFieldLayout(resolvedTypes)
+	tup.resolvedType = types.ResolvedTupleType(layout.align, layout.byteSize, layout.fields)
+
+def analyzeArrayLit(state, arr, implicitType):
+	implicitElementType = None
+	count = 0
+	if implicitType and implicitType.isCompositeType and len(implicitType.fields) > 0:
+		implicitElementType = implicitType.fields[0].resolvedSymbolType
+		count = len(implicitType.fields)
+	
+	resolvedElementType = None
+	for expr in arr.values:
+		analyzeValueExpr(state, expr, implicitElementType)
+		t = types.getValidAssignType(resolvedElementType, expr.resolvedType, True)
+		if t == None:
+			logError(state, expr.span, 'expected {}, found {}'.format(resolvedElementType, expr.resolvedType))
+		resolvedElementType = t
+	
+	count = max(len(arr.values), count)
+	arr.resolvedType = types.ResolvedArrayType(resolvedElementType, count)
 
 def analyzeAddress(state, addr, implicitType):
 	analyzeValueExpr(state, addr.expr, implicitType)
@@ -307,19 +350,14 @@ def analyzeIndex(state, expr):
 	analyzeValueExpr(state, expr.expr)
 	analyzeValueExpr(state, expr.index, types.ISize)
 	
-	if not expr.expr.resolvedType.isPtrType:
+	if not expr.expr.resolvedType.isArrayType:
 		logError(state, expr.expr.span, 
-			'base of index expression must be an pointer type (found {})'.format(expr.expr.resolvedType))
+			'base of index expression must be an array type (found {})'.format(expr.expr.resolvedType))
 	
 	if not expr.index.resolvedType.isIntType:
 		logError(state, expr.index.span, 'index must be an integer (found {})'.format(expr.index.resolvedType))
 	
-	indLevel = expr.expr.resolvedType.indirectionLevel
-	baseType = expr.expr.resolvedType.baseType
-	if indLevel == 1:
-		expr.resolvedType = baseType
-	else:
-		expr.resolvedType = types.ResolvedPtrType(baseType, indLevel - 1)
+	expr.resolvedType = expr.expr.resolvedType.baseType
 
 def analyzeFnSig(state, fnDecl):
 	resolvedReturnType = types.Void
@@ -578,15 +616,23 @@ def analyzeFieldAccess(state, expr, noRef=False):
 	field = None
 	errSpan = expr.expr.span
 	for tok in expr.path:
-		if not t.isStructType:
+		if t.isStructType:
+			if tok.content not in t.fieldDict:
+				logError(state, expr.span, 'type `{}` has no field `{}`'.format(t.name, tok.content))
+				return
+			
+			field = t.fieldDict[tok.content]
+		elif t.isTupleType:
+			fieldIndex = None if tok.type != token.TokenType.INTEGER else int(tok.content)
+			if fieldIndex == None or fieldIndex not in range(0, len(t.fields)):
+				logError(state, expr.span, 'type `{}` has no field `{}`'.format(t.name, tok.content))
+				return
+			
+			field = t.fields[fieldIndex]
+		else:
 			logError(state, errSpan, 'type `{}` has no fields'.format(t.name))
 			return
 		
-		if tok.content not in t.fieldDict:
-			logError(state, expr.span, 'type `{}` has no field `{}`'.format(t.name, tok.content))
-			return
-		
-		field = t.fieldDict[tok.content]
 		fieldOffset += field.offset
 		t = field.resolvedSymbolType
 		if t == None:
@@ -684,32 +730,64 @@ def analyzeFnBody(state, fnDecl):
 		logError(state, fnDecl.body.span, 'invalid return type (expected {}, found {})'
 			.format(fnDecl.resolvedSymbolType.resolvedReturnType, fnDecl.body.resolvedType))
 
-def analyzeStructDecl(state, decl):
+class FieldLayout:
+	def __init__(self, align, byteSize, fields):
+		self.align = align
+		self.byteSize = byteSize
+		self.fields = fields
+
+def generateFieldLayout(resolvedTypes, fieldNames=None):
 	fields = []
 	maxAlign = 0
 	offset = 0
-	fieldNames = set()
 	
+	if fieldNames == None:
+		fieldNames = (i for i in range(0, len(resolvedTypes)))
+	
+	for (t, n) in zip(resolvedTypes, fieldNames):
+		if t.isVoidType:
+			continue
+		
+		align = types.getAlignment(t)
+		maxAlign = max(maxAlign, align)
+		
+		if offset % align > 0:
+			offset += align - offset % align
+		
+		fields.append(types.Field(n, t, offset))
+		offset += t.byteSize
+	
+	# if offset % maxAlign > 0:
+	# 	offset = offset + maxAlign - offset % maxAlign
+	
+	return FieldLayout(maxAlign, offset, fields)
+	
+
+def analyzeTupleTypeRef(state, tupleTypeRef):
+	resolvedTypes = []
+	for typeRef in tupleTypeRef.types:
+		resolveTypeRef(state, typeRef)
+		resolvedTypes.append(typeRef.resolvedType)
+	
+	layout = generateFieldLayout(resolvedTypes)
+	tupleTypeRef.resolvedType = types.ResolvedTupleType(
+		layout.align, layout.byteSize, layout.fields)
+
+def analyzeStructDecl(state, decl):
+	fieldNames = []
+	resolvedTypes = []
 	for field in decl.fields:
 		if field.name in fieldNames:
 			logError(state, field.nameTok.span, 'duplicate field declared in struct')
 		else:
-			fieldNames.add(field.name)
+			fieldNames.append(field.name)
 		
 		resolveTypeRef(state, field.typeRef)
-		
-		field.align = types.getAlignment(field.typeRef.resolvedType)
-		maxAlign = max(maxAlign, field.align)
-		invokeAttrs(state, field)
-		
-		if offset % field.align > 0:
-			offset += field.align - offset % field.align
-		
-		fields.append(types.Field(field.name, field.typeRef.resolvedType, offset))
-		offset += field.typeRef.resolvedType.byteSize
+		resolvedTypes.append(field.typeRef.resolvedType)
 	
-	offset += maxAlign - offset % maxAlign
-	decl.resolvedSymbolType = types.ResolvedStructType(decl.name, maxAlign, offset, fields)
+	layout = generateFieldLayout(resolvedTypes, fieldNames)
+	decl.resolvedSymbolType = types.ResolvedStructType(
+		decl.name, layout.align, layout.byteSize, layout.fields)
 
 def mangleFnName(state, fnDecl):
 	if fnDecl.cconv == CConv.C:
@@ -751,10 +829,14 @@ class SymbolInfo:
 		
 		def addFieldInfo(fields, expr):
 			allInit = expr and type(expr) != StructLitAST
-			fieldDict = expr.fieldDict if type(expr) == StructLitAST else {}
+			fieldDict = \
+				{ k: v for (k, v) in expr.fieldDict.values() } if type(expr) == StructLitAST else \
+				{ i: e for (i, e) in enumerate(expr.values) } if type(expr) in (TupleLitAST, ArrayLitAST) else \
+				{}
+			
 			for field in fields:
 				self.fieldInfo[field] = FieldInfo(field, allInit or field.name in fieldDict)
-				fieldExpr = fieldDict[field.name].expr if field.name in fieldDict else None
+				fieldExpr = fieldDict[field.name] if field.name in fieldDict else None
 				if field.resolvedSymbolType.isStructType:
 					addFieldInfo(field.resolvedSymbolType.fields, fieldExpr)
 		
@@ -764,7 +846,7 @@ class SymbolInfo:
 		elif type(symbol) == LetAST:
 			self.uninitialized = symbol.expr == None
 			self.maybeUninitialized = False
-			if symbol.resolvedSymbolType.isStructType:
+			if symbol.resolvedSymbolType.isCompositeType:
 				addFieldInfo(symbol.resolvedSymbolType.fields, symbol.expr)
 		else:
 			assert 0

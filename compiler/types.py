@@ -5,7 +5,8 @@ class ResolvedType:
 	def __init__(self, name, byteSize, 
 		isFnType=False, isPtrType=False, isStructType=False, 
 		isIntType=False, isFloatType=False, isOptionType=False, 
-		isVoidType=False, isPrimitiveType=False, isSigned=False):
+		isVoidType=False, isPrimitiveType=False, isSigned=False,
+		isArrayType=False, isTupleType=False, isCompositeType=False):
 		self.name = name
 		self.byteSize = byteSize
 		self.isPrimitiveType = isPrimitiveType
@@ -18,6 +19,9 @@ class ResolvedType:
 		self.isFloatType = isFloatType
 		self.isOptionType = isOptionType
 		self.isSigned = isSigned
+		self.isArrayType = isArrayType
+		self.isTupleType = isTupleType
+		self.isCompositeType = isCompositeType
 	
 	def __str__(self):
 		return self.name
@@ -53,16 +57,17 @@ class Field:
 
 class ResolvedStructType(ResolvedType):
 	def __init__(self, name, align, byteSize, fields):
+		super().__init__(name, byteSize, 
+			isStructType=True, isCompositeType=True, isVoidType=(byteSize == 0))
+		
 		self.align = align
 		self.byteSize = byteSize
-		self.fieldDict = {}
 		self.fields = fields
+		self.fieldDict = {}
 		
-		if fields:
+		if len(fields) > 0:
 			for field in fields:
 				self.fieldDict[field.name] = field
-		
-		super().__init__(name, byteSize, isStructType=True, isVoidType=(byteSize == 0))
 
 PLATFORM_WORD_SIZE = 8
 
@@ -73,6 +78,39 @@ class ResolvedPtrType(ResolvedType):
 		self.baseType = baseType
 		self.indirectionLevel = indirectionLevel
 
+class ArrayFields:
+	def __init__(self, elementType, count):
+		self.count = count
+		self.elementType = elementType
+	
+	def __getitem__(self, index):
+		if index >= self.count:
+			raise IndexError()
+		return Field(None, self.elementType, index * getAlignedSize(self.elementType))
+	
+	def __len__(self):
+		return self.count
+
+class ResolvedArrayType(ResolvedType):
+	def __init__(self, baseType, count):
+		name = '[{} * {}]'.format(baseType.name, count)
+		elementAlign = getAlignment(baseType)
+		byteSize = getAlignedSize(baseType) * count
+		super().__init__(name, byteSize, 
+			isArrayType=True, isCompositeType=True, isVoidType=(byteSize == 0))
+		self.baseType = baseType
+		self.count = count
+		self.fields = ArrayFields(baseType, count)
+		self.align = elementAlign
+
+class ResolvedTupleType(ResolvedType):
+	def __init__(self, align, byteSize, fields):
+		name = '({})'.format(', '.join(f.resolvedSymbolType.name for f in fields))
+		super().__init__(name, byteSize, 
+			isTupleType=True, isCompositeType=True, isVoidType=(byteSize == 0))
+		self.align = align
+		self.fields = fields
+
 Void    = ResolvedType('void',    0, isVoidType=True)
 Bool    = ResolvedType('bool',    1, isPrimitiveType=True)
 Byte    = ResolvedType('byte',    1, isPrimitiveType=True)
@@ -80,8 +118,8 @@ Int8    = ResolvedType('int8',    1, isPrimitiveType=True, isIntType=True, isSig
 UInt8   = ResolvedType('uint8',   1, isPrimitiveType=True, isIntType=True)
 Int16   = ResolvedType('int16',   2, isPrimitiveType=True, isIntType=True, isSigned=True)
 UInt16  = ResolvedType('uint16',  2, isPrimitiveType=True, isIntType=True)
-Int32   = ResolvedType('int32',   4, isPrimitiveType=True, isIntType=True, isSigned=True)
-UInt32  = ResolvedType('uint32',  4, isPrimitiveType=True, isIntType=True)
+Int32   = ResolvedType('int',     4, isPrimitiveType=True, isIntType=True, isSigned=True)
+UInt32  = ResolvedType('uint',    4, isPrimitiveType=True, isIntType=True)
 Char    = ResolvedType('char',    4, isPrimitiveType=True)
 Int64   = ResolvedType('int64',   8, isPrimitiveType=True, isIntType=True, isSigned=True)
 UInt64  = ResolvedType('uint64',  8, isPrimitiveType=True, isIntType=True)
@@ -156,14 +194,16 @@ def canAccommodate(type, intValue):
 		assert 0
 
 def getValidAssignType(expectedType, foundType, allowVoidCercion=False):
-	if expectedType == None:
+	if expectedType is foundType:
+		return expectedType
+	elif expectedType == None:
 		return foundType
 	elif foundType == None:
 		return expectedType
 	elif expectedType == Void and allowVoidCercion:
 		return Void
-	elif type(expectedType) == ResolvedPtrType and type(foundType) == ResolvedPtrType and \
-		expectedType.baseType == foundType.baseType and \
+	elif expectedType.isPtrType and foundType.isPtrType and \
+		getValidAssignType(expectedType.baseType, foundType.baseType) != None and \
 		expectedType.indirectionLevel == foundType.indirectionLevel:
 		return expectedType
 	elif expectedType.isOptionType:
@@ -177,10 +217,67 @@ def getValidAssignType(expectedType, foundType, allowVoidCercion=False):
 	elif expectedType.isIntType and foundType.isIntType and \
 		expectedType.byteSize == foundType.byteSize and expectedType.isSigned == foundType.isSigned:
 		return expectedType
-	elif expectedType is foundType:
-		return expectedType
+	elif expectedType.isTupleType or foundType.isTupleType:
+		return getValidTupleAssignType(expectedType, foundType)
+	elif expectedType.isArrayType or foundType.isArrayType:
+		return getValidArrayAssignType(expectedType, foundType)
+	elif expectedType.isStructType and foundType.isStructType:
+		return getValidStructAssignType(expectedType, foundType)
 	else:
 		return None
+
+def getValidStructAssignType(expectedType, foundType):
+	if expectedType.byteSize != foundType.byteSize:
+		return None
+	if expectedType.align != foundType.align:
+		return None
+	
+	expectedFields = expectedType.fields
+	foundFields    =    foundType.fields
+	if len(expectedFields) != len(foundFields):
+		return None
+	
+	for (expected, found) in zip(expectedFields, foundFields):
+		if getValidAssignType(expected.resolvedSymbolType, found.resolvedSymbolType) == None:
+			return None
+		if expected.offset != found.offset:
+			return None
+		if expected.name != found.name:
+			return None
+	
+	return expectedType
+
+def getValidArrayAssignType(expectedType, foundType):
+	if expectedType.isArrayType and foundType.isArrayType:
+		if getValidAssignType(expectedType.baseType, foundType.baseType) == None:
+			return None
+		if expectedType.count != foundType.count:
+			return None
+		return expectedType
+	
+	if not (expectedType.isCompositeType and foundType.isCompositeType):
+		return None
+	
+	return getValidTupleAssignType(expectedType, foundType)
+
+def getValidTupleAssignType(expectedType, foundType):
+	if expectedType.byteSize != foundType.byteSize:
+		return None
+	if getAlignment(expectedType) != getAlignment(foundType):
+		return None
+	
+	expectedFields = expectedType.fields if expectedType.isCompositeType else [Field(None, expectedType, 0)]
+	foundFields    =    foundType.fields if    foundType.isCompositeType else [Field(None,    foundType, 0)]
+	if len(expectedFields) != len(foundFields):
+		return None
+	
+	for (expected, found) in zip(expectedFields, foundFields):
+		if getValidAssignType(expected.resolvedSymbolType, found.resolvedSymbolType) == None:
+			return None
+		if expected.offset != found.offset:
+			return None
+	
+	return expectedType
 
 def canCoerce(fromType, toType):
 	if fromType and toType and fromType.isPrimitiveType and toType.isPrimitiveType:
@@ -198,11 +295,19 @@ def hasDefiniteType(ast):
 	return True
 
 def getAlignment(t):
-	if t.byteSize == 0:
-		assert 0
+	if t.isVoidType:
+		return 0
 	elif t.isPrimitiveType:
 		return t.byteSize
-	elif t.isStructType:
+	elif t.isStructType or t.isArrayType or t.isTupleType:
 		return t.align
 	else:
 		assert 0
+
+def getAlignedSize(t):
+	align = getAlignment(t)
+	byteSize = t.byteSize
+	if t.byteSize % align > 0:
+		byteSize += t.byteSize - t.byteSize % align
+	
+	return byteSize
