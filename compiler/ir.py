@@ -1,10 +1,11 @@
 from io                       import StringIO
 from .ast                     import FnDeclAST, FnCallAST, ValueRefAST, StrLitAST, BlockAST, \
                                      IntLitAST, ReturnAST, LetAST, IfAST, InfixOpAST, InfixOp, \
-                                     CoercionAST, BoolLitAST, WhileAST, AsgnAST, DerefAST, \
-                                     IndexOpAST, VoidAST, AddressAST, FloatLitAST, BreakAST, \
+                                     CoercionAST, BoolLitAST, WhileAST, AsgnAST, DerefAST, TupleLitAST, \
+                                     IndexOpAST, VoidAST, AddressAST, FloatLitAST, BreakAST, ArrayLitAST, \
                                      ContinueAST, LoopAST, CharLitAST, StructLitAST, FieldAccessAST, \
                                      ValueExprAST, FnParamAST, ModLevelDeclAST, SignAST, CMP_OPS
+from .                        import types
 
 # def structBytes(structLit):
 # 	bytes = []
@@ -586,17 +587,33 @@ def asgnToIR(state, ast):
 		state.appendInstr(Swap(ast, state.localOffset(ast.lvalue.symbol)))
 
 def indexToIR(state, ast):
-	exprToIR(state, ast.expr)
+	# exprToIR(state, ast.expr)
 	exprToIR(state, ast.index)
-	if ast.expr.resolvedType.indirectionLevel == 1:
-		mul = ast.expr.resolvedType.baseType.byteSize
-	else:
-		mul = IPTR.byteSize
+	mul = types.getAlignedSize(ast.expr.resolvedType.baseType)
 	state.appendInstr(Imm(ast, IPTR, mul))
 	state.appendInstr(Mul(ast))
-	state.appendInstr(Add(ast))
+	
+	if type(ast.expr) == ValueRefAST:
+		stackOffset = state.localOffset(ast.expr.symbol)
+	else:
+		exprToIR(state, ast.expr)
+		stackOffset = 1
+	
 	fType = FundamentalType.fromResolvedType(ast.resolvedType)
-	state.appendInstr(Deref(ast, fType))
+	state.appendInstr(ReadField(ast, stackOffset, fType))
+	
+	
+	# exprToIR(state, ast.expr)
+	# exprToIR(state, ast.index)
+	# if ast.expr.resolvedType.indirectionLevel == 1:
+	# 	mul = getAlignment(ast.expr.resolvedType.baseType)
+	# else:
+	# 	mul = getAlignment(IPTR.byteSize)
+	# state.appendInstr(Imm(ast, IPTR, mul))
+	# state.appendInstr(Mul(ast))
+	# state.appendInstr(Add(ast))
+	# fType = FundamentalType.fromResolvedType(ast.resolvedType)
+	# state.appendInstr(Deref(ast, fType))
 
 def boolLitToIR(state, ast):
 	state.appendInstr(Imm(ast, I8, 1 if ast.value else 0))
@@ -617,22 +634,46 @@ def intLitToIR(state, ast):
 	
 # 	block.append(Move(lit, src, dest, type))
 
-def structLitToIR(state, ast):
-	def initFields(structLit, baseOffset):
-		fieldDict = structLit.resolvedType.fieldDict
-		for init in structLit.fields:
-			fieldInfo = fieldDict[init.name]
-			if type(init.expr) == StructLitAST:
-				initFields(init.expr, fieldInfo.offset)
-				continue
-			
-			exprToIR(state, init.expr)
-			state.appendInstr(Imm(init, IPTR, baseOffset + fieldInfo.offset))
-			state.appendInstr(WriteField(ast, 2))
+def initCompositeFields(state, lit, baseOffset):
+	if type(lit) == StructLitAST:
+		initStructFields(state, lit, baseOffset)
+		return
 	
+	for (init, fieldInfo) in zip(lit.values, lit.resolvedType.fields):
+		if init.resolvedType.isCompositeType:
+			initCompositeFields(state, init, baseOffset + fieldInfo.offset)
+			continue
+		
+		exprToIR(state, init)
+		state.appendInstr(Imm(init, IPTR, baseOffset + fieldInfo.offset))
+		state.appendInstr(WriteField(init, 2))
+
+def initStructFields(state, structLit, baseOffset):
+	fieldDict = structLit.resolvedType.fieldDict
+	for init in structLit.fields:
+		fieldInfo = fieldDict[init.name]
+		if init.expr.resolvedType.isCompositeType:
+			initCompositeFields(init.expr, baseOffset + fieldInfo.offset)
+			continue
+		
+		exprToIR(state, init.expr)
+		state.appendInstr(Imm(init, IPTR, baseOffset + fieldInfo.offset))
+		state.appendInstr(WriteField(init, 2))
+
+def structLitToIR(state, ast):
 	fType = FundamentalType.fromResolvedType(ast.resolvedType)
 	state.appendInstr(Struct(ast, fType))
-	initFields(ast, 0)
+	initStructFields(state, ast, 0)
+
+def arrayLitToIR(state, ast):
+	fType = FundamentalType.fromResolvedType(ast.resolvedType)
+	state.appendInstr(Struct(ast, fType))
+	initCompositeFields(state, ast, 0)
+
+def tupleLitToIR(state, ast):
+	fType = FundamentalType.fromResolvedType(ast.resolvedType)
+	state.appendInstr(Struct(ast, fType))
+	initCompositeFields(state, ast, 0)
 
 def strLitToIR(state, ast):
 	label = '{}__static__{}'.format(state.name, len(state.staticDefs))
@@ -956,6 +997,10 @@ def exprToIR(state, expr):
 		charLitToIR(state, expr)
 	elif type(expr) == StructLitAST:
 		structLitToIR(state, expr)
+	elif type(expr) == TupleLitAST:
+		tupleLitToIR(state, expr)
+	elif type(expr) == ArrayLitAST:
+		arrayLitToIR(state, expr)
 	elif type(expr) == ValueRefAST:
 		valueRefToIR(state, expr)
 	elif type(expr) == FieldAccessAST:
