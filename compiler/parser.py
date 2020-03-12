@@ -4,14 +4,14 @@ from enum                import Enum
 from .token              import TokenType
 from .span               import Span, revealSpan, AnsiColor
 from .err                import logError
-from .ast                import CConv, FnDeclAST, LetAST, FnCallAST, ReturnAST, IfAST, TypeRefAST, \
+from .ast                import CConv, FnDeclAST, LetAST, FnCallAST, ReturnAST, IfAST, PtrTypeRefAST, \
                                 AttrAST, StrLitAST, IntLitAST, FloatLitAST, BoolLitAST, TupleLitAST, \
                                 ValueRefAST, InfixOpAST, FnCallAST, IfAST, CoercionAST, ModAST, \
                                 ValueExprAST, FnParamAST, BlockAST, AsgnAST, WhileAST, DerefAST, \
                                 IndexOpAST, VoidAST, CVarArgsParamAST, InfixOp, AddressAST, LoopAST, \
                                 BreakAST, ContinueAST, CharLitAST, FieldDeclAST, StructDeclAST, \
-                                FieldLitAST, StructLitAST, FieldAccessAST, INFIX_PRECEDENCE, \
-                                SignAST, UNARY_PRECEDENCE
+                                FieldLitAST, StructLitAST, FieldAccessAST, NamedTypeRefAST, SignAST, \
+                                ArrayTypeRefAST, ArrayLitAST, TupleTypeRefAST, UNARY_PRECEDENCE, INFIX_PRECEDENCE
 
 class ParserState:
 	def __init__(self, source, tokens):
@@ -479,22 +479,71 @@ def parseBlock(state, parseItem, blockMarkers=BlockMarkers.BRACE,
 	
 	return Block(list, Span.merge(startSpan, endSpan), trailingSeparator)
 
-def parseTypeRef(state):
-	if expectType(state, TokenType.NAME, TokenType.VOID) == False:
-		return None
-	
-	path = parsePath(state)
-	span = path.span
+def parsePtrTypeRef(state, baseType):
+	span = baseType.span
 	indirectionLevel = 0
-	
-	state.skipSpace()
-	while state.tok.type == TokenType.AMP or state.tok.type == TokenType.AND:
+	while state.tok.type in (TokenType.AMP, TokenType.AND):
 		span = Span.merge(span, state.tok.span)
 		indirectionLevel += 1 if state.tok.type == TokenType.AMP else 2
 		state.advance()
 		state.skipSpace()
 	
-	return TypeRefAST(path.path, indirectionLevel, span)
+	return PtrTypeRefAST(baseType, indirectionLevel, span)
+
+def parseTupleTypeRef(state):
+	block = parseBlock(state, parseTypeRef, blockMarkers=BlockMarkers.PAREN, requireBlockMarkers=True)
+	return TupleTypeRefAST(block.list, block.span)
+
+def parseArrayTypeRef(state):
+	baseType = None
+	count = None
+	span = state.tok.span
+	
+	state.advance()
+	state.skipSpace()
+	baseType = parseTypeRef(state)
+	state.skipSpace()
+	if baseType == None or expectType(state, TokenType.TIMES) == False:
+		return None
+	state.advance()
+	state.skipSpace()
+	if expectType(state, TokenType.INTEGER) == False:
+		return None
+	count = int(state.tok.content)
+	state.advance()
+	state.skipSpace()
+	if expectType(state, TokenType.RBRACK) == False:
+		return None
+		
+	span = Span.merge(span, state.tok.span)
+	typeRef = ArrayTypeRefAST(baseType, count, span)
+	
+	state.advance()
+	state.skipSpace()
+	if state.tok.type in (TokenType.AMP, TokenType.AND):
+		typeRef = parsePtrTypeRef(state, typeRef)
+	
+	return typeRef
+
+def parseTypeRef(state):
+	if state.tok.type == TokenType.LBRACK:
+		return parseArrayTypeRef(state)
+	elif state.tok.type == TokenType.LPAREN:
+		return parseTupleTypeRef(state)
+	
+	if expectType(state, TokenType.NAME, TokenType.VOID) == False:
+		return None
+	
+	path = parsePath(state)
+	span = path.span
+	
+	typeRef = NamedTypeRefAST(path.path, span)
+	
+	state.skipSpace()
+	if state.tok.type in (TokenType.AMP, TokenType.AND):
+		typeRef = parsePtrTypeRef(state, typeRef)
+	
+	return typeRef
 
 def parseFnCall(state, expr):
 	block = parseBlock(state, parseValueExpr, BlockMarkers.PAREN, True)
@@ -789,7 +838,7 @@ def parseFieldAccess(state, expr):
 		else:
 			permitLineBreak(state)
 		
-		if expectType(state, TokenType.NAME) == False:
+		if expectType(state, TokenType.NAME, TokenType.INTEGER) == False:
 			break
 		
 		path.append(state.tok)
@@ -826,6 +875,9 @@ def parseValueExpr(state, precedence=0):
 	if state.tok.type == TokenType.NEWLINE:
 		block = parseBlock(state, parseFnBodyExpr)
 		expr = BlockAST(block)
+	elif state.tok.type == TokenType.LBRACK:
+		block = parseBlock(state, parseValueExpr, requireBlockMarkers=True, blockMarkers=BlockMarkers.BRACK)
+		expr = ArrayLitAST(block.list, block.span)
 	elif state.tok.type == TokenType.LBRACE:
 		block = parseBlock(state, parseFnBodyExpr, requireBlockMarkers=True)
 		expr = BlockAST(block)
@@ -869,7 +921,8 @@ def parseValueExpr(state, precedence=0):
 		expr = parseIf(state)
 	else:
 		logError(state, state.tok.span, 'expected value expression, found {}'.format(state.tok.type.desc()))
-		state.skipUntil(TokenType.NEWLINE, TokenType.COMMA, TokenType.SEMICOLON, TokenType.RBRACE)
+		state.skipUntil(TokenType.NEWLINE, TokenType.COMMA, TokenType.SEMICOLON, 
+			TokenType.RPAREN, TokenType.RBRACE, TokenType.RBRACK)
 		expr = None
 	
 	if expr == None:

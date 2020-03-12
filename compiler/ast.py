@@ -345,13 +345,34 @@ class LetAST:
 		self.unused = True
 
 class TypeRefAST:
-	def __init__(self, path, indirectionLevel, span):
+	def __init__(self, span):
+		self.span = span
+		self.resolvedType = None
+
+class PtrTypeRefAST(TypeRefAST):
+	def __init__(self, baseType, indirectionLevel, span):
+		super().__init__(span)
+		assert indirectionLevel > 0
+		self.baseType = baseType
+		self.indirectionLevel = indirectionLevel
+
+class TupleTypeRefAST(TypeRefAST):
+	def __init__(self, types, span):
+		super().__init__(span)
+		self.types = types
+
+class ArrayTypeRefAST(TypeRefAST):
+	def __init__(self, baseType, count, span):
+		super().__init__(span)
+		self.baseType = baseType
+		self.count = count
+
+class NamedTypeRefAST(TypeRefAST):
+	def __init__(self, path, span):
+		super().__init__(span)
 		self.path = path
 		self.nameTok = path[-1]
 		self.name = self.nameTok.content
-		self.indirectionLevel = indirectionLevel
-		self.span = span
-		self.resolvedType = None
 
 class AsgnAST:
 	def __init__(self, lvalue, rvalue, span):
@@ -443,6 +464,12 @@ class FloatLitAST(ValueExprAST):
 		self.span = span
 
 class TupleLitAST(ValueExprAST):
+	def __init__(self, values, span):
+		super().__init__()
+		self.values = values
+		self.span = span
+
+class ArrayLitAST(ValueExprAST):
 	def __init__(self, values, span):
 		super().__init__()
 		self.values = values

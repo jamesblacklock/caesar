@@ -345,14 +345,16 @@ def lexUnknownToken(state):
 def tokenize(source):
 	state = LexerState(source)
 	tokens = []
+	tok = None
 	while state.char != '':
-		tok = None
 		if state.char == ' ' or state.char == '\t':
 			tok = lexSpace(state)
 		elif state.char == '#':
 			tok = lexComment(state)
 		elif state.char == '\n':
 			tok = lexNewline(state)
+		elif state.char == '.' and tok and tok.type == TokenType.NAME:
+			tok = lexOperator(state)
 		elif re.match(r"\d", state.char) or state.char == '.' and re.match(r"\d", state.nextChar):
 			tok = lexNumber(state)
 		elif re.match(r"[\[\]!@\(\):;^&,.\-+=*/<>|{}]", state.char):
