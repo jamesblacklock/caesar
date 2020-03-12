@@ -119,7 +119,7 @@ class StackTarget(Target):
 class MultiStackTarget(Target):
 	def __init__(self, fType, targets):
 		super().__init__(fType, Storage.STACK)
-		self.offset = targets[0].offset
+		self.offset = targets[-1].offset
 		self.targets = targets
 	
 	def setActive(self, set):
@@ -129,9 +129,9 @@ class MultiStackTarget(Target):
 	
 	def render(self, usage, fType, sp):
 		if sp == None:
-			addr = '[%% {} %%]'.format(self.targets[0].offset)
+			addr = '[%% {} %%]'.format(self.offset)
 		else:
-			addr = '[rsp + {}]'.format((sp - self.targets[0].offset)*8)
+			addr = '[rsp + {}]'.format((sp - self.offset)*8)
 		
 		if usage == Usage.ADDR:
 			return addr
@@ -303,6 +303,9 @@ class GeneratorState:
 		
 		offset = 0
 		count = max(1, type.byteSize // 8)
+		if type.byteSize % 8 != 0:
+			count += 1
+		
 		targets = None
 		while offset < len(self.callStack):
 			targets = []
