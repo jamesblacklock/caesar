@@ -1,16 +1,16 @@
 #! /usr/local/bin/python3 ./caesar.py --run
 
-@FFI("C")
-extern fn printf(format: byte&, ...) -> int32
+@ffi("C")
+extern fn printf(format: byte&, ...) -> int
 
-@FFI("C")
-extern fn scanf(format: byte&, ...) -> int32
+@ffi("C")
+extern fn scanf(format: byte&, ...) -> int
 
-@FFI("C")
+@ffi("C")
 extern fn time(ret: int64&) -> int64
 
-@FFI("C")
-extern fn getchar() -> int32
+@ffi("C")
+extern fn getchar() -> int
 
 fn doTheThing(n: int16) -> int16 #=hello=#
 	printf("Normal function-call syntax%s\n", ".")
@@ -21,7 +21,7 @@ fn doTheThing(n: int16) -> int16 #=hello=#
 fn theMeaningOfLifeTheUniverseAndEverything() -> int16 { if true {-42} else {return 42} }
 
 mod testMod
-	fn otherFn() -> int32 { printf("enter a char: "), getchar() }
+	fn otherFn() -> int { printf("enter a char: "), getchar() }
 
 #========================================================
 	This is the documentation for the `main` function, 
@@ -30,7 +30,7 @@ mod testMod
 fn main()
 	moreThanSixArgs(5,6,7,8,9,10,11,12,-99999)
 	
-	let i: int32 = if true {42} else {return}
+	let i: int = if true {42} else {return}
 	
 	let null = 0 as int64&
 	let xyz: int8 = { printf("123\n"), 123 }
@@ -38,7 +38,7 @@ fn main()
 	doTheThing( doTheThing( theMeaningOfLifeTheUniverseAndEverything() ) )
 	printf("The time is: %d\nAnd here is the value of a local variable: %d\n", time(null), xyz)
 	
-	let mut c: int32 = 
+	let mut c: int = 
 		if true
 			testMod::otherFn()
 		else
@@ -50,7 +50,7 @@ fn main()
 		printf("You did not type the letter 'a'. You typed '%c'\n", c + 
 			10 * 2 - 11 * 2 + 2)
 	
-	let n: int32 = 0
+	let n: int = 0
 	printf("count down from: ")
 	scanf("%d", &n)
 	
@@ -67,7 +67,7 @@ fn main()
 			98, 121, 101)
 
 fn moreThanSixArgs(
-	a: int8, b: int32, c: int32, d: int32
-	e: int32, f: int32, g: int32, h: int32
-	i: int32)
+	a: int8, b: int, c: int, d: int
+	e: int, f: int, g: int, h: int
+	i: int)
 	printf("%d %d %d %d %d %d %d %d %d\n", a, i, b, c, d, e, f, g, h)

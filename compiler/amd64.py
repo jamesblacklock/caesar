@@ -1,11 +1,11 @@
 import ctypes
 from io                                import StringIO
 from enum                              import Enum
-from .ir                               import Dup, Write, Global, Imm, Static, Deref, Add, Sub, Mul, \
+from .ir                               import Dup, Global, Imm, Static, Deref, DerefW, Add, Sub, Mul, \
                                               Div, Eq, NEq, Less, LessEq, Greater, GreaterEq, Call, \
                                               Extend, IExtend, Truncate, FExtend, FTruncate, IToF, \
                                               UToF, FToI, FToU, Ret, BrIf, Br, Swap, Pop, Raise, \
-                                              Struct, WriteField, ReadField, \
+                                              Struct, Field, FieldW, DerefField, DerefFieldW, \
                                               BlockMarker, Neg, Addr, I8, I16, I32, I64, IPTR, F32, F64
 from .ir                               import FundamentalType
 
@@ -44,6 +44,7 @@ class Target:
 		self.storage = storage
 		self.active = False
 		self.operandIndex = None
+		self.fixed = False
 	
 	def setActive(self, set):
 		self.active = set
@@ -67,7 +68,8 @@ class ImmTarget(Target):
 		super().__init__(fType, Storage.IMM)
 		self.value = value
 	
-	def render(self, usage, fType, sp):
+	def render(self, usage, fType, ind, sp):
+		assert ind == None
 		assert usage == Usage.SRC
 		return '{} {}'.format(sizeInd(fType), self.value)
 
@@ -76,7 +78,9 @@ class GlobalTarget(Target):
 		super().__init__(fType, Storage.GLOBAL)
 		self.label = label
 	
-	def render(self, usage, fType, sp):
+	def render(self, usage, fType, ind, sp):
+		assert ind == None
+		
 		if usage in (Usage.SRC, Usage.DEST):
 			return '{} {}'.format(sizeInd(fType), self.label)
 		elif usage == Usage.ADDR:
@@ -89,8 +93,8 @@ class TopStackTarget(Target):
 		super().__init__(fType, Storage.STACK)
 		self.offset = offset
 	
-	def render(self, usage, fType, sp):
-		addr = '[rsp + {}]'.format(self.offset)
+	def render(self, usage, fType, ind, sp):
+		addr = '[rsp + {}{}]'.format(self.offset, ind if ind else '')
 		if usage == Usage.ADDR:
 			return addr
 		elif usage in (Usage.SRC, Usage.DEST):
@@ -103,11 +107,11 @@ class StackTarget(Target):
 		super().__init__(fType, Storage.STACK)
 		self.offset = offset
 	
-	def render(self, usage, fType, sp):
+	def render(self, usage, fType, ind, sp):
 		if sp == None:
-			addr = '[%% {} %%]'.format(self.offset)
+			addr = '[%% {}{} %%]'.format(self.offset, ind if ind else '')
 		else:
-			addr = '[rsp + {}]'.format(sp - self.offset)
+			addr = '[rsp + {}{}]'.format(sp - self.offset, ind if ind else '')
 		
 		if usage == Usage.ADDR:
 			return addr
@@ -127,11 +131,11 @@ class MultiStackTarget(Target):
 		for t in self.targets:
 			t.setActive(set)
 	
-	def render(self, usage, fType, sp):
+	def render(self, usage, fType, ind, sp):
 		if sp == None:
-			addr = '[%% {} %%]'.format(self.offset)
+			addr = '[%% {}{} %%]'.format(self.offset, ind if ind else '')
 		else:
-			addr = '[rsp + {}]'.format((sp - self.offset)*8)
+			addr = '[rsp + {}{}]'.format(sp - self.offset, ind if ind else '')
 		
 		if usage == Usage.ADDR:
 			return addr
@@ -149,7 +153,9 @@ class RegTarget(Target):
 		self.w = w; self.d = d
 		self.q = q
 	
-	def render(self, usage, fType, sp):
+	def render(self, usage, fType, ind, sp):
+		assert ind == None
+		
 		if usage == Usage.DEREF or fType.byteSize == 8:
 			s = self.q
 		elif fType.byteSize == 4:
@@ -169,13 +175,18 @@ class RegTarget(Target):
 			assert 0
 
 class Operand:
-	def __init__(self, target, usage, fType=None):
+	def __init__(self, target, usage, fType=None, ind=None):
 		self.target = target
 		self.usage = usage
 		self.type = fType if fType else target.type
+		self.ind = ind
 	
 	def render(self, sp):
-		return self.target.render(self.usage, self.type, sp)
+		ind = self.ind
+		if ind:
+			ind = ' + {}'.format(ind.value if ind.storage == Storage.IMM else ind.q)
+		
+		return self.target.render(self.usage, self.type, ind, sp)
 
 class Instr:
 	def __init__(self, opcode, operands=[], isLabel=False, isComment=False):
@@ -384,6 +395,8 @@ class GeneratorState:
 		return self.operandStack[index]
 	
 	def moveOperand(self, src, dest):
+		assert not src.fixed
+		
 		dest.setActive(True)
 		dest.operandIndex = src.operandIndex
 		dest.type = src.type
@@ -407,14 +420,18 @@ def irToAsm(state, ir):
 		raise_(state, ir)
 	elif type(ir) == Addr:
 		addr(state, ir)
-	elif type(ir) == Write:
-		write(state, ir)
 	elif type(ir) == Deref:
 		deref(state, ir)
-	elif type(ir) == ReadField:
-		read_field(state, ir)
-	elif type(ir) == WriteField:
-		write_field(state, ir)
+	elif type(ir) == DerefW:
+		derefw(state, ir)
+	elif type(ir) == Field:
+		field(state, ir)
+	elif type(ir) == DerefField:
+		field(state, ir, deref=True)
+	elif type(ir) == FieldW:
+		fieldw(state, ir)
+	elif type(ir) == DerefFieldW:
+		fieldw(state, ir, deref=True)
 	elif type(ir) == Extend:
 		extend(state, ir)
 	elif type(ir) == IExtend:
@@ -446,21 +463,202 @@ def irToAsm(state, ir):
 	else:
 		assert 0
 
-def moveData(state, src, dest, transferRegister):
-	assert src.type.byteSize <= 8
-	assert dest.storage in (Storage.STACK, Storage.REG)
+class RestoreRegs:
+	pass
+
+def moveData(state, src, dest, 
+	srcDeref=False, destDeref=False, srcOffset=None, destOffset=None, type=None):
 	
-	if src.storage in (Storage.STACK, Storage.GLOBAL) and dest.storage == Storage.STACK:
-		assert transferRegister != None
+	restore = RestoreRegs()
+	restore.rax = None
+	restore.rbp = None
+	restore.r10 = None
+	restore.r11 = None
+	
+	def moveToReg(target, t):
+		reg = state.findReg(exclude=[src, dest, srcOffset, destOffset])
+		if reg == None:
+			if state.rax not in (src, dest, srcOffset, destOffset):
+				restore.rax = saveReg(state, state.rax)
+				reg = state.rax
+			elif state.rbp not in (src, dest, srcOffset, destOffset):
+				restore.rbp = saveReg(state, state.rbp)
+				reg = state.rbp
+			elif state.r10 not in (src, dest, srcOffset, destOffset):
+				restore.r10 = saveReg(state, state.r10)
+				reg = state.r10
+			else:
+				restore.r11 = saveReg(state, state.r11)
+				reg = state.r11
 		state.appendInstr('mov', 
-			Operand(transferRegister, Usage.DEST, src.type), 
-			Operand(src, Usage.SRC))
-		transferRegister.type = src.type
-		src = transferRegister
+			Operand(reg, Usage.DEST, t), 
+			Operand(target, Usage.SRC, t))
+		return reg
 	
-	state.appendInstr('mov', 
-		Operand(dest, Usage.DEST, src.type), 
-		Operand(src, Usage.SRC))
+	if not (srcDeref and destDeref) and type == None:
+		type = dest.type if srcDeref else src.type
+	
+	assert type != None
+	assert dest.storage in (Storage.REG, Storage.STACK) or destDeref
+	
+	if type.byteSize not in (1, 2, 4, 8):
+		moveStruct(state, src, dest, srcDeref, destDeref, srcOffset, destOffset, type)
+		return
+	
+	srcType = IPTR if srcDeref else type
+	destType = IPTR if destDeref else type
+	
+	srcIsReg = src.storage == Storage.REG
+	destIsReg = dest.storage == Storage.REG
+	srcIsStk = src.storage == Storage.STACK
+	destIsStk = dest.storage == Storage.STACK
+	
+	# setup source offset
+	if srcOffset:
+		if srcOffset.storage in (Storage.STACK, Storage.GLOBAL):
+			srcOffset = moveToReg(srcOffset, IPTR)
+		if srcDeref:
+			if srcOffset.storage == Storage.IMM and src.storage == Storage.IMM:
+				src = ImmTarget(IPTR, src.value + srcOffset.value)
+				srcOffset = None
+		else:
+			assert src.storage == Storage.STACK
+			if srcOffset.storage == Storage.IMM:
+				src = StackTarget(src.type, src.offset + srcOffset.value)
+				srcOffset = None
+	
+	# setup destination offset
+	if destOffset:
+		if destOffset.storage in (Storage.STACK, Storage.GLOBAL):
+			destOffset = moveToReg(destOffset, IPTR)
+		if destDeref:
+			if destOffset.storage == Storage.IMM and dest.storage == Storage.IMM:
+				dest = ImmTarget(IPTR, dest.value - destOffset.value)
+				destOffset = None
+		else:
+			assert dest.storage == Storage.STACK
+			if destOffset.storage == Storage.IMM:
+				dest = StackTarget(dest.type, dest.offset - destOffset.value)
+				destOffset = None
+	
+	# save source pointer
+	# srcReg = None
+	# restoreSrc = None
+	# if src.active and srcIsReg and srcDeref:
+	# 	srcReg = src
+	# 	restoreSrc = saveReg(state, src)
+	
+	# move source to register if necessary
+	if not srcIsReg and srcDeref or srcIsStk and (destIsStk or destDeref):
+		src = moveToReg(src, srcType)
+	
+	# save destination pointer
+	# destReg = None
+	# restoreDest = None
+	# if dest.active and destIsReg and destDeref:
+	# 	destReg = dest
+	# 	restoreDest = saveReg(state, dest)
+	
+	# move destination to register if necessary
+	stkDest = None
+	if not destIsReg and destDeref:
+		dest = moveToReg(dest, destType)
+	elif destIsStk and srcDeref:
+		stkDest = dest
+		dest = moveToReg(dest, destType, ind=destOffset)
+	
+	# move the data
+	if srcDeref or destDeref:
+		if srcDeref:
+			if srcOffset:
+				state.appendInstr('add', 
+					Operand(src, Usage.DEST, IPTR), 
+					Operand(srcOffset, Usage.SRC, IPTR))
+				srcOffset = None
+			if destDeref:
+				state.appendInstr('mov', 
+					Operand(src, Usage.DEST, type), 
+					Operand(src, Usage.DEREF, type))
+			else:
+				state.appendInstr('mov', 
+					Operand(dest, Usage.DEST, type, ind=destOffset), 
+					Operand(src, Usage.DEREF, type))
+		if destDeref:
+			if destOffset:
+				state.appendInstr('add', 
+					Operand(dest, Usage.DEST, IPTR), 
+					Operand(destOffset, Usage.SRC, IPTR))
+			state.appendInstr('mov', 
+				Operand(dest, Usage.DEREF, type), 
+				Operand(src, Usage.SRC, type, ind=srcOffset))
+	else:
+		state.appendInstr('mov', 
+			Operand(dest, Usage.DEST, type, ind=destOffset), 
+			Operand(src, Usage.SRC, type, ind=srcOffset))
+	
+	# save destination to stack if necessary
+	if stkDest:
+		state.appendInstr('mov', 
+			Operand(stkDest, Usage.DEST, type), 
+			Operand(dest, Usage.SRC, type))
+		dest = stkDest
+	
+	# restore registers
+	if restore.rax:
+		restoreReg(state, restore.rax, state.rax)
+	if restore.rbp:
+		restoreReg(state, restore.rbp, state.rbp)
+	if restore.r10:
+		restoreReg(state, restore.r10, state.r10)
+	if restore.r11:
+		restoreReg(state, restore.r11, state.r11)
+	# if restoreSrc:
+	# 	restoreReg(state, restoreSrc, srcReg)
+	# if restoreDest:
+	# 	restoreReg(state, restoreDest, destReg)
+	
+	dest.type = destType
+
+def moveStruct(state, src, dest, srcDeref, destDeref, srcOffset, destOffset, type):
+	assert srcDeref or src.storage == Storage.STACK
+	assert destDeref or dest.storage == Storage.STACK
+	
+	partialDest = dest
+	partialSrc = src
+	sizeRemaining = type.byteSize
+	offset = 0
+	while sizeRemaining > 0:
+		if sizeRemaining >= 8:
+			byteSize = 8
+		elif sizeRemaining >= 4:
+			byteSize = 4
+		elif sizeRemaining >= 2:
+			byteSize = 2
+		else:
+			byteSize = 1
+		
+		partialType = FundamentalType(byteSize)
+		
+		if not srcDeref:
+			partialSrc = StackTarget(partialType, src.offset - offset)
+		if not destDeref:
+			partialDest = StackTarget(partialType, dest.offset - offset)
+		
+		moveData(state, partialSrc, partialDest, srcDeref, destDeref, srcOffset, destOffset, partialType)
+		offset += byteSize
+		sizeRemaining -= byteSize
+		
+		if sizeRemaining > 0:
+			if srcDeref:
+				state.appendInstr('add', 
+					Operand(partialSrc, Usage.DEST, IPTR), 
+					Operand(ImmTarget(IPTR, byteSize), Usage.SRC, IPTR))
+			if destDeref:
+				state.appendInstr('add', 
+					Operand(partialDest, Usage.DEST, IPTR), 
+					Operand(ImmTarget(IPTR, byteSize), Usage.SRC, IPTR))
+	
+	dest.type = IPTR if destDeref else type
 
 def dup(state, ir):
 	src = state.getOperand(ir.offset)
@@ -471,8 +669,7 @@ def dup(state, ir):
 		dest = ImmTarget(src.type, src.value)
 	else:
 		dest = state.findTarget(src.type)
-		saveReg(state, state.rax, exclude=[src, dest])
-		moveData(state, src, dest, state.rax)
+		moveData(state, src, dest)
 	
 	state.pushOperand(dest)
 
@@ -487,8 +684,10 @@ def addr(state, ir):
 	if src.storage != Storage.STACK:
 		newSrc = state.findTarget(src.type, True)
 		state.moveOperand(src, newSrc)
-		moveData(state, src, newSrc, None)
+		moveData(state, src, newSrc)
 		src = newSrc
+	
+	src.fixed = True
 	
 	dest = state.findTarget(IPTR)
 	state.appendInstr('lea', 
@@ -511,103 +710,66 @@ def blockMarker(state, ir):
 	state.appendInstr(state.blockDef.label, isLabel=True)
 
 def deref(state, ir):
-	target = state.getOperand(0)
-	
-	if target.storage == Storage.REG:
-		reg = target
-	else:
-		reg = state.findReg(target.type)
-		if reg == None:
-			saveReg(state, state.rax)
-			reg = state.rax
-			reg.type = ir.type
-		
-		state.appendInstr('mov', 
-			Operand(reg, Usage.DEST, target.type), 
-			Operand(target, Usage.SRC))
-	
-	state.appendInstr('mov', 
-		Operand(reg, Usage.DEST, target.type), 
-		Operand(reg, Usage.DEREF, target.type))
+	src = state.getOperand(0)
+	dest = state.findTarget(ir.type)
+	moveData(state, src, dest, srcDeref=True)
 	
 	state.popOperand()
-	state.pushOperand(reg)
+	state.pushOperand(dest)
 
-def write(state, ir):
+def derefw(state, ir):
 	src = state.getOperand(0)
 	dest = state.getOperand(1)
-	
-	if dest.storage != Storage.REG:
-		reg = state.findReg(I64)
-		if reg == None:
-			saveReg(state, state.rax, exclude=[src, state.rbp])
-			reg = state.rax
-			reg.type = I64
-		
-		state.appendInstr('mov', 
-			Operand(reg, Usage.DEST), 
-			Operand(dest, Usage.SRC, I64))
-		dest = reg
-	
-	if src.storage != Storage.REG:
-		reg = state.findReg(src.type)
-		if reg == None:
-			saveReg(state, state.rbp, exclude=[dest])
-			reg = state.rbp
-			reg.type = src.type
-		
-		state.appendInstr('mov', 
-			Operand(reg, Usage.DEST), 
-			Operand(src, Usage.SRC))
-		src = reg
-	
-	state.appendInstr('mov', 
-		Operand(dest, Usage.DEREF, src.type), 
-		Operand(src, Usage.SRC))
+	moveData(state, src, dest, destDeref=True)
 	
 	state.popOperand()
 	state.popOperand()
 
-def moveStruct(state, src, dest, transferRegister):
-	sizeRemaining = dest.type.byteSize
-	offset = 0
-	while sizeRemaining > 0:
-		byteSize = 8 if sizeRemaining >= 8 else sizeRemaining
-		fType = FundamentalType(byteSize)
-		partialSrc = StackTarget(fType, src.offset - offset)
-		partialDest = StackTarget(fType, dest.offset - offset)
-		moveData(state, partialSrc, partialDest, transferRegister)
-		offset += byteSize
-		sizeRemaining -= byteSize
-
-def read_field(state, ir):
-	reg = state.findReg()
-	if reg == None:
-		saveReg(state, state.rax)
-		reg = state.rax
-	
+def field(state, ir, deref=False):
 	offsetTarget = state.getOperand(0)
 	structTarget = state.getOperand(ir.offset)
 	readTarget = state.findTarget(ir.type)
 	
-	assert offsetTarget.storage == Storage.IMM
-	
-	fieldTarget = StackTarget(ir.type, structTarget.offset - offsetTarget.value)
-	
-	if ir.type.byteSize <= 8:
-		moveData(state, fieldTarget, readTarget, reg)
-	else:
-		moveStruct(state, fieldTarget, readTarget, reg)
+	moveData(state, structTarget, readTarget, srcOffset=offsetTarget, srcDeref=deref)
 	
 	state.popOperand()
 	state.pushOperand(readTarget)
-
-def write_field(state, ir):
-	reg = state.findReg()
-	if reg == None:
-		saveReg(state, state.rax)
-		reg = state.rax
 	
+	# fieldTarget = None
+	# if offsetTarget.storage == Storage.IMM:
+	# 	structTarget = state.getOperand(ir.offset)
+		
+	# 	if deref:
+	# 		if offsetTarget.storage == Storage.IMM:
+	# 			fieldTarget = StackTarget(ir.type, structTarget.value - offsetTarget.value)
+	# 		else:
+	# 			if structTarget.storage != Storage.REG:
+	# 				moveData(state, structTarget, reg)
+	# 				structTarget = reg
+			
+	# 			state.appendInstr('add', 
+	# 				Operand(structTarget, Usage.DEST, IPTR), 
+	# 				Operand(ImmTarget(IPTR, offsetTarget.value), Usage.SRC, IPTR))
+	# 			fieldTarget = structTarget
+	# 	else:
+	# 		fieldTarget = StackTarget(ir.type, structTarget.offset - offsetTarget.value)
+		
+	# 	readTarget = state.findTarget(ir.type)
+	# 	moveData(state, fieldTarget, readTarget, srcDeref=deref)
+	# else:
+	# 	if offsetTarget.storage != Storage.REG:
+	# 		moveData(state, offsetTarget, reg)
+	# 		offsetTarget = reg
+		
+	# 	structTarget = state.getOperand(ir.offset)
+	# 	assert structTarget.storage == Storage.STACK
+		
+	# 	readTarget = state.findTarget(ir.type)
+	# 	state.appendInstr('mov', 
+	# 		Operand(readTarget, Usage.DEST, IPTR), 
+	# 		Operand(structTarget, Usage.ADDR, IPTR, ind=offsetTarget))
+
+def fieldw(state, ir, deref=False):
 	offsetTarget = state.getOperand(0)
 	valueTarget = state.getOperand(1)
 	structTarget = state.getOperand(ir.offset)
@@ -617,14 +779,7 @@ def write_field(state, ir):
 		state.moveOperand(structTarget, newStructTarget)
 		structTarget = newStructTarget
 	
-	assert offsetTarget.storage == Storage.IMM
-	
-	fieldTarget = StackTarget(valueTarget.type, structTarget.offset - offsetTarget.value)
-	
-	if valueTarget.type.byteSize <= 8:
-		moveData(state, valueTarget, fieldTarget, reg)
-	else:
-		moveStruct(state, valueTarget, fieldTarget, reg)
+	moveData(state, valueTarget, structTarget, destOffset=offsetTarget, srcDeref=deref)
 	
 	state.popOperand()
 	state.popOperand()
@@ -641,7 +796,8 @@ def extend(state, ir, signed=False):
 	else:
 		dest = state.findReg(ir.type)
 		if dest == None:
-			saveReg(state, state.rax)
+			stack = saveReg(state, state.rax)
+			state.moveOperand(state.rax, stack)
 			dest = state.rax
 	
 	opcode = ('movsx' if signed else 'movzx')
@@ -670,6 +826,9 @@ def neg(state, ir):
 		state.appendInstr('neg', Operand(target, Usage.SRC))
 
 def addOrSub(state, ir, isAdd):
+	restoreRAX = None
+	restoreRBP = None
+	
 	src = state.getOperand(0)
 	dest = state.getOperand(1)
 	
@@ -680,37 +839,33 @@ def addOrSub(state, ir, isAdd):
 	elif dest.storage == Storage.IMM and isAdd:
 		dest, src = src, dest
 	
-	if src.storage == Storage.GLOBAL:
-		reg = state.r10 if dest == state.rax else state.rax
-		saveReg(state, reg)
+	if src.storage == Storage.GLOBAL or Storage.REG not in (dest.storage, src.storage):
+		reg = state.findReg()
+		if reg == None:
+			if dest == state.rax:
+				restoreRBP = saveReg(state, state.rbp)
+				reg = state.rbp
+			else:
+				restoreRAX = saveReg(state, state.rax)
+				reg = state.rax
 		reg.type = src.type
 		state.appendInstr('mov', 
 			Operand(reg, Usage.DEST), 
 			Operand(src, Usage.SRC))
 		src = reg
 	
-	if dest.storage == Storage.GLOBAL:
-		reg = state.r10 if src == state.rax else state.rax
-		saveReg(state, reg)
-		reg.type = dest.type
-		state.appendInstr('mov', 
-			Operand(reg, Usage.DEST), 
-			Operand(dest, Usage.SRC))
-		dest = reg
-	
-	needReg = dest.storage not in (Storage.REG, Storage.STACK) and src.storage not in (Storage.REG, Storage.STACK)
-	needReg = needReg or dest.storage == Storage.STACK and src.storage == Storage.STACK
-	if needReg:
-		saveReg(state, state.rax)
-		state.rax.type = dest.type
-		state.appendInstr('mov', 
-			Operand(state.rax, Usage.DEST), 
-			Operand(dest, Usage.SRC))
-		dest = state.rax
+	assert dest.storage in (Storage.REG, Storage.STACK)
+	assert Storage.REG in (dest.storage, src.storage)
 	
 	state.appendInstr('add' if isAdd else 'sub',
 			Operand(dest, Usage.DEST), 
 			Operand(src, Usage.SRC))
+	
+	if restoreRAX:
+		restoreReg(state, restoreRAX, state.rax)
+	
+	if restoreRBP:
+		restoreReg(state, restoreRBP, state.rbp)
 	
 	state.popOperand()
 	state.popOperand()
@@ -728,24 +883,25 @@ def mulOrDiv(state, ir, isMul):
 	
 	if src.storage == Storage.IMM and dest.storage == Storage.IMM:
 		state.popOperand()
-		dest.value = (dest.value * src.value) if isMul else (dest.value / src.value)
+		dest.value = (dest.value * src.value) if isMul else (dest.value // src.value)
 		return
 	
 	if isMul and src == state.rax:
 		dest, src = src, dest
 	
 	if src != state.rdx:
-		saveReg(state, state.rdx)
+		stack = saveReg(state, state.rdx)
+		state.moveOperand(state.rdx, stack)
 	
 	if dest != state.rax:
-		saveReg(state, state.rax)
+		stack = saveReg(state, state.rax)
+		state.moveOperand(state.rax, stack)
 		state.rax.type = dest.type
 		state.appendInstr('mov', 
 			Operand(state.rax, Usage.DEST), 
 			Operand(dest, Usage.SRC))
 		dest = state.rax
-		
-		src = state.getOperand(0)
+		src = state.getOperand(0) # in case src was rax
 	
 	if src.storage == Storage.IMM:
 		newSrc = state.findTarget(src.type, exclude=[state.rax])
@@ -768,7 +924,9 @@ def div(state, ir):
 	mulOrDiv(state, ir, False)
 
 def cmp(state, ir):
-	saveReg(state, state.rcx)
+	if state.rcx.active:
+		stack = saveReg(state, state.rcx)
+		state.moveOperand(state.rcx, stack)
 	state.rcx.type = I8
 	
 	r = state.getOperand(0)
@@ -809,7 +967,8 @@ def cmp(state, ir):
 		assert 0
 	
 	if l.storage == Storage.STACK and r.storage == Storage.STACK:
-		saveReg(state, state.rax)
+		stack = saveReg(state, state.rax)
+		state.moveOperand(state.rax, stack)
 		state.appendInstr('mov', 
 			Operand(state.rax, Usage.DEST, l.type), 
 			Operand(l, Usage.SRC))
@@ -829,11 +988,12 @@ def cmp(state, ir):
 	state.pushOperand(state.rcx)
 
 def call(state, ir):
-	saveReg(state, state.rax)
 	for reg in state.intRegs:
 		if reg.calleeSaved:
 			continue
-		saveReg(state, reg)
+		if reg.active:
+			stack = saveReg(state, reg)
+			state.moveOperand(reg, stack)
 	
 	funcAddr = state.getOperand(0)
 	
@@ -847,7 +1007,9 @@ def call(state, ir):
 			assert 0
 		elif len(intArgRegs) > 0:
 			reg = intArgRegs.pop()
-			saveReg(state, reg)
+			if reg.active:
+				stack = saveReg(state, reg)
+				state.moveOperand(reg, stack)
 			reg.type = src.type
 			state.appendInstr('mov', 
 				Operand(reg, Usage.DEST), 
@@ -868,7 +1030,7 @@ def call(state, ir):
 		state.allocateStack(requiredStackSpace)
 		
 		for (i, src) in enumerate(stackArgs):
-			moveData(state, src, TopStackTarget(src.type, i * 8), state.rax)
+			moveData(state, src, TopStackTarget(src.type, i * 8))
 	
 	if ir.cVarArgs:
 		state.appendInstr('xor', 
@@ -889,22 +1051,27 @@ def call(state, ir):
 
 def brOrBrIf(state, ir, isBrIf):
 	offset = 1 if isBrIf else 0
+	testReg = None
 	blockDef = state.fnIR.blockDefs[ir.index]
 	inputTypes = blockDef.inputs
 	outputTargets = list(reversed([state.getOperand(i + offset) for i in range(0, len(inputTypes))]))
-	reg = state.r11
+	
+	if isBrIf:
+		testReg = state.getOperand(0)
+		if testReg.storage != Storage.REG:
+			testReg = state.r11
 	
 	if state.blockInputs[ir.index] == None:
 		inputTargets = []
 		for target in outputTargets:
 			needNewTarget = False
-			if target == reg:
+			if target == testReg:
 				needNewTarget = True
 			elif target.storage in (Storage.GLOBAL, Storage.IMM):
 				needNewTarget = True
 			
 			if needNewTarget:
-				target = state.findTarget(target.type, exclude=[reg, *inputTargets])
+				target = state.findTarget(target.type, exclude=[testReg, *inputTargets])
 			
 			inputTargets.append(target)
 		
@@ -915,7 +1082,7 @@ def brOrBrIf(state, ir, isBrIf):
 		for input, output, fType in zip(inputTargets, outputTargets, inputTypes):
 			if input != output and input.active:
 				target = state.findTarget(input.type, exclude=inputTargets)
-				moveData(state, input, target, reg)
+				moveData(state, input, target)
 				state.moveOperand(input, target)
 				assert input not in state.operandStack
 			input.type = fType
@@ -923,22 +1090,28 @@ def brOrBrIf(state, ir, isBrIf):
 		# output targets may have changed if "moveOperand" was called, so they must be reloaded
 		outputTargets = list(reversed([state.getOperand(i + offset) for i in range(0, len(inputTypes))]))
 	
-	saveReg(state, reg, exclude=inputTargets)
-	
 	for src, dest in zip(outputTargets, inputTargets):
 		assert src.type == dest.type
 		if src == dest:
 			continue
-		moveData(state, src, dest, reg)
+		
+		moveData(state, src, dest)
+		dest.setActive(True) # prevents later calls to moveData from clobbering this dest
+	
+	for dest in inputTargets:
+		dest.setActive(False)
 	
 	if isBrIf:
 		target = state.popOperand()
-		if type(target) != RegTarget:
-			reg.type = target.type
+		if target.storage != Storage.REG:
+			if testReg.active:
+				stack = saveReg(state, testReg)
+				state.moveOperand(testReg, stack)
+			testReg.type = target.type
 			state.appendInstr('mov', 
-				Operand(reg, Usage.DEST), 
+				Operand(testReg, Usage.DEST), 
 				Operand(target, Usage.SRC))
-			target = reg
+			target = testReg
 		
 		state.appendInstr('test', 
 			Operand(target, Usage.DEST), 
@@ -974,15 +1147,21 @@ def ret(state, ir):
 	
 	state.appendInstr('jmp {}__ret'.format(state.fnIR.name))
 
-def saveReg(state, src, exclude=[]):
-	if not src.active:
-		return
+def saveReg(state, reg, exclude=[]):
+	assert reg.active
 	
-	dest = state.findTarget(src.type, True, exclude=exclude)
-	state.moveOperand(src, dest)
+	stack = state.findTarget(reg.type, True, exclude=exclude)
 	state.appendInstr('mov', 
-		Operand(dest, Usage.DEST), 
-		Operand(src, Usage.SRC))
+		Operand(stack, Usage.DEST), 
+		Operand(reg, Usage.SRC))
+	
+	return stack
+
+def restoreReg(state, stack, reg):
+	reg.type = stack.type
+	state.appendInstr('mov', 
+		Operand(reg, Usage.DEST), 
+		Operand(stack, Usage.SRC))
 
 def delcareExterns(mod, output):	
 	for decl in mod.modDecls:
@@ -1026,14 +1205,14 @@ def defineFns(mod, output):
 		for instr in decl.ir.instr:
 			irToAsm(state, instr)
 		
-		stackSize = state.sp * 8
+		stackSize = state.sp
 		if stackSize % 16 == 0:
 			stackSize += 8
 		if stackSize > 0:
 			output.write('\t\tsub rsp, {}\n'.format(stackSize))
 		
 		for instr in state.instr:
-			output.write(instr.render(state.sp))
+			output.write(instr.render(stackSize))
 			output.write('\n')
 		
 		output.write('\t{}__ret:\n'.format(decl.ir.name))

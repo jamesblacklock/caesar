@@ -193,19 +193,21 @@ def analyzeTupleLit(state, tup, implicitType):
 	tup.resolvedType = types.ResolvedTupleType(layout.align, layout.byteSize, layout.fields)
 
 def analyzeArrayLit(state, arr, implicitType):
-	implicitElementType = None
+	implicitElementType = types.Void
 	count = 0
 	if implicitType and implicitType.isCompositeType and len(implicitType.fields) > 0:
 		implicitElementType = implicitType.fields[0].resolvedSymbolType
 		count = len(implicitType.fields)
 	
-	resolvedElementType = None
-	for expr in arr.values:
-		analyzeValueExpr(state, expr, implicitElementType)
-		t = types.getValidAssignType(resolvedElementType, expr.resolvedType, True)
-		if t == None:
+	resolvedElementType = implicitElementType
+	if len(arr.values) > 0:
+		analyzeValueExpr(state, arr.values[0], implicitElementType)
+		resolvedElementType = arr.values[0].resolvedType
+	
+	for expr in arr.values[1:]:
+		analyzeValueExpr(state, expr, resolvedElementType)
+		if types.getValidAssignType(resolvedElementType, expr.resolvedType, True) == None:
 			logError(state, expr.span, 'expected {}, found {}'.format(resolvedElementType, expr.resolvedType))
-		resolvedElementType = t
 	
 	count = max(len(arr.values), count)
 	arr.resolvedType = types.ResolvedArrayType(resolvedElementType, count)

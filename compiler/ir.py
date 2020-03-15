@@ -41,8 +41,8 @@ class FundamentalType:
 				return I32
 			elif resolvedType.byteSize == 8:
 				return I64
-		else:
-			return FundamentalType(resolvedType.byteSize, isCompositeType=True)
+		
+		return FundamentalType(resolvedType.byteSize, isCompositeType=True)
 
 I8   = FundamentalType(1)
 I16  = FundamentalType(2)
@@ -324,7 +324,7 @@ class Deref(Instr):
 	def __str__(self):
 		return 'deref -> {}'.format(self.type)
 
-class Write(Instr):
+class DerefW(Instr):
 	def __init__(self, ast):
 		super().__init__(ast)
 		
@@ -333,21 +333,9 @@ class Write(Instr):
 		state.popOperand()
 	
 	def __str__(self):
-		return 'write'
+		return 'derefw'
 
-class WriteField(Instr):
-	def __init__(self, ast, offset):
-		super().__init__(ast)
-		self.offset = offset
-	
-	def affectStack(self, state):
-		state.popOperand()
-		state.popOperand()
-	
-	def __str__(self):
-		return 'write_field {}'.format(self.offset)
-
-class ReadField(Instr):
+class Field(Instr):
 	def __init__(self, ast, offset, fType):
 		super().__init__(ast)
 		self.offset = offset
@@ -358,7 +346,44 @@ class ReadField(Instr):
 		state.pushOperand(self.type)
 	
 	def __str__(self):
-		return 'read_field {} -> {}'.format(self.offset, self.type)
+		return 'field {} -> {}'.format(self.offset, self.type)
+
+class DerefField(Instr):
+	def __init__(self, ast, offset, fType):
+		super().__init__(ast)
+		self.offset = offset
+		self.type = fType
+	
+	def affectStack(self, state):
+		state.popOperand()
+		state.pushOperand(self.type)
+	
+	def __str__(self):
+		return 'deref_field {} -> {}'.format(self.offset, self.type)
+
+class FieldW(Instr):
+	def __init__(self, ast, offset):
+		super().__init__(ast)
+		self.offset = offset
+	
+	def affectStack(self, state):
+		state.popOperand()
+		state.popOperand()
+	
+	def __str__(self):
+		return 'fieldw {}'.format(self.offset)
+
+class DerefFieldW(Instr):
+	def __init__(self, ast, offset):
+		super().__init__(ast)
+		self.offset = offset
+	
+	def affectStack(self, state):
+		state.popOperand()
+		state.popOperand()
+	
+	def __str__(self):
+		return 'deref_fieldw {}'.format(self.offset)
 
 class Ret(Instr):
 	def __init__(self, ast):
@@ -572,7 +597,7 @@ def asgnToIR(state, ast):
 	exprToIR(state, ast.rvalue)
 	
 	if deref:
-		state.appendInstr(Write(ast))
+		state.appendInstr(DerefW(ast))
 	elif field:
 		if type(ast.lvalue.expr) == ValueRefAST:
 			stackOffset = state.localOffset(ast.lvalue.expr.symbol) + 1
@@ -580,27 +605,43 @@ def asgnToIR(state, ast):
 			stackOffset = 2
 		
 		state.appendInstr(Imm(field, IPTR, ast.lvalue.fieldOffset))
-		state.appendInstr(WriteField(ast, stackOffset))
+		state.appendInstr(FieldW(ast, stackOffset))
 	elif ast.lvalue.symbol not in state.operandsBySymbol:
 		state.nameTopOperand(ast.lvalue.symbol)
 	else:
 		state.appendInstr(Swap(ast, state.localOffset(ast.lvalue.symbol)))
 
 def indexToIR(state, ast):
-	# exprToIR(state, ast.expr)
-	exprToIR(state, ast.index)
-	mul = types.getAlignedSize(ast.expr.resolvedType.baseType)
-	state.appendInstr(Imm(ast, IPTR, mul))
-	state.appendInstr(Mul(ast))
-	
-	if type(ast.expr) == ValueRefAST:
-		stackOffset = state.localOffset(ast.expr.symbol)
+	deref = False
+	swap = False
+	if type(ast.expr) == DerefAST:
+		deref = True
+		exprToIR(state, ast.expr.expr)
+		for _ in range(0, ast.expr.derefCount-1):
+			state.appendInstr(Deref(ast.expr, IPTR))
+		stackOffset = 1
+		swap = True
+	elif type(ast.expr) == ValueRefAST:
+		stackOffset = state.localOffset(ast.expr.symbol) + 1
 	else:
 		exprToIR(state, ast.expr)
 		stackOffset = 1
+		swap = True
+	
+	exprToIR(state, ast.index)
+	mul = types.getAlignedSize(ast.expr.resolvedType.baseType)
+	if mul > 1:
+		state.appendInstr(Imm(ast, IPTR, mul))
+		state.appendInstr(Mul(ast))
 	
 	fType = FundamentalType.fromResolvedType(ast.resolvedType)
-	state.appendInstr(ReadField(ast, stackOffset, fType))
+	if deref:
+		state.appendInstr(DerefField(ast, stackOffset, fType))
+	else:
+		state.appendInstr(Field(ast, stackOffset, fType))
+	
+	if swap:
+		state.appendInstr(Swap(ast, stackOffset))
 	
 	
 	# exprToIR(state, ast.expr)
@@ -646,7 +687,7 @@ def initCompositeFields(state, lit, baseOffset):
 		
 		exprToIR(state, init)
 		state.appendInstr(Imm(init, IPTR, baseOffset + fieldInfo.offset))
-		state.appendInstr(WriteField(init, 2))
+		state.appendInstr(FieldW(init, 2))
 
 def initStructFields(state, structLit, baseOffset):
 	fieldDict = structLit.resolvedType.fieldDict
@@ -658,7 +699,7 @@ def initStructFields(state, structLit, baseOffset):
 		
 		exprToIR(state, init.expr)
 		state.appendInstr(Imm(init, IPTR, baseOffset + fieldInfo.offset))
-		state.appendInstr(WriteField(init, 2))
+		state.appendInstr(FieldW(init, 2))
 
 def structLitToIR(state, ast):
 	fType = FundamentalType.fromResolvedType(ast.resolvedType)
@@ -683,14 +724,26 @@ def strLitToIR(state, ast):
 def fieldAccessToIR(state, ast):
 	state.appendInstr(Imm(ast, IPTR, ast.fieldOffset))
 	
-	if type(ast.expr) == ValueRefAST:
+	swap = False
+	if type(ast.expr) == DerefAST:
+		deref = True
+		exprToIR(state, ast.expr.expr)
+		for _ in range(0, ast.expr.derefCount-1):
+			state.appendInstr(Deref(ast.expr, IPTR))
+		stackOffset = 1
+		swap = True
+	elif type(ast.expr) == ValueRefAST:
 		stackOffset = state.localOffset(ast.expr.symbol)
 	else:
 		exprToIR(state, ast.expr)
 		stackOffset = 1
+		swap = True
 	
 	fType = FundamentalType.fromResolvedType(ast.resolvedType)
-	state.appendInstr(ReadField(ast, stackOffset, fType))
+	state.appendInstr(Field(ast, stackOffset, fType))
+	
+	if swap:
+		state.appendInstr(Swap(ast, stackOffset))
 
 def fnCallToIR(state, ast):
 	normalArgs = ast.args
@@ -737,6 +790,8 @@ def valueRefToIR(state, ast):
 			
 			if ast.resultUnused:
 				state.appendInstr(Pop(ast))
+			else:
+				state.nameTopOperand(None)
 		else:
 			if ast.lastUse:
 				assert ast.name not in state.loopInfo.lastUses
@@ -1150,9 +1205,9 @@ class IRState:
 		self.instr.append(instr)
 		instr.affectStack(self)
 		
-		# instrText = '{}{}'.format(
-		# 	'   ' if type(instr) != BlockMarker else '', instr.pretty(self))
-		# space = ' ' * (72 - len(instrText))
+		instrText = '{}{}'.format(
+			'   ' if type(instr) != BlockMarker else '', instr.pretty(self))
+		space = ' ' * (72 - len(instrText))
 		# print('{}{}# [{}]'.format(instrText, space, 
 		# 	', '.join([(t.symbol.name + ': ' if t.symbol else '') + str(t.type) for t in self.operandStack])))
 	
