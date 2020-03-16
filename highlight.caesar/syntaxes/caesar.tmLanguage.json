@@ -6,8 +6,9 @@
 		{ "include": "#strings" },
 		{ "include": "#comments" },
 		{ "include": "#attrs" },
-		{ "include": "#names" },
-		{ "include": "#numbers" }
+		{ "include": "#constants" },
+		{ "include": "#numbers" },
+		{ "include": "#names" }
 	],
 	"repository": {
 		"comments": {
@@ -36,11 +37,11 @@
 				},
 				{
 					"name": "keyword.other.caesar",
-					"match": "\\b(let|mut|struct|as|fn|extern)\\b"
+					"match": "\\b(let|mut|struct|as|fn|extern|const)\\b"
 				},
 				{
 					"name": "storage.type.built-in.primitive.caesar",
-					"match": "\\b(bool|byte|int8|uint8|int16|uint16|int|uint|char|int64|uint64|isize|usize)\\b"
+					"match": "\\b(void|bool|byte|int8|uint8|int16|uint16|int|uint|char|int64|uint64|isize|usize)\\b"
 				}
 			]
 		},
@@ -70,9 +71,13 @@
 				}
 			]
 		},
+		"constants": {
+			"name": "constant.language.caesar",
+			"match": "\\b(true|false|NULL)\\b"
+		},
 		"numbers": {
 			"name": "constant.numeric.caesar",
-			"match": "\\d+(\\.\\d+)?(((i|u)(8|16|32|64|size)|f(32|64)))?"
+			"match": "\\b\\d+(\\.\\d+)?(((i|u)(8|16|32|64|size)|f(32|64)))?"
 		},
 		"attrs": {
 			"name": "variable.meta.attribute.caesar",
@@ -80,7 +85,7 @@
 		},
 		"names": {
 			"name": "variable.caesar",
-			"match": "[a-zA-Z_][a-zA-Z0-9_]*"
+			"match": "\\b[a-zA-Z_][a-zA-Z0-9_]*\\b"
 		}
 	},
 	"scopeName": "source.csr"
