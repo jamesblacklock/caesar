@@ -62,6 +62,7 @@ class TokenType(Enum):
 	PUB = 'PUB'
 	UNION = 'UNION'
 	CONST = 'CONST'
+	STATIC = 'STATIC'
 	MATCH = 'MATCH'
 	AS = 'AS'
 	VOID = 'VOID'
@@ -194,6 +195,8 @@ class TokenType(Enum):
 			return '`union`'
 		elif self == TokenType.CONST:
 			return '`const`'
+		elif self == TokenType.STATIC:
+			return '`static`'
 		elif self == TokenType.MATCH:
 			return '`match`'
 		elif self == TokenType.AS:

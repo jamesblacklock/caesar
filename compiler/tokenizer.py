@@ -318,6 +318,7 @@ def lexNameOrKeyword(state):
 		('pub', TokenType.PUB),
 		('union', TokenType.UNION),
 		('const', TokenType.CONST),
+		('static', TokenType.STATIC),
 		('match', TokenType.MATCH),
 		('as', TokenType.AS),
 		('void', TokenType.VOID),

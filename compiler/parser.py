@@ -11,7 +11,8 @@ from .ast                import CConv, FnDeclAST, LetAST, FnCallAST, ReturnAST, 
                                 IndexOpAST, VoidAST, CVarArgsParamAST, InfixOp, AddressAST, LoopAST, \
                                 BreakAST, ContinueAST, CharLitAST, FieldDeclAST, StructDeclAST, \
                                 FieldLitAST, StructLitAST, FieldAccessAST, NamedTypeRefAST, SignAST, \
-                                ArrayTypeRefAST, ArrayLitAST, TupleTypeRefAST, UNARY_PRECEDENCE, INFIX_PRECEDENCE
+                                ArrayTypeRefAST, ArrayLitAST, TupleTypeRefAST, ConstAST, StaticAST, \
+                                UNARY_PRECEDENCE, INFIX_PRECEDENCE
 
 class ParserState:
 	def __init__(self, source, tokens):
@@ -987,21 +988,32 @@ def parseReturn(state):
 	
 	return ReturnAST(expr, span)
 
-def parseLet(state):
+class VarDecl:
+	def __init__(self, mut, nameTok, typeRef, expr, span):
+		self.mut = mut
+		self.nameTok = nameTok
+		self.typeRef = typeRef
+		self.expr = expr
+		self.span = span
+
+def parseVarDecl(state, isConst, isModLevel, isExtern):
 	span = state.tok.span
 	state.advance()
 	state.skipSpace()
 	
 	mut = False
 	if state.tok.type == TokenType.MUT:
-		mut = True
+		if isConst:
+			logError(state, state.tok.span, '`const` declarations cannot be declared `mut`')
+		else:
+			mut = True
 		state.advance()
 		state.skipSpace()
 	
 	if expectType(state, TokenType.NAME) == False:
 		return None
 	
-	name = state.tok.content
+	nameTok = state.tok
 	span = Span.merge(span, state.tok.span)
 	state.advance()
 	state.skipSpace()
@@ -1025,9 +1037,31 @@ def parseLet(state):
 			span = Span.merge(span, expr.span)
 	
 	if typeRef == None and expr == None:
-		logError(state, span, '`let` binding requires either an explicit type or a value to assign')
+		logError(state, span, 'declaration requires either an explicit type or a value to assign')
+	elif isModLevel and not isExtern and expr == None:
+		logError(state, span, 'non-extern declaration requires a value')
 	
-	return LetAST(mut, name, typeRef, expr, span)
+	return VarDecl(mut, nameTok, typeRef, expr, span)
+
+def parseLet(state):
+	decl = parseVarDecl(state, False, False, False)
+	if decl != None:
+		decl = LetAST(decl.mut, decl.nameTok, decl.typeRef, decl.expr, decl.span)
+	return decl
+
+def parseStaticDecl(state, doccomment, attrs, extern):
+	decl = parseVarDecl(state, False, True, extern)
+	if decl != None:
+		decl = StaticAST(doccomment, attrs, extern, decl.nameTok, 
+			decl.mut, decl.typeRef, decl.expr, decl.span)
+	return decl
+
+def parseConstDecl(state, doccomment, attrs):
+	decl = parseVarDecl(state, True, True, False)
+	if decl != None:
+		decl = ConstAST(doccomment, attrs, decl.nameTok, 
+			decl.typeRef, decl.expr, decl.span)
+	return decl
 
 def parseFnBodyExpr(state):
 	if state.tok.type in VALUE_EXPR_TOKS:
@@ -1121,24 +1155,27 @@ def parseModLevelDecl(state):
 	
 	if startToken == None: startToken = state.tok
 	
-	if expectType(state, TokenType.FN, TokenType.LET, TokenType.STRUCT) == False:
+	if expectType(state, TokenType.FN, TokenType.STATIC, TokenType.STRUCT, TokenType.CONST) == False:
 		return None
 	
+	decl = None
 	if state.tok.type == TokenType.FN:
-		fnDecl = parseFnDecl(state, doccomment, attrs, extern)
-		if fnDecl != None:
-			fnDecl.span = Span.merge(startToken.span, fnDecl.span)
-		return fnDecl
+		decl = parseFnDecl(state, doccomment, attrs, extern)
+	elif state.tok.type == TokenType.STATIC:
+		decl = parseStaticDecl(state, doccomment, attrs, extern)
 	elif state.tok.type == TokenType.STRUCT:
-		if extern:
-			logError(state, state.tok.span, '`struct`s cannot be declared `extern`')
-		structDecl = parseStructDecl(state, doccomment, attrs, False)
-		if structDecl != None:
-			structDecl.span = Span.merge(startToken.span, structDecl.span)
-		return structDecl
+		if extern: logError(state, state.tok.span, '`struct`s cannot be declared `extern`')
+		decl = parseStructDecl(state, doccomment, attrs, False)
+	elif state.tok.type == TokenType.CONST:
+		if extern: logError(state, state.tok.span, '`const`s cannot be declared `extern`')
+		decl = parseConstDecl(state, doccomment, attrs)
 	else:
-		logError(state, state.tok.span, 'static variables at the module level are unimplemented')
-		return None
+		assert 0
+	
+	if decl != None:
+		decl.span = Span.merge(startToken.span, decl.span)
+	
+	return decl
 
 def parseModule(state, doccomment):
 	span = state.tok.span
