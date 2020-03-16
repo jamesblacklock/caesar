@@ -476,6 +476,10 @@ def analyzeAsgn(state, asgnExpr):
 	elif type(asgnExpr.lvalue) == FieldAccessAST:
 		if type(asgnExpr.lvalue.expr) == ValueRefAST and asgnExpr.lvalue.expr.symbol != None:
 			state.assignSymbol(asgnExpr.lvalue.expr, asgnExpr.lvalue.field, asgnExpr.lvalue)
+	elif type(asgnExpr.lvalue) == IndexOpAST:
+		pass
+	# if type(asgnExpr.lvalue.expr) == ValueRefAST and asgnExpr.lvalue.expr.symbol != None:
+		# 	state.assignSymbol(asgnExpr.lvalue.expr, asgnExpr.lvalue.expr.resolvedType.fields[asgnExpr.lvalue.]        asgnExpr.lvalue.field, asgnExpr.lvalue)
 	elif type(asgnExpr.lvalue) == DerefAST:
 		pass
 	else:
@@ -489,7 +493,7 @@ def analyzeWhile(state, whileExpr):
 	analyzeValueExpr(state, whileExpr.expr)
 	if whileExpr.expr.resolvedType and whileExpr.expr.resolvedType != types.Bool:
 		logError(state, whileExpr.expr.span, 
-			'condition type must be Bool (found {})'.format(whileExpr.expr.resolvedType))
+			'condition type must be bool (found {})'.format(whileExpr.expr.resolvedType))
 	
 	whileExpr.block.resultUnused = True
 	analyzeBlock(state, whileExpr.block, manageScope=False)
@@ -513,7 +517,7 @@ def analyzeIf(state, ifExpr, implicitType):
 	analyzeValueExpr(state, ifExpr.expr)
 	if ifExpr.expr.resolvedType and ifExpr.expr.resolvedType != types.Bool:
 		logError(state, ifExpr.expr.span, 
-			'condition type must be Bool (found {})'.format(ifExpr.expr.resolvedType))
+			'condition type must be bool (found {})'.format(ifExpr.expr.resolvedType))
 	
 	ifExpr.block.resultUnused = ifExpr.resultUnused
 	analyzeBlock(state, ifExpr.block, implicitType, isIf=True)

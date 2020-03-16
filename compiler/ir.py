@@ -577,35 +577,41 @@ def asgnToIR(state, ast):
 		exprToIR(state, ast.rvalue)
 		return
 	
-	deref = False
-	field = False
 	if type(ast.lvalue) == DerefAST:
-		deref = True
 		exprToIR(state, ast.lvalue.expr)
 		for _ in range(0, ast.lvalue.derefCount-1):
 			state.appendInstr(Deref(ast.lvalue, IPTR))
-	elif type(ast.lvalue) == IndexOpAST:
-		deref = True
-		exprToIR(state, ast.lvalue.expr)
-		exprToIR(state, ast.lvalue.index)
-		state.appendInstr(Add(ast.lvalue))
-	elif type(ast.lvalue) == FieldAccessAST:
-		field = True
-		if type(ast.lvalue.expr) != ValueRefAST:
-			exprToIR(state, ast.lvalue)
-	
-	exprToIR(state, ast.rvalue)
-	
-	if deref:
+		exprToIR(state, ast.rvalue)
 		state.appendInstr(DerefW(ast))
-	elif field:
-		if type(ast.lvalue.expr) == ValueRefAST:
-			stackOffset = state.localOffset(ast.lvalue.expr.symbol) + 1
+	elif type(ast.lvalue) in (FieldAccessAST, IndexOpAST):
+		swap = False
+		deref = False
+		expr = ast.lvalue.expr
+		if type(expr) == DerefAST:
+			deref = True
+			expr = expr.expr
+		
+		if type(expr) == ValueRefAST:
+			stackOffset = state.localOffset(expr.symbol) + 2
 		else:
+			swap = True
+			exprToIR(state, ast.lvalue)
 			stackOffset = 2
 		
-		state.appendInstr(Imm(field, IPTR, ast.lvalue.fieldOffset))
-		state.appendInstr(FieldW(ast, stackOffset))
+		exprToIR(state, ast.rvalue)
+		
+		if type(ast.lvalue) == FieldAccessAST:
+			state.appendInstr(Imm(ast, IPTR, ast.lvalue.fieldOffset))
+		else:
+			exprToIR(state, ast.lvalue.index)
+		
+		if deref:
+			state.appendInstr(DerefFieldW(ast, stackOffset))
+		else:
+			state.appendInstr(FieldW(ast, stackOffset))
+		
+		if swap:
+			state.appendInstr(Swap(ast, stackOffset))
 	elif ast.lvalue.symbol not in state.operandsBySymbol:
 		state.nameTopOperand(ast.lvalue.symbol)
 	else:

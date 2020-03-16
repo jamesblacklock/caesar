@@ -233,8 +233,9 @@ class GeneratorState:
 		self.r14 = RegTarget( True, 'r14', 'r14d', 'r14w', 'r14b')
 		self.r15 = RegTarget( True, 'r15', 'r15d', 'r15w', 'r15b')
 		self.intRegs = [
-			self.rax, self.rbx, self.rbp, self.r10, self.r11, 
-			self.r12, self.r13, self.r14, self.r15
+			self.rdi, self.rsi, self.rdx, self.rcx,  self.r8, 
+			self.rbx, self.rbp, self.r12, self.r13, self.r14, 
+			self.r15, self.r11, self.r10,  self.r9, self.rax
 		]
 		self.intArgRegs = [
 			self.rdi, self.rsi, self.rdx, self.rcx, self.r8, 
@@ -471,32 +472,41 @@ def moveData(state, src, dest,
 	
 	restore = RestoreRegs()
 	restore.rax = None
-	restore.rbp = None
+	restore.r9 = None
 	restore.r10 = None
 	restore.r11 = None
 	
-	def moveToReg(target, t):
+	def getReg():
 		reg = state.findReg(exclude=[src, dest, srcOffset, destOffset])
 		if reg == None:
 			if state.rax not in (src, dest, srcOffset, destOffset):
 				restore.rax = saveReg(state, state.rax)
 				reg = state.rax
-			elif state.rbp not in (src, dest, srcOffset, destOffset):
-				restore.rbp = saveReg(state, state.rbp)
-				reg = state.rbp
+			elif state.r9 not in (src, dest, srcOffset, destOffset):
+				restore.r9 = saveReg(state, state.r9)
+				reg = state.r9
 			elif state.r10 not in (src, dest, srcOffset, destOffset):
 				restore.r10 = saveReg(state, state.r10)
 				reg = state.r10
 			else:
 				restore.r11 = saveReg(state, state.r11)
 				reg = state.r11
+		return reg
+	
+	def moveToReg(target, t):
+		reg = getReg()
 		state.appendInstr('mov', 
 			Operand(reg, Usage.DEST, t), 
 			Operand(target, Usage.SRC, t))
 		return reg
 	
-	if not (srcDeref and destDeref) and type == None:
-		type = dest.type if srcDeref else src.type
+	if type == None and not (srcDeref and destDeref):
+		if srcDeref:
+			type = dest.type
+		elif destDeref:
+			type = src.type
+		else:
+			type = FundamentalType(min(src.type.byteSize, dest.type.byteSize))
 	
 	assert type != None
 	assert dest.storage in (Storage.REG, Storage.STACK) or destDeref
@@ -524,7 +534,7 @@ def moveData(state, src, dest,
 		else:
 			assert src.storage == Storage.STACK
 			if srcOffset.storage == Storage.IMM:
-				src = StackTarget(src.type, src.offset + srcOffset.value)
+				src = StackTarget(src.type, src.offset - srcOffset.value)
 				srcOffset = None
 	
 	# setup destination offset
@@ -533,7 +543,7 @@ def moveData(state, src, dest,
 			destOffset = moveToReg(destOffset, IPTR)
 		if destDeref:
 			if destOffset.storage == Storage.IMM and dest.storage == Storage.IMM:
-				dest = ImmTarget(IPTR, dest.value - destOffset.value)
+				dest = ImmTarget(IPTR, dest.value + destOffset.value)
 				destOffset = None
 		else:
 			assert dest.storage == Storage.STACK
@@ -542,22 +552,30 @@ def moveData(state, src, dest,
 				destOffset = None
 	
 	# save source pointer
-	# srcReg = None
-	# restoreSrc = None
-	# if src.active and srcIsReg and srcDeref:
-	# 	srcReg = src
-	# 	restoreSrc = saveReg(state, src)
+	srcReg = None
+	restoreSrc = None
+	if src.active and srcIsReg and srcDeref:
+		srcReg = src
+		restoreSrc = saveReg(state, src)
 	
 	# move source to register if necessary
 	if not srcIsReg and srcDeref or srcIsStk and (destIsStk or destDeref):
-		src = moveToReg(src, srcType)
+		if srcIsStk and srcOffset:
+			reg = getReg()
+			state.appendInstr('mov', 
+				Operand(reg, Usage.DEST, type), 
+				Operand(src, Usage.SRC, type, ind=srcOffset))
+			srcOffset = None
+			src = reg
+		else:
+			src = moveToReg(src, srcType)
 	
 	# save destination pointer
-	# destReg = None
-	# restoreDest = None
-	# if dest.active and destIsReg and destDeref:
-	# 	destReg = dest
-	# 	restoreDest = saveReg(state, dest)
+	destReg = None
+	restoreDest = None
+	if dest.active and destIsReg and destDeref:
+		destReg = dest
+		restoreDest = saveReg(state, dest)
 	
 	# move destination to register if necessary
 	stkDest = None
@@ -565,7 +583,7 @@ def moveData(state, src, dest,
 		dest = moveToReg(dest, destType)
 	elif destIsStk and srcDeref:
 		stkDest = dest
-		dest = moveToReg(dest, destType, ind=destOffset)
+		dest = getReg()
 	
 	# move the data
 	if srcDeref or destDeref:
@@ -606,16 +624,16 @@ def moveData(state, src, dest,
 	# restore registers
 	if restore.rax:
 		restoreReg(state, restore.rax, state.rax)
-	if restore.rbp:
-		restoreReg(state, restore.rbp, state.rbp)
+	if restore.r9:
+		restoreReg(state, restore.r9, state.r9)
 	if restore.r10:
 		restoreReg(state, restore.r10, state.r10)
 	if restore.r11:
 		restoreReg(state, restore.r11, state.r11)
-	# if restoreSrc:
-	# 	restoreReg(state, restoreSrc, srcReg)
-	# if restoreDest:
-	# 	restoreReg(state, restoreDest, destReg)
+	if restoreSrc:
+		restoreReg(state, restoreSrc, srcReg)
+	if restoreDest:
+		restoreReg(state, restoreDest, destReg)
 	
 	dest.type = destType
 
@@ -734,40 +752,6 @@ def field(state, ir, deref=False):
 	
 	state.popOperand()
 	state.pushOperand(readTarget)
-	
-	# fieldTarget = None
-	# if offsetTarget.storage == Storage.IMM:
-	# 	structTarget = state.getOperand(ir.offset)
-		
-	# 	if deref:
-	# 		if offsetTarget.storage == Storage.IMM:
-	# 			fieldTarget = StackTarget(ir.type, structTarget.value - offsetTarget.value)
-	# 		else:
-	# 			if structTarget.storage != Storage.REG:
-	# 				moveData(state, structTarget, reg)
-	# 				structTarget = reg
-			
-	# 			state.appendInstr('add', 
-	# 				Operand(structTarget, Usage.DEST, IPTR), 
-	# 				Operand(ImmTarget(IPTR, offsetTarget.value), Usage.SRC, IPTR))
-	# 			fieldTarget = structTarget
-	# 	else:
-	# 		fieldTarget = StackTarget(ir.type, structTarget.offset - offsetTarget.value)
-		
-	# 	readTarget = state.findTarget(ir.type)
-	# 	moveData(state, fieldTarget, readTarget, srcDeref=deref)
-	# else:
-	# 	if offsetTarget.storage != Storage.REG:
-	# 		moveData(state, offsetTarget, reg)
-	# 		offsetTarget = reg
-		
-	# 	structTarget = state.getOperand(ir.offset)
-	# 	assert structTarget.storage == Storage.STACK
-		
-	# 	readTarget = state.findTarget(ir.type)
-	# 	state.appendInstr('mov', 
-	# 		Operand(readTarget, Usage.DEST, IPTR), 
-	# 		Operand(structTarget, Usage.ADDR, IPTR, ind=offsetTarget))
 
 def fieldw(state, ir, deref=False):
 	offsetTarget = state.getOperand(0)
@@ -779,7 +763,7 @@ def fieldw(state, ir, deref=False):
 		state.moveOperand(structTarget, newStructTarget)
 		structTarget = newStructTarget
 	
-	moveData(state, valueTarget, structTarget, destOffset=offsetTarget, srcDeref=deref)
+	moveData(state, valueTarget, structTarget, destOffset=offsetTarget, destDeref=deref)
 	
 	state.popOperand()
 	state.popOperand()
@@ -827,7 +811,7 @@ def neg(state, ir):
 
 def addOrSub(state, ir, isAdd):
 	restoreRAX = None
-	restoreRBP = None
+	restoreR9 = None
 	
 	src = state.getOperand(0)
 	dest = state.getOperand(1)
@@ -843,8 +827,8 @@ def addOrSub(state, ir, isAdd):
 		reg = state.findReg()
 		if reg == None:
 			if dest == state.rax:
-				restoreRBP = saveReg(state, state.rbp)
-				reg = state.rbp
+				restoreR9 = saveReg(state, state.r9)
+				reg = state.r9
 			else:
 				restoreRAX = saveReg(state, state.rax)
 				reg = state.rax
@@ -864,8 +848,8 @@ def addOrSub(state, ir, isAdd):
 	if restoreRAX:
 		restoreReg(state, restoreRAX, state.rax)
 	
-	if restoreRBP:
-		restoreReg(state, restoreRBP, state.rbp)
+	if restoreR9:
+		restoreReg(state, restoreRDI, state.r9)
 	
 	state.popOperand()
 	state.popOperand()
