@@ -13,7 +13,7 @@ macOS and relies upon [NASM](https://www.nasm.us/) as a dependency.
 
 "Hello world" example:
 
-	@FFI("C") extern fn printf(fmt: byte&, ...) -> int32
+	@ffi("C") extern fn printf(fmt: byte&, ...) -> int
 	
 	fn main()
 	    printf("Hello World!\n")

@@ -838,7 +838,7 @@ class SymbolInfo:
 		def addFieldInfo(fields, expr):
 			allInit = expr and type(expr) != StructLitAST
 			fieldDict = \
-				{ k: v for (k, v) in expr.fieldDict.values() } if type(expr) == StructLitAST else \
+				{ k: v for (k, v) in expr.fieldDict.items() } if type(expr) == StructLitAST else \
 				{ i: e for (i, e) in enumerate(expr.values) } if type(expr) in (TupleLitAST, ArrayLitAST) else \
 				{}
 			

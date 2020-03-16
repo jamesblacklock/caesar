@@ -1,0 +1,87 @@
+{
+	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+	"name": "Caesar",
+	"patterns": [
+		{ "include": "#keywords" },
+		{ "include": "#strings" },
+		{ "include": "#comments" },
+		{ "include": "#attrs" },
+		{ "include": "#names" },
+		{ "include": "#numbers" }
+	],
+	"repository": {
+		"comments": {
+			"patterns": [
+				{
+					"name": "comment.block.caesar",
+					"begin": "#=",
+					"end": "=#",
+					"patterns": [
+						{
+							"include": "#comments"
+						}
+					]
+				},
+				{
+					"name": "comment.line.caesar",
+					"match": "#.*"
+				}
+			]
+		},
+		"keywords": {
+			"patterns": [
+				{
+					"name": "keyword.control.caesar",
+					"match": "\\b(if|else|while|for|return|break|continue|loop)\\b"
+				},
+				{
+					"name": "keyword.other.caesar",
+					"match": "\\b(let|mut|struct|as|fn|extern)\\b"
+				},
+				{
+					"name": "storage.type.built-in.primitive.caesar",
+					"match": "\\b(bool|byte|int8|uint8|int16|uint16|int|uint|char|int64|uint64|isize|usize)\\b"
+				}
+			]
+		},
+		"strings": {
+			"patterns": [
+				{
+					"name": "string.quoted.double.caesar",
+					"begin": "\"",
+					"end": "\"",
+					"patterns": [
+						{
+							"name": "constant.character.escape.caesar",
+							"match": "\\\\."
+						}
+					]
+				},
+				{
+					"name": "string.quoted.single.caesar",
+					"begin": "'",
+					"end": "'",
+					"patterns": [
+						{
+							"name": "constant.character.escape.caesar",
+							"match": "\\\\."
+						}
+					]
+				}
+			]
+		},
+		"numbers": {
+			"name": "constant.numeric.caesar",
+			"match": "\\d+(\\.\\d+)?(((i|u)(8|16|32|64|size)|f(32|64)))?"
+		},
+		"attrs": {
+			"name": "variable.meta.attribute.caesar",
+			"match": "@([a-zA-Z_][a-zA-Z0-9_]*)?"
+		},
+		"names": {
+			"name": "variable.caesar",
+			"match": "[a-zA-Z_][a-zA-Z0-9_]*"
+		}
+	},
+	"scopeName": "source.csr"
+}

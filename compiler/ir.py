@@ -689,7 +689,7 @@ def initStructFields(state, structLit, baseOffset):
 	for init in structLit.fields:
 		fieldInfo = fieldDict[init.name]
 		if init.expr.resolvedType.isCompositeType:
-			initCompositeFields(init.expr, baseOffset + fieldInfo.offset)
+			initCompositeFields(state, init.expr, baseOffset + fieldInfo.offset)
 			continue
 		
 		exprToIR(state, init.expr)

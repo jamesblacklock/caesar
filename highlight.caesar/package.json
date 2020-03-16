@@ -1,0 +1,25 @@
+{
+    "name": "caesar",
+    "displayName": "Caesar",
+    "description": "",
+    "version": "0.0.1",
+    "engines": {
+        "vscode": "^1.43.0"
+    },
+    "categories": [
+        "Programming Languages"
+    ],
+    "contributes": {
+        "languages": [{
+            "id": "caesar",
+            "aliases": ["Caesar", "caesar"],
+            "extensions": [".csr"],
+            "configuration": "./language-configuration.json"
+        }],
+        "grammars": [{
+            "language": "caesar",
+            "scopeName": "source.csr",
+            "path": "./syntaxes/caesar.tmLanguage.json"
+        }]
+    }
+}
