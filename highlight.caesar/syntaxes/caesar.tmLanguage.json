@@ -37,7 +37,7 @@
 				},
 				{
 					"name": "keyword.other.caesar",
-					"match": "\\b(let|mut|struct|as|fn|extern|const)\\b"
+					"match": "\\b(let|mut|struct|as|fn|extern|const|static|mod)\\b"
 				},
 				{
 					"name": "storage.type.built-in.primitive.caesar",
@@ -73,7 +73,7 @@
 		},
 		"constants": {
 			"name": "constant.language.caesar",
-			"match": "\\b(true|false|NULL)\\b"
+			"match": "\\b(true|false)\\b"
 		},
 		"numbers": {
 			"name": "constant.numeric.caesar",
