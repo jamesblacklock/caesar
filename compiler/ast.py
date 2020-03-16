@@ -240,7 +240,8 @@ def strEsc(s):
 	return result
 
 def strBytes(s):
-	return bytes(strEsc(s), 'utf-8')
+	b = [b for b in bytes(strEsc(s), 'utf-8')]
+	b.append(0)
 
 class ModLevelDeclAST:
 	def __init__(self, doccomment, attrs, extern, nameTok, span):
@@ -263,6 +264,7 @@ class ModAST(ModLevelDeclAST):
 		self.modDecls = []
 		self.structDecls = []
 		self.staticDecls = []
+		self.constDecls = []
 		self.symbolTable = {}
 		self.decls = decls
 		
@@ -276,8 +278,12 @@ class ModAST(ModLevelDeclAST):
 				self.modDecls.append(decl)
 			elif type(decl) == StructDeclAST:
 				self.structDecls.append(decl)
+			elif type(decl) == StaticAST:
+				self.staticDecls.append(decl)
+			elif type(decl) == ConstAST:
+				self.constDecls.append(decl)
 			else:
-				raise RuntimeError('unimplemented!')
+				assert 0
 
 class AttrAST:
 	def __init__(self, name, args, span):
@@ -326,15 +332,33 @@ class CVarArgsParamAST:
 	def __init__(self, span):
 		self.span = span
 
+class StaticAST(ModLevelDeclAST):
+	def __init__(self, doccomment, attrs, extern, nameTok, mut, typeRef, expr, span):
+		super().__init__(doccomment, attrs, extern, nameTok, span)
+		self.mut = mut
+		self.typeRef = typeRef
+		self.expr = expr
+		self.bytes = None
+		self.resolvedSymbolType = None
+
+class ConstAST(ModLevelDeclAST):
+	def __init__(self, doccomment, attrs, nameTok, typeRef, expr, span):
+		super().__init__(doccomment, attrs, False, nameTok, span)
+		self.typeRef = typeRef
+		self.expr = expr
+		self.bytes = None
+		self.resolvedSymbolType = None
+
 class ReturnAST:
 	def __init__(self, expr, span):
 		self.expr = expr
 		self.span = span
 
 class LetAST:
-	def __init__(self, mut, name, typeRef, expr, span):
+	def __init__(self, mut, nameTok, typeRef, expr, span):
 		self.mut = mut
-		self.name = name
+		self.nameTok = nameTok
+		self.name = nameTok.content
 		self.typeRef = typeRef
 		self.expr = expr
 		self.span = span
@@ -413,7 +437,7 @@ class ValueExprAST:
 class StrLitAST(ValueExprAST):
 	def __init__(self, value, span):
 		super().__init__()
-		self.value = strBytes(value)
+		self.bytes = strBytes(value)
 		self.span = span
 
 class CharLitAST(ValueExprAST):
