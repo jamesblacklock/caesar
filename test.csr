@@ -12,7 +12,7 @@ extern fn time(ret: int64&) -> int64
 @ffi("C")
 extern fn getchar() -> int
 
-const NULL = 0 as void&
+const NULL = 0 as int64&
 
 fn doTheThing(n: int16) -> int16 #=hello=#
 	printf("Normal function-call syntax%s\n", ".")
@@ -25,11 +25,15 @@ fn theMeaningOfLifeTheUniverseAndEverything() -> int16 { if true {-42} else {ret
 mod testMod
 	fn otherFn() -> int { printf("enter a char: "), getchar() }
 
+static myStatic = 17
+
 #========================================================
 	This is the documentation for the `main` function, 
 	which is the entry point for the application
 ========================================================#
 fn main()
+	printf("a static value: %d\n", myStatic)
+	
 	moreThanSixArgs(5,6,7,8,9,10,11,12,-99999)
 	
 	let i: int = if true {42} else {return}

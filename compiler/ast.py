@@ -242,6 +242,7 @@ def strEsc(s):
 def strBytes(s):
 	b = [b for b in bytes(strEsc(s), 'utf-8')]
 	b.append(0)
+	return b
 
 class ModLevelDeclAST:
 	def __init__(self, doccomment, attrs, extern, nameTok, span):

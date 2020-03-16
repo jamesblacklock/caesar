@@ -105,7 +105,7 @@ class StackTarget(Target):
 		if self.fromTop:
 			offset = ' + {}'.format(offset) if offset > 0 else ''
 			addr = '[rsp{}{}]'.format(offset, ind)
-		if sp == None:
+		elif sp == None:
 			addr = '[%% {}{} %%]'.format(offset, ind)
 		else:
 			offset = ' + {}'.format(sp - offset) if sp - offset > 0 else ''
@@ -386,7 +386,7 @@ class GeneratorState:
 		src.setActive(False)
 		src.operandIndex = None
 
-def irToAsm(state, ir):
+def irToAsm(state, ir, nextIR):
 	# state.appendInstr(ir.pretty(state.fnIR), isComment=True, isLabel=(type(ir) == BlockMarker))
 	
 	if type(ir) in (Global, Static, Imm, Struct):
@@ -436,9 +436,9 @@ def irToAsm(state, ir):
 	elif type(ir) == BlockMarker:
 		blockMarker(state, ir)
 	elif type(ir) == BrIf:
-		brIf(state, ir)
+		brIf(state, ir, nextIR)
 	elif type(ir) == Br:
-		br(state, ir)
+		br(state, ir, nextIR)
 	elif type(ir) == Ret:
 		ret(state, ir)
 	else:
@@ -486,7 +486,7 @@ def moveData(state, src, dest,
 		elif destDeref:
 			type = src.type
 		else:
-			type = FundamentalType(min(src.type.byteSize, dest.type.byteSize))
+			type = src.type if src.type.byteSize < dest.type.byteSize else dest.type
 	
 	assert type != None
 	assert dest.storage in (Storage.REG, Storage.STACK) or destDeref
@@ -997,7 +997,7 @@ def call(state, ir):
 		state.rax.type = ir.retTypes[0]
 		state.pushOperand(state.rax)
 
-def brOrBrIf(state, ir, isBrIf):
+def brOrBrIf(state, ir, nextIR, isBrIf):
 	offset = 1 if isBrIf else 0
 	testReg = None
 	blockDef = state.fnIR.blockDefs[ir.index]
@@ -1065,19 +1065,19 @@ def brOrBrIf(state, ir, isBrIf):
 			Operand(target, Usage.DEST), 
 			Operand(target, Usage.SRC))
 		
-		state.appendInstr('jnz {}'.format(state.fnIR.blockDefs[ir.index].label))
-		state.appendInstr('jmp {}'.format(state.fnIR.blockDefs[ir.elseIndex].label))
-	else:
+		state.appendInstr('jz {}'.format(state.fnIR.blockDefs[ir.elseIndex].label))
+	
+	if type(nextIR) != BlockMarker or nextIR.index != ir.index:
 		state.appendInstr('jmp {}'.format(state.fnIR.blockDefs[ir.index].label))
 	
 	for _ in outputTargets:
 		state.popOperand()
 
-def br(state, ir):
-	brOrBrIf(state, ir, False)
+def br(state, ir, nextIR):
+	brOrBrIf(state, ir, nextIR, False)
 
-def brIf(state, ir):
-	brOrBrIf(state, ir, True)
+def brIf(state, ir, nextIR):
+	brOrBrIf(state, ir, nextIR, True)
 	
 def ret(state, ir):
 	if len(state.fnIR.retTypes) > 0:
@@ -1136,8 +1136,15 @@ def defineStatics(mod, output):
 			continue
 		
 		for staticDef in decl.ir.staticDefs:
-			bytes = ''.join([str(b) + ',' for b in staticDef.value])
-			output.write('\t{}: db {}0\n'.format(staticDef.label, bytes))
+			bytes = ','.join(str(b) for b in staticDef.bytes)
+			output.write('\t{}: db {}\n'.format(staticDef.label, bytes))
+	
+	for decl in (*mod.staticDecls, *mod.constDecls):
+		if decl.extern:
+			assert 0
+		
+		bytes = ','.join(str(b) for b in decl.bytes)
+		output.write('\t{}: db {}\n'.format(decl.mangledName, bytes))
 
 def defineFns(mod, output):
 	for decl in mod.modDecls:
@@ -1150,8 +1157,13 @@ def defineFns(mod, output):
 		output.write('\t{}:\n'.format(decl.ir.name))
 		
 		state = GeneratorState(decl.ir)
-		for instr in decl.ir.instr:
-			irToAsm(state, instr)
+		if len(decl.ir.instr) > 0:
+			ir = decl.ir.instr[0]
+			for i in range(1, len(decl.ir.instr)):
+				nextIR = decl.ir.instr[i]
+				irToAsm(state, ir, nextIR)
+				ir = nextIR
+			irToAsm(state, ir, None)
 		
 		stackSize = state.sp
 		if stackSize % 16 == 0:

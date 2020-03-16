@@ -1,3 +1,4 @@
+import ctypes
 from .                   import ast
 from .ast                import CConv, FnDeclAST, LetAST, FnCallAST, ReturnAST, IfAST, SignAST, \
                                 StrLitAST, IntLitAST, BoolLitAST, TupleLitAST, ValueRefAST, \
@@ -6,7 +7,7 @@ from .ast                import CConv, FnDeclAST, LetAST, FnCallAST, ReturnAST, 
 								AddressAST, FloatLitAST, BreakAST, ContinueAST, InfixOp, LoopAST, \
                                 CharLitAST, StructLitAST, FieldAccessAST, StructDeclAST, FnParamAST, \
                                 FieldDeclAST, NamedTypeRefAST, PtrTypeRefAST, ArrayTypeRefAST, \
-                                ArrayLitAST, TupleTypeRefAST
+                                ArrayLitAST, TupleTypeRefAST, ConstAST, StaticAST
 from .                   import types, token
 from .types              import getValidAssignType, ResolvedType
 from .err                import logError, logWarning
@@ -797,11 +798,70 @@ def analyzeStructDecl(state, decl):
 	decl.resolvedSymbolType = types.ResolvedStructType(
 		decl.name, layout.align, layout.byteSize, layout.fields)
 
-def mangleFnName(state, fnDecl):
-	if fnDecl.cconv == CConv.C:
-		fnDecl.mangledName = '_{}'.format(fnDecl.name)
+def analyzeStaticDecl(state, decl):
+	implicitType = None
+	if decl.typeRef:
+		resolveTypeRef(state, decl.typeRef)
+		decl.resolvedSymbolType = decl.typeRef.resolvedType
+		implicitType = decl.resolvedSymbolType
+	
+	analyzeValueExpr(state, decl.expr, implicitType)
+	
+	if decl.resolvedSymbolType:
+		assignType = getValidAssignType(decl.resolvedSymbolType, decl.expr.resolvedType)
+		if assignType:
+			decl.expr.resolvedType = assignType
+		else:
+			logError(state, decl.expr.span, 'expected type {}, found {}'
+				.format(decl.resolvedSymbolType, decl.expr.resolvedType))
 	else:
-		mangled = 'F{}{}'.format(len(fnDecl.name), fnDecl.name)
+		decl.resolvedSymbolType = decl.expr.resolvedType
+	
+	if decl.name == '_':
+		logError(state, decl.expr.span, '`_` is not a valid mod-level binding')
+	else:
+		state.declSymbol(decl)
+
+def resolveStaticDecl(state, decl):
+	if not decl.resolvedSymbolType.isPrimitiveType:
+		assert 0
+	
+	decl.bytes = resolveConstExpr(state, decl.expr)
+
+def resolveConstExpr(state, expr, resolvedType=None):
+	if resolvedType == None:
+		resolvedType = expr.resolvedType
+	
+	if type(expr) == IntLitAST:
+		if resolvedType.byteSize == 1:
+			t = ctypes.c_uint8
+		elif resolvedType.byteSize == 2:
+			t = ctypes.c_uint16
+		elif resolvedType.byteSize == 4:
+			t = ctypes.c_uint32
+		elif resolvedType.byteSize == 8:
+			t = ctypes.c_uint64
+		else:
+			assert 0
+		return [b for b in bytes(t(expr.value))]
+	elif type(expr) == CoercionAST:
+		return resolveConstExpr(state, expr.expr, resolvedType)
+	else:
+		assert 0
+
+def mangleName(state, decl):
+	if type(decl) == FnDeclAST and decl.cconv == CConv.C:
+		decl.mangledName = '_{}'.format(decl.name)
+	else:
+		letter = None
+		if type(decl) == FnDeclAST:
+			letter = 'F'
+		elif type(decl) == StaticAST or type(decl) == ConstAST:
+			letter = 'S'
+		else:
+			assert 0
+		
+		mangled = '{}{}{}'.format(letter, len(decl.name), decl.name)
 		scope = state.scope
 		while scope:
 			if scope.isMod:
@@ -813,7 +873,7 @@ def mangleFnName(state, fnDecl):
 			
 			scope = scope.parent
 		
-		fnDecl.mangledName = mangled
+		decl.mangledName = mangled
 
 class FieldInfo:
 	def __init__(self, field, initialized):
@@ -848,7 +908,7 @@ class SymbolInfo:
 				if field.resolvedSymbolType.isStructType:
 					addFieldInfo(field.resolvedSymbolType.fields, fieldExpr)
 		
-		if type(symbol) in (FnParamAST, FnDeclAST, ModAST, StructDeclAST):
+		if type(symbol) in (FnParamAST, FnDeclAST, ModAST, StructDeclAST, ConstAST, StaticAST):
 			self.uninitialized = False
 			self.maybeUninitialized = False
 		elif type(symbol) == LetAST:
@@ -969,18 +1029,25 @@ def analyzeMod(state, mod):
 	for decl in mod.fnDecls:
 		invokeAttrs(state, decl)
 	
-	for decl in mod.structDecls:
-		analyzeStructDecl(state, decl)
-	
 	for decl in mod.fnDecls:
 		analyzeFnSig(state, decl)
-		mangleFnName(state, decl)
+		mangleName(state, decl)
 	
 	for decl in mod.modDecls:
 		analyzeMod(state, decl)
 	
+	for decl in mod.structDecls:
+		analyzeStructDecl(state, decl)
+	
+	for decl in (*mod.staticDecls, *mod.constDecls):
+		analyzeStaticDecl(state, decl)
+		mangleName(state, decl)
+	
 	for decl in mod.fnDecls:
 		analyzeFnBody(state, decl)
+	
+	for decl in (*mod.staticDecls, *mod.constDecls):
+		resolveStaticDecl(state, decl)
 	
 	state.popScope()
 
@@ -1028,7 +1095,7 @@ class AnalyzerState:
 			propagate = False
 			for symbol in self.scope.symbolTable.values():
 				if type(symbol) == LetAST and symbol.unused:
-					logWarning(self, symbol.span, 'unused symbol')
+					logWarning(self, symbol.nameTok.span, 'unused symbol')
 		elif self.scope.isIf:
 			propagate = False
 			self.ifBranchInfo = symbolInfo
