@@ -614,10 +614,14 @@ def asgnToIR(state, ast):
 		
 		if swap:
 			state.appendInstr(Swap(ast, stackOffset))
-	elif ast.lvalue.symbol not in state.operandsBySymbol:
-		state.nameTopOperand(ast.lvalue.symbol)
 	else:
-		state.appendInstr(Swap(ast, state.localOffset(ast.lvalue.symbol)))
+		exprToIR(state, ast.rvalue)
+		if ast.lvalue.symbol not in state.operandsBySymbol:
+			state.nameTopOperand(ast.lvalue.symbol)
+		else:
+			offset = state.localOffset(ast.lvalue.symbol)
+			if offset > 0:
+				state.appendInstr(Swap(ast, offset))
 
 def indexToIR(state, ast):
 	deref = False
@@ -712,8 +716,8 @@ def tupleLitToIR(state, ast):
 	initCompositeFields(state, ast, 0)
 
 def strLitToIR(state, ast):
-	label = '{}__static__{}'.format(state.name, len(state.staticDefs))
-	state.staticDefs.append(StaticDef(label, ast.value))
+	label = '{}_str{}'.format(state.name, len(state.staticDefs))
+	state.staticDefs.append(StaticDef(label, ast.bytes))
 	state.appendInstr(Static(ast, IPTR, label))
 
 def fieldAccessToIR(state, ast):
@@ -774,8 +778,10 @@ def fnCallToIR(state, ast):
 
 def valueRefToIR(state, ast):
 	if isinstance(ast.symbol, ModLevelDeclAST):
-		fType = FundamentalType.fromResolvedType(ast.resolvedType)
-		state.appendInstr(Global(ast, fType, ast.symbol.mangledName))
+		state.appendInstr(Global(ast, IPTR, ast.symbol.mangledName))
+		if not ast.resolvedType.isFnType:
+			fType = FundamentalType.fromResolvedType(ast.resolvedType)
+			state.appendInstr(Deref(ast, fType))
 	else:
 		offset = state.localOffset(ast.symbol)
 		
@@ -1125,9 +1131,9 @@ def blockToIR(state, block):
 			break
 
 class StaticDef:
-	def __init__(self, label, value):
+	def __init__(self, label, bytes):
 		self.label = label
-		self.value = value
+		self.bytes = bytes
 
 class BlockDef:
 	def __init__(self, index, label, inputs, hasBackwardsCallers):
@@ -1176,9 +1182,9 @@ class IRState:
 		
 		self.setupLocals(self.paramTypes, inputSymbols)
 		
-		# print('{}({}) -> ({})'.format(self.name,
-		# 	', '.join([str(t) for t in self.paramTypes]),
-		# 	', '.join([str(t) for t in self.retTypes])))
+		print('{}({}) -> ({})'.format(self.name,
+			', '.join([str(t) for t in self.paramTypes]),
+			', '.join([str(t) for t in self.retTypes])))
 		
 		for param in reversed(fnDecl.params):
 			if param.resolvedSymbolType.isVoidType:
@@ -1203,8 +1209,8 @@ class IRState:
 		instrText = '{}{}'.format(
 			'   ' if type(instr) != BlockMarker else '', instr.pretty(self))
 		space = ' ' * (72 - len(instrText))
-		# print('{}{}# [{}]'.format(instrText, space, 
-		# 	', '.join([(t.symbol.name + ': ' if t.symbol else '') + str(t.type) for t in self.operandStack])))
+		print('{}{}# [{}]'.format(instrText, space, 
+			', '.join([(t.symbol.name + ': ' if t.symbol else '') + str(t.type) for t in self.operandStack])))
 	
 	def defBlock(self, inputs, hasBackwardsCallers=False):
 		index = len(self.blockDefs)
