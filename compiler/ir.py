@@ -591,12 +591,9 @@ def asgnToIR(state, ast):
 			deref = True
 			expr = expr.expr
 		
-		if type(expr) == ValueRefAST:
-			stackOffset = state.localOffset(expr.symbol) + 2
-		else:
+		if type(expr) != ValueRefAST:
 			swap = True
 			exprToIR(state, ast.lvalue)
-			stackOffset = 2
 		
 		exprToIR(state, ast.rvalue)
 		
@@ -604,6 +601,11 @@ def asgnToIR(state, ast):
 			state.appendInstr(Imm(ast, IPTR, ast.lvalue.fieldOffset))
 		else:
 			exprToIR(state, ast.lvalue.index)
+		
+		if type(expr) == ValueRefAST:
+			stackOffset = state.localOffset(expr.symbol)
+		else:
+			stackOffset = 2
 		
 		if deref:
 			state.appendInstr(DerefFieldW(ast, stackOffset))
@@ -648,19 +650,6 @@ def indexToIR(state, ast):
 	
 	if swap:
 		state.appendInstr(Swap(ast, stackOffset))
-	
-	
-	# exprToIR(state, ast.expr)
-	# exprToIR(state, ast.index)
-	# if ast.expr.resolvedType.indirectionLevel == 1:
-	# 	mul = getAlignment(ast.expr.resolvedType.baseType)
-	# else:
-	# 	mul = getAlignment(IPTR.byteSize)
-	# state.appendInstr(Imm(ast, IPTR, mul))
-	# state.appendInstr(Mul(ast))
-	# state.appendInstr(Add(ast))
-	# fType = FundamentalType.fromResolvedType(ast.resolvedType)
-	# state.appendInstr(Deref(ast, fType))
 
 def boolLitToIR(state, ast):
 	state.appendInstr(Imm(ast, I8, 1 if ast.value else 0))

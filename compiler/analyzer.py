@@ -350,14 +350,14 @@ def analyzeInfixOp(state, infixOp, implicitType):
 
 def analyzeIndex(state, expr):
 	analyzeValueExpr(state, expr.expr)
-	analyzeValueExpr(state, expr.index, types.ISize)
+	analyzeValueExpr(state, expr.index, types.USize)
 	
 	if not expr.expr.resolvedType.isArrayType:
 		logError(state, expr.expr.span, 
 			'base of index expression must be an array type (found {})'.format(expr.expr.resolvedType))
 	
-	if not expr.index.resolvedType.isIntType:
-		logError(state, expr.index.span, 'index must be an integer (found {})'.format(expr.index.resolvedType))
+	if expr.index.resolvedType != types.USize:
+		logError(state, expr.index.span, 'index must be type usize (found {})'.format(expr.index.resolvedType))
 	
 	expr.resolvedType = expr.expr.resolvedType.baseType
 
@@ -550,6 +550,8 @@ def analyzeCoercion(state, asExpr):
 	resolveTypeRef(state, asExpr.typeRef)
 	
 	asExpr.resolvedType = asExpr.typeRef.resolvedType
+	if asExpr.expr.resolvedType == None:
+		return
 	
 	if not types.canCoerce(asExpr.expr.resolvedType, asExpr.typeRef.resolvedType):
 		logError(state, asExpr.span, 'cannot coerce from {} to {}'

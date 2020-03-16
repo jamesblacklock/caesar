@@ -154,7 +154,7 @@ class RegTarget(Target):
 		self.q = q
 	
 	def render(self, usage, fType, ind, sp):
-		assert ind == None
+		assert usage == Usage.DEREF or ind == None
 		
 		if usage == Usage.DEREF or fType.byteSize == 8:
 			s = self.q
@@ -168,7 +168,7 @@ class RegTarget(Target):
 			assert 0
 		
 		if usage == Usage.DEREF:
-			return '{} [{}]'.format(sizeInd(fType), s)
+			return '{} [{}{}]'.format(sizeInd(fType), s, ind if ind else '')
 		elif usage in (Usage.SRC, Usage.DEST):
 			return s
 		else:
@@ -322,7 +322,7 @@ class GeneratorState:
 		while offset < len(self.callStack):
 			targets = []
 			for i in range(0, count):
-				t = self.callStack[offset + i] if offset + i >= len(self.callStack) else None
+				t = self.callStack[offset + i] if offset + i < len(self.callStack) else None
 				if not t or t in exclude or t.active:
 					offset += i
 					targets = None
@@ -471,7 +471,7 @@ def moveData(state, src, dest,
 	srcDeref=False, destDeref=False, srcOffset=None, destOffset=None, type=None):
 	
 	restore = RestoreRegs()
-	restore.rax = None
+	restore.r8 = None
 	restore.r9 = None
 	restore.r10 = None
 	restore.r11 = None
@@ -479,9 +479,9 @@ def moveData(state, src, dest,
 	def getReg():
 		reg = state.findReg(exclude=[src, dest, srcOffset, destOffset])
 		if reg == None:
-			if state.rax not in (src, dest, srcOffset, destOffset):
-				restore.rax = saveReg(state, state.rax)
-				reg = state.rax
+			if state.r8 not in (src, dest, srcOffset, destOffset):
+				restore.r8 = saveReg(state, state.r8)
+				reg = state.r8
 			elif state.r9 not in (src, dest, srcOffset, destOffset):
 				restore.r9 = saveReg(state, state.r9)
 				reg = state.r9
@@ -554,13 +554,13 @@ def moveData(state, src, dest,
 	# save source pointer
 	srcReg = None
 	restoreSrc = None
-	if src.active and srcIsReg and srcDeref:
+	if src.active and srcIsReg and srcDeref and destDeref:
 		srcReg = src
 		restoreSrc = saveReg(state, src)
 	
 	# move source to register if necessary
 	if not srcIsReg and srcDeref or srcIsStk and (destIsStk or destDeref):
-		if srcIsStk and srcOffset:
+		if srcIsStk and srcOffset and not srcDeref:
 			reg = getReg()
 			state.appendInstr('mov', 
 				Operand(reg, Usage.DEST, type), 
@@ -569,13 +569,6 @@ def moveData(state, src, dest,
 			src = reg
 		else:
 			src = moveToReg(src, srcType)
-	
-	# save destination pointer
-	destReg = None
-	restoreDest = None
-	if dest.active and destIsReg and destDeref:
-		destReg = dest
-		restoreDest = saveReg(state, dest)
 	
 	# move destination to register if necessary
 	stkDest = None
@@ -588,27 +581,18 @@ def moveData(state, src, dest,
 	# move the data
 	if srcDeref or destDeref:
 		if srcDeref:
-			if srcOffset:
-				state.appendInstr('add', 
-					Operand(src, Usage.DEST, IPTR), 
-					Operand(srcOffset, Usage.SRC, IPTR))
-				srcOffset = None
 			if destDeref:
 				state.appendInstr('mov', 
 					Operand(src, Usage.DEST, type), 
-					Operand(src, Usage.DEREF, type))
+					Operand(src, Usage.DEREF, type, ind=srcOffset))
 			else:
 				state.appendInstr('mov', 
-					Operand(dest, Usage.DEST, type, ind=destOffset), 
-					Operand(src, Usage.DEREF, type))
+					Operand(dest, Usage.DEST, type), 
+					Operand(src, Usage.DEREF, type, ind=srcOffset))
 		if destDeref:
-			if destOffset:
-				state.appendInstr('add', 
-					Operand(dest, Usage.DEST, IPTR), 
-					Operand(destOffset, Usage.SRC, IPTR))
 			state.appendInstr('mov', 
-				Operand(dest, Usage.DEREF, type), 
-				Operand(src, Usage.SRC, type, ind=srcOffset))
+				Operand(dest, Usage.DEREF, type, ind=destOffset), 
+				Operand(src, Usage.SRC, type))
 	else:
 		state.appendInstr('mov', 
 			Operand(dest, Usage.DEST, type, ind=destOffset), 
@@ -617,13 +601,13 @@ def moveData(state, src, dest,
 	# save destination to stack if necessary
 	if stkDest:
 		state.appendInstr('mov', 
-			Operand(stkDest, Usage.DEST, type), 
+			Operand(stkDest, Usage.DEST, type, ind=destOffset), 
 			Operand(dest, Usage.SRC, type))
 		dest = stkDest
 	
 	# restore registers
-	if restore.rax:
-		restoreReg(state, restore.rax, state.rax)
+	if restore.r8:
+		restoreReg(state, restore.r8, state.r8)
 	if restore.r9:
 		restoreReg(state, restore.r9, state.r9)
 	if restore.r10:
@@ -632,8 +616,6 @@ def moveData(state, src, dest,
 		restoreReg(state, restore.r11, state.r11)
 	if restoreSrc:
 		restoreReg(state, restoreSrc, srcReg)
-	if restoreDest:
-		restoreReg(state, restoreDest, destReg)
 	
 	dest.type = destType
 
@@ -784,12 +766,14 @@ def extend(state, ir, signed=False):
 			state.moveOperand(state.rax, stack)
 			dest = state.rax
 	
-	opcode = ('movsx' if signed else 'movzx')
-	if src.type.byteSize == 4: opcode += 'd'
-	
-	state.appendInstr(opcode, 
-		Operand(dest, Usage.DEST, ir.type), 
-		Operand(src, Usage.SRC))
+	if signed:
+		state.appendInstr('movsxd' if src.type.byteSize == 4 else 'movsx', 
+			Operand(dest, Usage.DEST, ir.type), 
+			Operand(src, Usage.SRC))
+	elif src.type.byteSize < 4:
+		state.appendInstr('movzx', 
+			Operand(dest, Usage.DEST, ir.type), 
+			Operand(src, Usage.SRC))
 	
 	dest.type = ir.type
 	
