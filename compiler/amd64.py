@@ -88,30 +88,28 @@ class GlobalTarget(Target):
 		else:
 			assert 0
 
-class TopStackTarget(Target):
-	def __init__(self, fType, offset):
-		super().__init__(fType, Storage.STACK)
-		self.offset = offset
-	
-	def render(self, usage, fType, ind, sp):
-		addr = '[rsp + {}{}]'.format(self.offset, ind if ind else '')
-		if usage == Usage.ADDR:
-			return addr
-		elif usage in (Usage.SRC, Usage.DEST):
-			return '{} {}'.format(sizeInd(fType), addr)
-		else:
-			assert 0
-
 class StackTarget(Target):
-	def __init__(self, fType, offset):
+	def __init__(self, fType, offset, fromTop=False):
 		super().__init__(fType, Storage.STACK)
 		self.offset = offset
+		self.fromTop = fromTop
 	
 	def render(self, usage, fType, ind, sp):
-		if sp == None:
-			addr = '[%% {}{} %%]'.format(self.offset, ind if ind else '')
+		offset = self.offset
+		if ind and ind.storage == Storage.IMM:
+			offset += ind.value
+			ind = ''
 		else:
-			addr = '[rsp + {}{}]'.format(sp - self.offset, ind if ind else '')
+			ind = ' + {}'.format(ind.q) if ind else ''
+		
+		if self.fromTop:
+			offset = ' + {}'.format(offset) if offset > 0 else ''
+			addr = '[rsp{}{}]'.format(offset, ind)
+		if sp == None:
+			addr = '[%% {}{} %%]'.format(offset, ind)
+		else:
+			offset = ' + {}'.format(sp - offset) if sp - offset > 0 else ''
+			addr = '[rsp{}{}]'.format(offset, ind)
 		
 		if usage == Usage.ADDR:
 			return addr
@@ -120,30 +118,15 @@ class StackTarget(Target):
 		else:
 			assert 0
 
-class MultiStackTarget(Target):
+class MultiStackTarget(StackTarget):
 	def __init__(self, fType, targets):
-		super().__init__(fType, Storage.STACK)
-		self.offset = targets[-1].offset
+		super().__init__(fType, targets[-1].offset)
 		self.targets = targets
 	
 	def setActive(self, set):
 		self.active = set
 		for t in self.targets:
 			t.setActive(set)
-	
-	def render(self, usage, fType, ind, sp):
-		if sp == None:
-			addr = '[%% {}{} %%]'.format(self.offset, ind if ind else '')
-		else:
-			addr = '[rsp + {}{}]'.format(sp - self.offset, ind if ind else '')
-		
-		if usage == Usage.ADDR:
-			return addr
-		elif usage in (Usage.SRC, Usage.DEST):
-			return '{} {}'.format(sizeInd(fType), addr)
-		else:
-			assert 0
-	
 
 class RegTarget(Target):
 	def __init__(self, calleeSaved, q, d, w, l, h=None):
@@ -168,7 +151,8 @@ class RegTarget(Target):
 			assert 0
 		
 		if usage == Usage.DEREF:
-			return '{} [{}{}]'.format(sizeInd(fType), s, ind if ind else '')
+			ind = '' if ind == None else ' + {}'.format(ind.value if ind.storage == Storage.IMM else ind.q)
+			return '{} [{}{}]'.format(sizeInd(fType), s, ind)
 		elif usage in (Usage.SRC, Usage.DEST):
 			return s
 		else:
@@ -182,11 +166,7 @@ class Operand:
 		self.ind = ind
 	
 	def render(self, sp):
-		ind = self.ind
-		if ind:
-			ind = ' + {}'.format(ind.value if ind.storage == Storage.IMM else ind.q)
-		
-		return self.target.render(self.usage, self.type, ind, sp)
+		return self.target.render(self.usage, self.type, self.ind, sp)
 
 class Instr:
 	def __init__(self, opcode, operands=[], isLabel=False, isComment=False):
@@ -233,9 +213,9 @@ class GeneratorState:
 		self.r14 = RegTarget( True, 'r14', 'r14d', 'r14w', 'r14b')
 		self.r15 = RegTarget( True, 'r15', 'r15d', 'r15w', 'r15b')
 		self.intRegs = [
-			self.rdi, self.rsi, self.rdx, self.rcx,  self.r8, 
-			self.rbx, self.rbp, self.r12, self.r13, self.r14, 
-			self.r15, self.r11, self.r10,  self.r9, self.rax
+			self.r11, self.r10, self.rdi, self.rsi, self.rdx, 
+			self.rcx,  self.r8, self.rbx, self.rbp, self.r12, 
+			self.r13, self.r14, self.r15,  self.r9, self.rax
 		]
 		self.intArgRegs = [
 			self.rdi, self.rsi, self.rdx, self.rcx, self.r8, 
@@ -998,7 +978,7 @@ def call(state, ir):
 		state.allocateStack(requiredStackSpace)
 		
 		for (i, src) in enumerate(stackArgs):
-			moveData(state, src, TopStackTarget(src.type, i * 8))
+			moveData(state, src, StackTarget(src.type, i * 8, fromTop=True))
 	
 	if ir.cVarArgs:
 		state.appendInstr('xor', 
