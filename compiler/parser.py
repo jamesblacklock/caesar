@@ -315,17 +315,12 @@ def parseStructDecl(state, doccomment, attrs, anon):
 	return StructDeclAST(doccomment, attrs, name, block.list, span)
 
 def parseCoercion(state, expr):
-	span = Span.merge(expr.span, state.tok.span)
-	state.advance() # skip `as`
-	onOneLine = permitLineBreakIndent(state) == False
-	state.skipSpace()
 	
 	typeRef = parseTypeRef(state)
+	if typeRef == None:
+		return None
 	
-	if not onOneLine:
-		state.popIndentLevel()
-	
-	return CoercionAST(expr, typeRef, Span.merge(span, typeRef.span))
+	return CoercionAST(expr, typeRef, Span.merge(expr.span, typeRef.span))
 
 class BlockMarkers(Enum):
 	PAREN = 'PAREN'
@@ -480,14 +475,18 @@ def parseBlock(state, parseItem, blockMarkers=BlockMarkers.BRACE,
 	
 	return Block(list, Span.merge(startSpan, endSpan), trailingSeparator)
 
-def parsePtrTypeRef(state, baseType):
-	span = baseType.span
+def parsePtrTypeRef(state):
+	span = state.tok.span
 	indirectionLevel = 0
 	while state.tok.type in (TokenType.AMP, TokenType.AND):
 		span = Span.merge(span, state.tok.span)
 		indirectionLevel += 1 if state.tok.type == TokenType.AMP else 2
 		state.advance()
 		state.skipSpace()
+	
+	baseType = parseTypeRef(state)
+	if baseType == None:
+		return None
 	
 	return PtrTypeRefAST(baseType, indirectionLevel, span)
 
@@ -517,16 +516,12 @@ def parseArrayTypeRef(state):
 		return None
 		
 	span = Span.merge(span, state.tok.span)
-	typeRef = ArrayTypeRefAST(baseType, count, span)
-	
 	state.advance()
-	state.skipSpace()
-	if state.tok.type in (TokenType.AMP, TokenType.AND):
-		typeRef = parsePtrTypeRef(state, typeRef)
-	
-	return typeRef
+	return ArrayTypeRefAST(baseType, count, span)
 
 def parseTypeRef(state):
+	if state.tok.type in (TokenType.AMP, TokenType.AND):
+		return parsePtrTypeRef(state)
 	if state.tok.type == TokenType.LBRACK:
 		return parseArrayTypeRef(state)
 	elif state.tok.type == TokenType.LPAREN:
@@ -538,13 +533,26 @@ def parseTypeRef(state):
 	path = parsePath(state)
 	span = path.span
 	
-	typeRef = NamedTypeRefAST(path.path, span)
+	return NamedTypeRefAST(path.path, span)
+
+def parseSimpleFnCall(state, expr):
+	span = expr.span
+	args = []
+	while state.tok.type in VALUE_EXPR_TOKS and state.tok.type != TokenType.NEWLINE:
+		arg = parseValueExpr(state, 0, True)
+		if arg == None:
+			state.skipSpace()
+			continue
+		args.append(arg)
+		span = Span.merge(span, arg.span)
+		
+		if state.tok.type in (TokenType.NEWLINE, TokenType.COMMA, TokenType.SEMICOLON):
+			break
+		
+		if state.skipSpace() == False:
+			logError(state, state.tok.span, 'expected space, found {}'.format(state.tok.type.desc()))
 	
-	state.skipSpace()
-	if state.tok.type in (TokenType.AMP, TokenType.AND):
-		typeRef = parsePtrTypeRef(state, typeRef)
-	
-	return typeRef
+	return FnCallAST(expr, args, span)
 
 def parseFnCall(state, expr):
 	block = parseBlock(state, parseValueExpr, BlockMarkers.PAREN, True)
@@ -650,6 +658,8 @@ VALUE_EXPR_TOKS = (
 	TokenType.FLOAT,
 	TokenType.PLUS,
 	TokenType.MINUS,
+	TokenType.AMP,
+	TokenType.AND,
 	TokenType.FALSE,
 	TokenType.TRUE,
 	TokenType.IF,
@@ -671,13 +681,14 @@ def parseDeref(state, expr):
 def parseAddress(state):
 	span = state.tok.span
 	state.advance()
-	state.skipSpace()
-	expr = parseValueExpr(state)
+	expr = parseValueExpr(state, UNARY_PRECEDENCE)
+	if expr == None:
+		return None
 	
 	if type(expr) == AddressAST:
 		logError(state, span, 'cannot take the address of an address')
 	
-	span = Span.merge(span, state.tok.span)
+	span = Span.merge(span, expr.span)
 	return AddressAST(expr, span)
 
 def parseIndex(state, expr):
@@ -700,7 +711,12 @@ def parseInfixOp(state, l, mustIndent, spaceAroundOp):
 	
 	offset = state.offset
 	state.advance()
-	spaceAroundOp = state.skipSpace() or spaceAroundOp
+	
+	errSpaceTok = None
+	if not spaceAroundOp and state.tok.type in (TokenType.COMMENT, TokenType.SPACE):
+		errSpaceTok = state.tok
+	
+	state.skipSpace()
 	
 	eol = False
 	
@@ -712,24 +728,33 @@ def parseInfixOp(state, l, mustIndent, spaceAroundOp):
 			state.skipEmptyLines()
 			if not isIndentIncrease(state):
 				isUnary = True
-		elif (not spaceAroundOp and state.tok.type == TokenType.LPAREN) \
+		elif (not spaceAroundOp and state.tok.type in (TokenType.LPAREN, TokenType.LBRACK)) \
 			or state.tok.type not in VALUE_EXPR_TOKS:
 			isUnary = True
 		
 		if isUnary:
 			state.rollback(offset)
-			# if op == TokenType.CARET:
 			return parseDeref(state, l)
-			# else:
-			# 	assert 0
+		elif errSpaceTok:
+			logError(state, errSpaceTok.span, 
+				'expected value expression, found {}'.format(errSpaceTok.type.desc()))
 	else:
+		offset = state.offset
 		eol = state.skipEmptyLines()
 	
 	if eol:
+		didIndent = False
 		if mustIndent or isIndentIncrease(state):
-			expectIndentIncrease(state)
+			didIndent = expectIndentIncrease(state)
 		else:
-			expectIndent(state)
+			didIndent = expectIndent(state)
+		
+		if not didIndent:
+			state.rollback(offset)
+			return l
+	
+	if op == TokenType.AS:
+		return parseCoercion(state, l)
 	
 	r = parseValueExpr(state, INFIX_PRECEDENCE[op])
 	if r == None:
@@ -810,7 +835,6 @@ def parseSign(state):
 	negate = state.tok.type == TokenType.MINUS
 	span = state.tok.span
 	state.advance()
-	state.skipSpace()
 	expr = None
 	
 	if state.tok.type == TokenType.INTEGER:
@@ -821,6 +845,8 @@ def parseSign(state):
 		state.advance()
 	else:
 		expr = parseValueExpr(state, UNARY_PRECEDENCE)
+		if expr == None:
+			return None
 		expr = SignAST(expr, negate, Span.merge(span, expr.span))
 	
 	return expr
@@ -872,10 +898,13 @@ def isStructLitStart(state):
 	state.rollback(offset)
 	return result
 
-def parseValueExpr(state, precedence=0):
+def parseValueExpr(state, precedence=0, noSkipSpace=False):
 	if state.tok.type == TokenType.NEWLINE:
 		block = parseBlock(state, parseFnBodyExpr)
-		expr = BlockAST(block)
+		if len(block.list) == 1 and isinstance(block.list[0], ValueExprAST):
+			expr = block.list[0]
+		else:
+			expr = BlockAST(block)
 	elif state.tok.type == TokenType.LBRACK:
 		block = parseBlock(state, parseValueExpr, requireBlockMarkers=True, blockMarkers=BlockMarkers.BRACK)
 		expr = ArrayLitAST(block.list, block.span)
@@ -932,22 +961,28 @@ def parseValueExpr(state, precedence=0):
 	indentsCount = len(state.indentLevels)
 	
 	while True:
-		spaceBeforeOp = state.skipSpace()
-		
 		if state.tok.type == TokenType.LBRACK:
 			expr = parseIndex(state, expr)
 		elif state.tok.type == TokenType.LPAREN:
 			expr = parseFnCall(state, expr)
-		elif state.tok.type == TokenType.AS:
-			expr = parseCoercion(state, expr)
 		elif state.tok.type == TokenType.DOT:
 			expr = parseFieldAccess(state, expr)
-		elif state.tok.type in INFIX_PRECEDENCE and INFIX_PRECEDENCE[state.tok.type] > precedence:
-			expr = parseInfixOp(state, expr, expr.span.startLine == expr.span.endLine, spaceBeforeOp)
-		elif state.tok.type == TokenType.CARET:
-			expr = parseDeref(state, expr)
 		else:
-			break
+			offset = state.offset
+			spaceBeforeOp = False if noSkipSpace else state.skipSpace()
+			if state.tok.type in INFIX_PRECEDENCE and INFIX_PRECEDENCE[state.tok.type] > precedence:
+				expr = parseInfixOp(state, expr, expr.span.startLine == expr.span.endLine, spaceBeforeOp)
+			elif state.tok.type == TokenType.CARET:
+				expr = parseDeref(state, expr)
+			elif type(expr) == ValueRefAST and state.tok.type != TokenType.NEWLINE and state.tok.type in VALUE_EXPR_TOKS:
+				expr = parseSimpleFnCall(state, expr)
+			else:
+				spaceBeforeOp = state.skipSpace()
+				if state.tok.type == TokenType.AS and INFIX_PRECEDENCE[state.tok.type] > precedence:
+					expr = parseInfixOp(state, expr, expr.span.startLine == expr.span.endLine, spaceBeforeOp)
+				else:
+					state.rollback(offset)
+					break
 	
 	while indentsCount < len(state.indentLevels):
 		state.popIndentLevel()
