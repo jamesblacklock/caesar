@@ -6,8 +6,9 @@ from .ir                               import Dup, Global, Imm, Static, Deref, D
                                               Extend, IExtend, Truncate, FExtend, FTruncate, IToF, \
                                               UToF, FToI, FToU, Ret, BrIf, Br, Swap, Pop, Raise, \
                                               Struct, Field, FieldW, DerefField, DerefFieldW, \
-                                              BlockMarker, Neg, Addr, I8, I16, I32, I64, IPTR, F32, F64
-from .ir                               import FundamentalType
+                                              BlockMarker, Neg, Addr, I8, I16, I32, I64, IPTR, F32, F64, \
+                                              FundamentalType
+from .types                            import U32_RNG, I32_RNG
 
 class Storage(Enum):
 	IMM = 'IMM'
@@ -389,7 +390,9 @@ class GeneratorState:
 def irToAsm(state, ir, nextIR):
 	# state.appendInstr(ir.pretty(state.fnIR), isComment=True, isLabel=(type(ir) == BlockMarker))
 	
-	if type(ir) in (Global, Static, Imm, Struct):
+	if type(ir) == Imm:
+		imm(state, ir)
+	elif type(ir) in (Global, Static, Struct):
 		state.pushIROperand(ir)
 	elif type(ir) == Pop:
 		state.popOperand()
@@ -640,6 +643,22 @@ def moveStruct(state, src, dest, srcDeref, destDeref, srcOffset, destOffset, typ
 	
 	dest.type = IPTR if destDeref else type
 
+def imm(state, ir):
+	if not ir.type.isFloatType and ir.value not in U32_RNG and ir.value not in I32_RNG:
+		# 64-bit immediates must be moved through a register
+		reg = state.findReg()
+		if reg == None:
+			stack = saveReg(state.rax)
+			state.moveOperand(state.rax, stack)
+			reg = state.rax
+		reg.type = I64
+		state.appendInstr('mov', 
+			Operand(reg, Usage.DEST, I64),
+			Operand(Target.fromIR(ir), Usage.SRC))
+		state.pushOperand(reg)
+	else:
+		state.pushIROperand(ir)
+
 def dup(state, ir):
 	src = state.getOperand(ir.offset)
 	
@@ -664,7 +683,8 @@ def addr(state, ir):
 	if src.storage != Storage.STACK:
 		newSrc = state.findTarget(src.type, True)
 		state.moveOperand(src, newSrc)
-		moveData(state, src, newSrc)
+		if src.storage != Storage.NONE:
+			moveData(state, src, newSrc)
 		src = newSrc
 	
 	src.fixed = True
@@ -1139,7 +1159,7 @@ def defineStatics(mod, output):
 			bytes = ','.join(str(b) for b in staticDef.bytes)
 			output.write('\t{}: db {}\n'.format(staticDef.label, bytes))
 	
-	for decl in (*mod.staticDecls, *mod.constDecls):
+	for decl in mod.staticDecls:
 		if decl.extern:
 			assert 0
 		

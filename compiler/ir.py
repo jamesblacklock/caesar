@@ -1,15 +1,12 @@
+import ctypes
 from io                       import StringIO
 from .ast                     import FnDeclAST, FnCallAST, ValueRefAST, StrLitAST, BlockAST, \
                                      IntLitAST, ReturnAST, LetAST, IfAST, InfixOpAST, InfixOp, \
                                      CoercionAST, BoolLitAST, WhileAST, AsgnAST, DerefAST, TupleLitAST, \
                                      IndexOpAST, VoidAST, AddressAST, FloatLitAST, BreakAST, ArrayLitAST, \
                                      ContinueAST, LoopAST, CharLitAST, StructLitAST, FieldAccessAST, \
-                                     ValueExprAST, FnParamAST, ModLevelDeclAST, SignAST, CMP_OPS
+                                     ValueExprAST, FnParamAST, ModLevelDeclAST, SignAST, ConstAST, CMP_OPS
 from .                        import types
-
-# def structBytes(structLit):
-# 	bytes = []
-# 	for field in structLit.resolvedType.fields:
 
 class FundamentalType:
 	def __init__(self, byteSize, isFloatType=False, isCompositeType=False):
@@ -778,10 +775,54 @@ def fnCallToIR(state, ast):
 
 def valueRefToIR(state, ast):
 	if isinstance(ast.symbol, ModLevelDeclAST):
-		state.appendInstr(Global(ast, IPTR, ast.symbol.mangledName))
-		if not ast.resolvedType.isFnType:
+		if type(ast.symbol) == ConstAST:
 			fType = FundamentalType.fromResolvedType(ast.resolvedType)
-			state.appendInstr(Deref(ast, fType))
+			if ast.resolvedType.isPrimitiveType:
+				if ast.resolvedType.isFloatType:
+					assert 0
+				value = int.from_bytes(bytes(ast.symbol.bytes), byteorder='little')
+				state.appendInstr(Imm(ast, fType, value))
+			else:
+				state.appendInstr(Struct(ast, fType))
+				offset = 0
+				b = ast.symbol.bytes
+				while len(b) >= 8:
+					value = \
+						(b[7] << 56) + (b[6] << 48) + (b[5] << 40) + (b[4] << 32) + \
+						(b[3] << 24) + (b[2] << 16) + (b[1] << 8) + b[0]
+					value = 0
+					for byte in reversed(b[:8]):
+						value <<= 8
+						value += byte
+					state.appendInstr(Imm(ast, I64, value))
+					state.appendInstr(Imm(ast, IPTR, offset))
+					state.appendInstr(FieldW(ast, 2))
+					b = b[8:]
+					offset += 8
+				if len(b) >= 4:
+					value = (b[3] << 24) + (b[2] << 16) + (b[1] << 8) + b[0]
+					state.appendInstr(Imm(ast, I32, value))
+					state.appendInstr(Imm(ast, IPTR, offset))
+					state.appendInstr(FieldW(ast, 2))
+					b = b[4:]
+					offset += 4
+				if len(b) >= 2:
+					value = (b[1] << 8) + b[0]
+					state.appendInstr(Imm(ast, I16, value))
+					state.appendInstr(Imm(ast, IPTR, offset))
+					state.appendInstr(FieldW(ast, 2))
+					b = b[2:]
+					offset += 2
+				if len(b) >= 1:
+					value = b[0]
+					state.appendInstr(Imm(ast, I8, value))
+					state.appendInstr(Imm(ast, IPTR, offset))
+					state.appendInstr(FieldW(ast, 2))
+		else:
+			state.appendInstr(Global(ast, IPTR, ast.symbol.mangledName))
+			if not ast.resolvedType.isFnType:
+				fType = FundamentalType.fromResolvedType(ast.resolvedType)
+				state.appendInstr(Deref(ast, fType))
 	else:
 		offset = state.localOffset(ast.symbol)
 		

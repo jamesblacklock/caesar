@@ -214,15 +214,19 @@ def analyzeArrayLit(state, arr, implicitType):
 	arr.resolvedType = types.ResolvedArrayType(resolvedElementType, count)
 
 def analyzeAddress(state, addr, implicitType):
-	analyzeValueExpr(state, addr.expr, implicitType)
+	if type(addr.expr) == ValueRefAST:
+		analyzeValueRef(state, addr.expr, noRef=True)
+	else:
+		analyzeValueExpr(state, addr.expr, implicitType)
+	
 	if addr.expr.resolvedType == None:
 		return
 	
 	baseType = addr.expr.resolvedType
 	indLevel = 1
 	if baseType.isPtrType:
+		indLevel = baseType.indirectionLevel + 1
 		baseType = baseType.baseType
-		indLevel = baseType.indLevel + 1
 	
 	addr.resolvedType = types.ResolvedPtrType(baseType, indLevel)
 
@@ -823,9 +827,6 @@ def analyzeStaticDecl(state, decl):
 		state.declSymbol(decl)
 
 def resolveStaticDecl(state, decl):
-	if not decl.resolvedSymbolType.isPrimitiveType:
-		assert 0
-	
 	decl.bytes = resolveConstExpr(state, decl.expr)
 
 def resolveConstExpr(state, expr, resolvedType=None):
@@ -844,6 +845,15 @@ def resolveConstExpr(state, expr, resolvedType=None):
 		else:
 			assert 0
 		return [b for b in bytes(t(expr.value))]
+	elif type(expr) == StructLitAST:
+		structBytes = [0 for _ in range(0, expr.resolvedType.byteSize)]
+		for f in expr.resolvedType.fields:
+			if f.name not in expr.fieldDict:
+				continue
+			fieldBytes = resolveConstExpr(state, expr.fieldDict[f.name].expr)
+			end = f.offset + len(fieldBytes)
+			structBytes[f.offset : end] = fieldBytes
+		return structBytes
 	elif type(expr) == CoercionAST:
 		return resolveConstExpr(state, expr.expr, resolvedType)
 	else:
@@ -1029,6 +1039,9 @@ def analyzeMod(state, mod):
 	for decl in mod.fnDecls:
 		invokeAttrs(state, decl)
 	
+	for decl in mod.structDecls:
+		analyzeStructDecl(state, decl)
+	
 	for decl in mod.fnDecls:
 		analyzeFnSig(state, decl)
 		mangleName(state, decl)
@@ -1036,12 +1049,12 @@ def analyzeMod(state, mod):
 	for decl in mod.modDecls:
 		analyzeMod(state, decl)
 	
-	for decl in mod.structDecls:
-		analyzeStructDecl(state, decl)
-	
-	for decl in (*mod.staticDecls, *mod.constDecls):
+	for decl in mod.staticDecls:
 		analyzeStaticDecl(state, decl)
 		mangleName(state, decl)
+	
+	for decl in mod.constDecls:
+		analyzeStaticDecl(state, decl)
 	
 	for decl in mod.fnDecls:
 		analyzeFnBody(state, decl)

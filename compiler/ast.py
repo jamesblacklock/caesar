@@ -3,6 +3,7 @@ from enum                import Enum
 from .token              import TokenType
 from .err                import logError
 
+# as
 # ->
 # << >>
 # * / %
@@ -14,30 +15,31 @@ from .err                import logError
 # ||
 
 INFIX_PRECEDENCE = {
-	TokenType.ARROW:     900, 
-	TokenType.LSHIFT:    800, 
-	TokenType.RSHIFT:    800, 
-	TokenType.TIMES:     700,
-	TokenType.DIV:       700,
-	TokenType.MODULO:    700, 
-	TokenType.PLUS:      600, 
-	TokenType.MINUS:     600,
-	TokenType.AMP:       500, 
-	TokenType.PIPE:      500, 
-	TokenType.CARET:     500, 
-	TokenType.ELLIPSIS:  400, 
-	TokenType.RNGOPEN:   400, 
-	TokenType.EQ:        300, 
-	TokenType.NEQ:       300, 
-	TokenType.GREATER:   300, 
-	TokenType.LESS:      300,
-	TokenType.GREATEREQ: 300, 
-	TokenType.LESSEQ:    300,
-	TokenType.AND:       200, 
-	TokenType.OR:        100,
+	TokenType.AS:        1000,
+	TokenType.ARROW:      900, 
+	TokenType.LSHIFT:     800, 
+	TokenType.RSHIFT:     800, 
+	TokenType.TIMES:      700,
+	TokenType.DIV:        700,
+	TokenType.MODULO:     700, 
+	TokenType.PLUS:       600, 
+	TokenType.MINUS:      600,
+	TokenType.AMP:        500, 
+	TokenType.PIPE:       500, 
+	TokenType.CARET:      500, 
+	TokenType.ELLIPSIS:   400, 
+	TokenType.RNGOPEN:    400, 
+	TokenType.EQ:         300, 
+	TokenType.NEQ:        300, 
+	TokenType.GREATER:    300, 
+	TokenType.LESS:       300,
+	TokenType.GREATEREQ:  300, 
+	TokenType.LESSEQ:     300,
+	TokenType.AND:        200, 
+	TokenType.OR:         100,
 }
 
-UNARY_PRECEDENCE = 1000
+UNARY_PRECEDENCE = 9000
 
 class InfixOp(Enum):
 	ARROW = 'ARROW'
@@ -127,7 +129,7 @@ class InfixOp(Enum):
 		elif type == TokenType.MINUS:
 			return InfixOp.MINUS
 		elif type == TokenType.AMP:
-			return InfixOp.AMP
+			return InfixOp.BITAND
 		elif type == TokenType.PIPE:
 			return InfixOp.BITOR
 		elif type == TokenType.CARET:
