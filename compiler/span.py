@@ -11,6 +11,8 @@ class Span:
 	
 	@staticmethod
 	def merge(span1, span2):
+		if span1 == None: return span2
+		if span2 == None: return span1
 		return Span(span1.source, span1.startLine, span1.startColumn, span2.endLine, span2.endColumn)
 	
 	@staticmethod

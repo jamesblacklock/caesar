@@ -6,3 +6,6 @@ def logError(state, span, message):
 
 def logWarning(state, span, message):
 	print(revealSpan(span, 'WARNING: ' + message, color=AnsiColor.GRAY))
+
+def logExplain(state, span, message):
+	print(revealSpan(span, message, color=AnsiColor.BLUE))
