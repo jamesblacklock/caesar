@@ -64,7 +64,13 @@ class TokenType(Enum):
 	CONST = 'CONST'
 	STATIC = 'STATIC'
 	MATCH = 'MATCH'
+	IMPORT = 'IMPORT'
+	IMPL = 'IMPL'
+	TRAIT = 'TRAIT'
+	UNSAFE = 'UNSAFE'
 	AS = 'AS'
+	SIZEOF = 'SIZEOF'
+	OFFSETOF = 'OFFSETOF'
 	VOID = 'VOID'
 	TRUE = 'TRUE'
 	FALSE = 'FALSE'
@@ -199,8 +205,20 @@ class TokenType(Enum):
 			return '`static`'
 		elif self == TokenType.MATCH:
 			return '`match`'
+		elif self == TokenType.IMPORT:
+			return '`import`'
+		elif self == TokenType.IMPL:
+			return '`impl`'
+		elif self == TokenType.TRAIT:
+			return '`trait`'
+		elif self == TokenType.UNSAFE:
+			return '`unsafe`'
 		elif self == TokenType.AS:
 			return '`as`'
+		elif self == TokenType.OFFSETOF:
+			return '`offsetof`'
+		elif self == TokenType.SIZEOF:
+			return '`sizeof`'
 		elif self == TokenType.VOID:
 			return '`void`'
 		elif self == TokenType.TRUE:

@@ -33,11 +33,11 @@
 			"patterns": [
 				{
 					"name": "keyword.control.caesar",
-					"match": "\\b(if|else|while|for|return|break|continue|loop)\\b"
+					"match": "\\b(if|else|while|for|return|break|continue|loop|match)\\b"
 				},
 				{
 					"name": "keyword.other.caesar",
-					"match": "\\b(let|mut|struct|as|fn|extern|const|static|mod)\\b"
+					"match": "\\b(let|mut|struct|union|as|is|fn|extern|const|static|mod|import|impl|trait|pub|enum|unsafe|sizeof|offsetof)\\b"
 				},
 				{
 					"name": "storage.type.built-in.primitive.caesar",

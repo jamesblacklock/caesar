@@ -1,12 +1,6 @@
 import ctypes
-from io                       import StringIO
-from .ast                     import FnDeclAST, FnCallAST, ValueRefAST, StrLitAST, BlockAST, \
-                                     IntLitAST, ReturnAST, LetAST, IfAST, InfixOpAST, InfixOp, \
-                                     CoercionAST, BoolLitAST, WhileAST, AsgnAST, DerefAST, TupleLitAST, \
-                                     IndexOpAST, VoidAST, AddressAST, FloatLitAST, BreakAST, ArrayLitAST, \
-                                     ContinueAST, LoopAST, CharLitAST, StructLitAST, FieldAccessAST, \
-                                     ValueExprAST, FnParamAST, ModLevelDeclAST, SignAST, ConstAST, CMP_OPS
-from .                        import types
+from io       import StringIO
+from .        import types
 
 class FundamentalType:
 	def __init__(self, byteSize, isFloatType=False, isCompositeType=False):
@@ -292,9 +286,9 @@ class Addr(Instr):
 		return 'addr {}'.format(self.offset)
 
 class Call(Instr):
-	def __init__(self, ast, argCt, retTypes, cVarArgs):
+	def __init__(self, ast, argCt, retType, cVarArgs):
 		super().__init__(ast)
-		self.retTypes = retTypes
+		self.retType = retType
 		self.argCt = argCt
 		self.cVarArgs = cVarArgs
 		
@@ -302,13 +296,13 @@ class Call(Instr):
 		for _ in range(0, self.argCt + 1):
 			state.popOperand()
 		
-		for t in self.retTypes:
-			state.pushOperand(t)
+		if self.retType:
+			state.pushOperand(self.retType)
 	
 	def __str__(self):
-		retTypes = ', '.join([str(t) for t in self.retTypes])
+		retType =  ' -> {}'.format(self.retType) if self.retType else ''
 		cVarArgs = '...' if self.cVarArgs else ''
-		return 'call({}{}) -> ({})'.format(self.argCt, cVarArgs, retTypes)
+		return 'call({}{}){}'.format(self.argCt, cVarArgs, retType)
 
 class Deref(Instr):
 	def __init__(self, ast, type):
@@ -385,6 +379,10 @@ class DerefFieldW(Instr):
 class Ret(Instr):
 	def __init__(self, ast):
 		super().__init__(ast)
+	
+	def affectStack(self, state):
+		if len(state.operandStack) > 0:
+			state.popOperand()
 		
 	def __str__(self):
 		return 'ret'
@@ -534,643 +532,6 @@ class Div(Instr):
 	def __str__(self):
 		return 'div'
 
-def letToIR(state, ast):
-	if ast.resolvedSymbolType.isVoidType:
-		if ast.expr:
-			exprToIR(state, ast.expr)
-		return
-	
-	if ast.expr:
-		exprToIR(state, ast.expr)
-		if ast.unused:
-			state.appendInstr(Pop(ast))
-		else:
-			state.nameTopOperand(ast)
-	# else:
-	# 	fType = FundamentalType.fromResolvedType(ast.resolvedSymbolType)
-	# 	state.appendInstr(Imm(ast, fType, 0))
-	# 	state.nameTopOperand(ast)
-
-def derefToIR(state, ast):
-	exprToIR(state, ast.expr)
-	for i in range(0, ast.derefCount):
-		if i+1 < ast.derefCount:
-			fType = IPTR
-		else:
-			fType = FundamentalType.fromResolvedType(ast.resolvedType)
-		
-		state.appendInstr(Deref(ast, fType))
-
-def signToIR(state, ast):
-	exprToIR(state, ast.expr)
-	if ast.negate:
-		if ast.resolvedType.isFloatType:
-			state.appendInstr(FNeg(ast))
-		else:
-			state.appendInstr(Neg(ast))
-
-def asgnToIR(state, ast):
-	if ast.lvalue.resolvedType.isVoidType:
-		exprToIR(state, ast.rvalue)
-		return
-	
-	if type(ast.lvalue) == DerefAST:
-		exprToIR(state, ast.lvalue.expr)
-		for _ in range(0, ast.lvalue.derefCount-1):
-			state.appendInstr(Deref(ast.lvalue, IPTR))
-		exprToIR(state, ast.rvalue)
-		state.appendInstr(DerefW(ast))
-	elif type(ast.lvalue) in (FieldAccessAST, IndexOpAST):
-		swap = False
-		deref = False
-		expr = ast.lvalue.expr
-		if type(expr) == DerefAST:
-			deref = True
-			expr = expr.expr
-		
-		if type(expr) != ValueRefAST:
-			swap = True
-			exprToIR(state, ast.lvalue)
-		
-		exprToIR(state, ast.rvalue)
-		
-		if type(ast.lvalue) == FieldAccessAST:
-			state.appendInstr(Imm(ast, IPTR, ast.lvalue.fieldOffset))
-		else:
-			exprToIR(state, ast.lvalue.index)
-		
-		if type(expr) == ValueRefAST:
-			stackOffset = state.localOffset(expr.symbol)
-		else:
-			stackOffset = 2
-		
-		if deref:
-			state.appendInstr(DerefFieldW(ast, stackOffset))
-		else:
-			state.appendInstr(FieldW(ast, stackOffset))
-		
-		if swap:
-			state.appendInstr(Swap(ast, stackOffset))
-	else:
-		exprToIR(state, ast.rvalue)
-		if ast.lvalue.symbol not in state.operandsBySymbol:
-			state.nameTopOperand(ast.lvalue.symbol)
-		else:
-			offset = state.localOffset(ast.lvalue.symbol)
-			if offset > 0:
-				state.appendInstr(Swap(ast, offset))
-
-def indexToIR(state, ast):
-	deref = False
-	swap = False
-	if type(ast.expr) == DerefAST:
-		deref = True
-		exprToIR(state, ast.expr.expr)
-		for _ in range(0, ast.expr.derefCount-1):
-			state.appendInstr(Deref(ast.expr, IPTR))
-		stackOffset = 1
-		swap = True
-	elif type(ast.expr) == ValueRefAST:
-		stackOffset = state.localOffset(ast.expr.symbol) + 1
-	else:
-		exprToIR(state, ast.expr)
-		stackOffset = 1
-		swap = True
-	
-	exprToIR(state, ast.index)
-	mul = types.getAlignedSize(ast.expr.resolvedType.baseType)
-	if mul > 1:
-		state.appendInstr(Imm(ast, IPTR, mul))
-		state.appendInstr(Mul(ast))
-	
-	fType = FundamentalType.fromResolvedType(ast.resolvedType)
-	if deref:
-		state.appendInstr(DerefField(ast, stackOffset, fType))
-	else:
-		state.appendInstr(Field(ast, stackOffset, fType))
-	
-	if swap:
-		state.appendInstr(Swap(ast, stackOffset))
-
-def boolLitToIR(state, ast):
-	state.appendInstr(Imm(ast, I8, 1 if ast.value else 0))
-
-def charLitToIR(state, ast):
-	state.appendInstr(Imm(ast, I32, ast.value))
-
-def intLitToIR(state, ast):
-	fType = FundamentalType.fromResolvedType(ast.resolvedType)
-	state.appendInstr(Imm(ast, fType, ast.value))
-
-# def floatLitToIR(scope, lit, fn, block):
-# 	state.regCt += 1
-	
-# 	type = FundamentalType.fromResolvedType(lit.resolvedType)
-# 	src = Target(Storage.IMM, type, lit.value)
-# 	dest = Target(Storage.LOCAL, type, state.regCt)
-	
-# 	block.append(Move(lit, src, dest, type))
-
-def initCompositeFields(state, lit, baseOffset):
-	if type(lit) == StructLitAST:
-		initStructFields(state, lit, baseOffset)
-		return
-	
-	for (init, fieldInfo) in zip(lit.values, lit.resolvedType.fields):
-		if init.resolvedType.isCompositeType:
-			initCompositeFields(state, init, baseOffset + fieldInfo.offset)
-			continue
-		
-		exprToIR(state, init)
-		state.appendInstr(Imm(init, IPTR, baseOffset + fieldInfo.offset))
-		state.appendInstr(FieldW(init, 2))
-
-def initStructFields(state, structLit, baseOffset):
-	fieldDict = structLit.resolvedType.fieldDict
-	for init in structLit.fields:
-		fieldInfo = fieldDict[init.name]
-		if init.expr.resolvedType.isCompositeType:
-			initCompositeFields(state, init.expr, baseOffset + fieldInfo.offset)
-			continue
-		
-		exprToIR(state, init.expr)
-		state.appendInstr(Imm(init, IPTR, baseOffset + fieldInfo.offset))
-		state.appendInstr(FieldW(init, 2))
-
-def structLitToIR(state, ast):
-	fType = FundamentalType.fromResolvedType(ast.resolvedType)
-	state.appendInstr(Struct(ast, fType))
-	initStructFields(state, ast, 0)
-
-def arrayLitToIR(state, ast):
-	fType = FundamentalType.fromResolvedType(ast.resolvedType)
-	state.appendInstr(Struct(ast, fType))
-	initCompositeFields(state, ast, 0)
-
-def tupleLitToIR(state, ast):
-	fType = FundamentalType.fromResolvedType(ast.resolvedType)
-	state.appendInstr(Struct(ast, fType))
-	initCompositeFields(state, ast, 0)
-
-def strLitToIR(state, ast):
-	label = '{}_str{}'.format(state.name, len(state.staticDefs))
-	state.staticDefs.append(StaticDef(label, ast.bytes))
-	state.appendInstr(Static(ast, IPTR, label))
-
-def fieldAccessToIR(state, ast):
-	state.appendInstr(Imm(ast, IPTR, ast.fieldOffset))
-	
-	swap = False
-	if type(ast.expr) == DerefAST:
-		deref = True
-		exprToIR(state, ast.expr.expr)
-		for _ in range(0, ast.expr.derefCount-1):
-			state.appendInstr(Deref(ast.expr, IPTR))
-		stackOffset = 1
-		swap = True
-	elif type(ast.expr) == ValueRefAST:
-		stackOffset = state.localOffset(ast.expr.symbol)
-	else:
-		exprToIR(state, ast.expr)
-		stackOffset = 1
-		swap = True
-	
-	fType = FundamentalType.fromResolvedType(ast.resolvedType)
-	state.appendInstr(Field(ast, stackOffset, fType))
-	
-	if swap:
-		state.appendInstr(Swap(ast, stackOffset))
-
-def fnCallToIR(state, ast):
-	normalArgs = ast.args
-	cVarArgs = []
-	if ast.expr.resolvedType.cVarArgs:
-		numParams = len(ast.expr.resolvedType.resolvedParamTypes)
-		normalArgs = ast.args[:numParams]
-		cVarArgs = ast.args[numParams:]
-	
-	for expr in normalArgs:
-		exprToIR(state, expr)
-	
-	for expr in cVarArgs:
-		exprToIR(state, expr)
-		if expr.resolvedType.isVoidType:
-			continue
-		
-		fType = FundamentalType.fromResolvedType(expr.resolvedType)
-		if fType.isFloatType:
-			assert 0
-		elif fType.byteSize < 4:
-			if expr.resolvedType.isSigned:
-				state.appendInstr(IExtend(ast, IPTR))
-			else:
-				state.appendInstr(Extend(ast, IPTR))
-	
-	exprToIR(state, ast.expr)
-	if ast.resolvedType.isVoidType:
-		retTypes = []
-	else:
-		retTypes = [FundamentalType.fromResolvedType(ast.resolvedType)]
-	state.appendInstr(Call(ast, len(ast.args), retTypes, ast.expr.resolvedType.cVarArgs))
-
-def valueRefToIR(state, ast):
-	if isinstance(ast.symbol, ModLevelDeclAST):
-		if type(ast.symbol) == ConstAST:
-			fType = FundamentalType.fromResolvedType(ast.resolvedType)
-			if ast.resolvedType.isPrimitiveType:
-				if ast.resolvedType.isFloatType:
-					assert 0
-				value = int.from_bytes(bytes(ast.symbol.bytes), byteorder='little')
-				state.appendInstr(Imm(ast, fType, value))
-			else:
-				state.appendInstr(Struct(ast, fType))
-				offset = 0
-				b = ast.symbol.bytes
-				while len(b) >= 8:
-					value = \
-						(b[7] << 56) + (b[6] << 48) + (b[5] << 40) + (b[4] << 32) + \
-						(b[3] << 24) + (b[2] << 16) + (b[1] << 8) + b[0]
-					value = 0
-					for byte in reversed(b[:8]):
-						value <<= 8
-						value += byte
-					state.appendInstr(Imm(ast, I64, value))
-					state.appendInstr(Imm(ast, IPTR, offset))
-					state.appendInstr(FieldW(ast, 2))
-					b = b[8:]
-					offset += 8
-				if len(b) >= 4:
-					value = (b[3] << 24) + (b[2] << 16) + (b[1] << 8) + b[0]
-					state.appendInstr(Imm(ast, I32, value))
-					state.appendInstr(Imm(ast, IPTR, offset))
-					state.appendInstr(FieldW(ast, 2))
-					b = b[4:]
-					offset += 4
-				if len(b) >= 2:
-					value = (b[1] << 8) + b[0]
-					state.appendInstr(Imm(ast, I16, value))
-					state.appendInstr(Imm(ast, IPTR, offset))
-					state.appendInstr(FieldW(ast, 2))
-					b = b[2:]
-					offset += 2
-				if len(b) >= 1:
-					value = b[0]
-					state.appendInstr(Imm(ast, I8, value))
-					state.appendInstr(Imm(ast, IPTR, offset))
-					state.appendInstr(FieldW(ast, 2))
-		else:
-			state.appendInstr(Global(ast, IPTR, ast.symbol.mangledName))
-			if not ast.resolvedType.isFnType:
-				fType = FundamentalType.fromResolvedType(ast.resolvedType)
-				state.appendInstr(Deref(ast, fType))
-	else:
-		offset = state.localOffset(ast.symbol)
-		
-		if ast.lastUse and not state.localIsLoopInput(ast.symbol):
-			if offset > 0:
-				state.appendInstr(Raise(ast, offset))
-			
-			if ast.resultUnused:
-				state.appendInstr(Pop(ast))
-			else:
-				state.nameTopOperand(None)
-		else:
-			if ast.lastUse:
-				assert ast.name not in state.loopInfo.lastUses
-				state.loopInfo.lastUses.add(ast.symbol)
-			
-			state.appendInstr(Dup(ast, offset))
-
-def addToIR(state, ast):
-	exprToIR(state, ast.l)
-	
-	if ast.l.resolvedType.isPtrType:
-		exprToIR(state, ast.r)
-		if ast.l.resolvedType.indirectionLevel == 1:
-			mul = ast.l.resolvedType.baseType.byteSize
-		else:
-			mul = IPTR.byteSize
-		state.appendInstr(Imm(ast, IPTR, mul))
-		state.appendInstr(Mul(ast))
-		state.appendInstr(Add(ast))
-	elif ast.r.resolvedType.isPtrType:
-		if ast.r.resolvedType.indirectionLevel == 1:
-			mul = ast.r.resolvedType.baseType.byteSize
-		else:
-			mul = IPTR.byteSize
-		state.appendInstr(Imm(ast, IPTR, mul))
-		state.appendInstr(Mul(ast))
-		exprToIR(state, ast.r)
-		state.appendInstr(Add(ast))
-	else:
-		exprToIR(state, ast.r)
-		state.appendInstr(Add(ast))
-
-def subToIR(state, ast):
-	exprToIR(state, ast.l)
-	
-	if ast.l.resolvedType.isPtrType:
-		exprToIR(state, ast.r)
-		if ast.l.resolvedType.indirectionLevel == 1:
-			mul = ast.l.resolvedType.baseType.byteSize
-		else:
-			mul = IPTR.byteSize
-		state.appendInstr(Imm(ast, IPTR, mul))
-		state.appendInstr(Mul(ast))
-		state.appendInstr(Sub(ast))
-	else:
-		exprToIR(state, ast.r)
-		state.appendInstr(Sub(ast))
-
-def mulToIR(state, ast):
-	exprToIR(state, ast.l)
-	exprToIR(state, ast.r)
-	state.appendInstr(Mul(ast))
-
-def divToIR(scope, ast):
-	exprToIR(state, ast.l)
-	exprToIR(state, ast.r)
-	state.appendInstr(Div(ast))
-
-def cmpToIR(state, ast):
-	exprToIR(state, ast.l)
-	exprToIR(state, ast.r)
-	
-	if ast.op == InfixOp.EQ:
-		instr = Eq(ast)
-	elif ast.op == InfixOp.NEQ:
-		instr = NEq(ast)
-	elif ast.op == InfixOp.GREATER:
-		instr = Greater(ast)
-	elif ast.op == InfixOp.LESS:
-		instr = Less(ast)
-	elif ast.op == InfixOp.GREATEREQ:
-		instr = GreaterEq(ast)
-	elif ast.op == InfixOp.LESSEQ:
-		instr = LessEq(ast)
-	else:
-		assert 0
-	
-	state.appendInstr(instr)
-
-def coercionToIR(state, ast):
-	exprToIR(state, ast.expr)
-	
-	if ast.typeRef.resolvedType.isVoidType:
-		return
-	
-	fromType = FundamentalType.fromResolvedType(ast.expr.resolvedType)
-	toType = FundamentalType.fromResolvedType(ast.typeRef.resolvedType)
-	
-	fromSigned = ast.expr.resolvedType.isSigned
-	toSigned = ast.typeRef.resolvedType.isSigned
-	
-	if fromType.byteSize == toType.byteSize and fromType.isFloatType == toType.isFloatType:
-		return
-	
-	instr = None
-	if fromType.isFloatType == False and toType.isFloatType == False:
-		if fromType.byteSize < toType.byteSize:
-			if toSigned:
-				instr = IExtend(ast, toType)
-			else:
-				instr = Extend(ast, toType)
-		else:
-			instr = Truncate(ast, toType)
-	elif fromType.isFloatType == True and toType.isFloatType == True:
-		if fromType.byteSize < toType.byteSize:
-			instr = FExtend(ast, toType)
-		else:
-			instr = FTruncate(ast, toType)
-	elif fromType.isFloatType == False:
-		if fromSigned:
-			instr = IToF(ast, toType)
-		else:
-			instr = UToF(ast, toType)
-	else:
-		if toSigned:
-			instr = FToI(ast, toType)
-		else:
-			instr = FToU(ast, toType)
-	
-	state.appendInstr(instr)
-
-def getInputInfo(state):
-	inputTypes = []
-	inputSymbols = []
-	for localInfo in state.operandStack:
-		inputTypes.append(localInfo.type)
-		inputSymbols.append(localInfo.symbol)
-	
-	return inputTypes, inputSymbols
-
-def beginBlock(state, ast, blockDef):
-	inputTypes, inputSymbols = getInputInfo(state)
-	
-	assert len(inputTypes) == len(blockDef.inputs)
-	for t, u in zip(inputTypes, blockDef.inputs):
-		assert t == u
-	
-	state.setupLocals(inputTypes, inputSymbols)
-	state.appendInstr(BlockMarker(ast, blockDef.index))
-
-def loopToIR(state, ast, hasTest=False):
-	inputTypes, inputSymbols = getInputInfo(state)
-	
-	continueBlock = state.defBlock(inputTypes, True)
-	if hasTest:
-		ifBlock = state.defBlock(inputTypes)
-	breakBlock = state.defBlock(inputTypes)
-	
-	state.appendInstr(Br(ast, continueBlock.index))
-	beginBlock(state, ast, continueBlock)
-	
-	state.pushLoopInfo(ast, continueBlock, breakBlock, inputSymbols)
-	
-	if hasTest:
-		exprToIR(state, ast.expr)
-		state.appendInstr(BrIf(ast, ifBlock.index, breakBlock.index))
-		state.appendInstr(BlockMarker(ast, ifBlock.index))
-	
-	blockToIR(state, ast.block)
-	lastType = type(state.instr[-1])
-	if lastType not in (Br, BrIf, Ret):
-		state.appendInstr(Br(ast, continueBlock.index))
-	
-	state.setupLocals(inputTypes, inputSymbols)
-	state.appendInstr(BlockMarker(ast, breakBlock.index))
-	for symbol in state.loopInfo.lastUses:
-		if len(state.loopInfoStack) > 1 and symbol in state.loopInfoStack[-2].inputSymbols:
-			state.loopInfoStack[-2].lastUses.add(symbol)
-		else:
-			dropSymbol(state, symbol)
-	
-	state.popLoopInfo()
-
-def whileToIR(state, ast):
-	loopToIR(state, ast, True)
-
-def ifToIR(state, ast):
-	exprToIR(state, ast.expr)
-	
-	inputTypes, inputSymbols = getInputInfo(state)
-	inputTypes, inputSymbols = inputTypes[:-1], inputSymbols[:-1]
-	
-	ifBlock = state.defBlock(inputTypes)
-	elseBlock = state.defBlock(inputTypes)
-	
-	state.appendInstr(BrIf(ast, ifBlock.index, elseBlock.index))
-	
-	beginBlock(state, ast.block, ifBlock)
-	blockToIR(state, ast.block)
-	
-	endIfBlock = None
-	lastType = type(state.instr[-1])
-	if lastType not in (Br, BrIf, Ret):
-		endInputTypes, endInputNames = getInputInfo(state)
-		endIfBlock = state.defBlock(endInputTypes)
-		state.appendInstr(Br(ast, endIfBlock.index))
-	
-	state.setupLocals(inputTypes, inputSymbols)
-	state.appendInstr(BlockMarker(ast.elseBlock, elseBlock.index))
-	blockToIR(state, ast.elseBlock)
-	
-	lastType = type(state.instr[-1])
-	if lastType not in (Br, BrIf, Ret):
-		if endIfBlock == None:
-			endInputTypes, endInputNames = getInputInfo(state)
-			endIfBlock = state.defBlock(endInputTypes)
-		state.appendInstr(Br(ast, endIfBlock.index))
-	
-	if endIfBlock != None:
-		assert not ast.doesReturn and not ast.doesBreak
-		state.setupLocals(endInputTypes, endInputNames)
-		beginBlock(state, ast, endIfBlock)
-
-def breakOrContinueToIR(state, ast, isBreak):
-	blockDef = state.loopInfo.breakBlock if isBreak else state.loopInfo.continueBlock
-	
-	for symbol in ast.dropSymbols:
-		if symbol not in state.operandsBySymbol:
-			continue
-		dropSymbol(state, symbol)
-	
-	state.appendInstr(Br(ast, blockDef.index))
-
-def breakToIR(state, ast):
-	breakOrContinueToIR(state, ast, True)
-
-def continueToIR(state, ast):
-	breakOrContinueToIR(state, ast, False)
-
-def returnToIR(state, ast):
-	if ast.expr != None:
-		exprToIR(state, ast.expr)
-	
-	state.appendInstr(Ret(ast))
-
-def addressToIR(state, ast):
-	offset = None
-	if type(ast.expr) != ValueRefAST or isinstance(ast.expr.symbol, ModLevelDeclAST):
-		exprToIR(state, ast.expr)
-		offset = 0
-	else:
-		offset = state.localOffset(ast.expr.symbol)
-	
-	state.appendInstr(Addr(ast, offset))
-
-def exprToIR(state, expr):
-	if type(expr) == VoidAST:
-		pass
-	elif type(expr) == BoolLitAST:
-		boolLitToIR(state, expr)
-	elif type(expr) == IntLitAST:
-		intLitToIR(state, expr)
-	# elif type(expr) == FloatLitAST:
-	# 	floatLitToIR(state, expr)
-	elif type(expr) == StrLitAST:
-		strLitToIR(state, expr)
-	elif type(expr) == CharLitAST:
-		charLitToIR(state, expr)
-	elif type(expr) == StructLitAST:
-		structLitToIR(state, expr)
-	elif type(expr) == TupleLitAST:
-		tupleLitToIR(state, expr)
-	elif type(expr) == ArrayLitAST:
-		arrayLitToIR(state, expr)
-	elif type(expr) == ValueRefAST:
-		valueRefToIR(state, expr)
-	elif type(expr) == FieldAccessAST:
-		fieldAccessToIR(state, expr)
-	elif type(expr) == SignAST:
-		signToIR(state, expr)
-	elif type(expr) == DerefAST:
-		derefToIR(state, expr)
-	elif type(expr) == AddressAST:
-		addressToIR(state, expr)
-	elif type(expr) == FnCallAST:
-		fnCallToIR(state, expr)
-	elif type(expr) == LetAST:
-		letToIR(state, expr)
-	elif type(expr) == ReturnAST:
-		returnToIR(state, expr)
-	elif type(expr) == BreakAST:
-		breakToIR(state, expr)
-	elif type(expr) == ContinueAST:
-		continueToIR(state, expr)
-	elif type(expr) == CoercionAST:
-		coercionToIR(state, expr)
-	elif type(expr) == IndexOpAST:
-		indexToIR(state, expr)
-	elif type(expr) == InfixOpAST:
-		if expr.op == InfixOp.PLUS:
-			addToIR(state, expr)
-		elif expr.op == InfixOp.MINUS:
-			subToIR(state, expr)
-		elif expr.op == InfixOp.TIMES:
-			mulToIR(state, expr)
-		elif expr.op == InfixOp.DIV:
-			divToIR(state, expr)
-		elif expr.op in CMP_OPS:
-			cmpToIR(state, expr)
-		else:
-			assert 0
-	elif type(expr) == AsgnAST:
-		asgnToIR(state, expr)
-	elif type(expr) == BlockAST:
-		blockToIR(state, expr)
-	elif type(expr) == IfAST:
-		ifToIR(state, expr)
-	elif type(expr) == LoopAST:
-		loopToIR(state, expr)
-	elif type(expr) == WhileAST:
-		whileToIR(state, expr)
-	else:
-		assert 0
-	
-	if isinstance(expr, ValueExprAST) and expr.resultUnused:
-		if expr.resolvedType.isVoidType:
-			pass
-		elif type(expr) in (ValueRefAST, IfAST, BlockAST):
-			pass
-		else:
-			state.appendInstr(Pop(expr))
-
-def dropSymbol(state, symbol):
-	offset = state.localOffset(symbol)
-	if offset > 0:
-		state.appendInstr(Raise(symbol, offset))
-	state.appendInstr(Pop(symbol))
-
-def blockToIR(state, block):
-	for symbol in block.dropSymbols:
-		dropSymbol(state, symbol)
-	
-	for expr in block.exprs:
-		exprToIR(state, expr)
-		if type(expr) in (BreakAST, ContinueAST, ReturnAST):
-			break
-
 class StaticDef:
 	def __init__(self, label, bytes):
 		self.label = label
@@ -1190,12 +551,13 @@ class OperandInfo:
 		self.symbol = symbol
 
 class LoopInfo:
-	def __init__(self, ast, continueBlock, breakBlock, inputSymbols):
+	def __init__(self, parent, ast, continueBlock, breakBlock, inputSymbols):
 		self.ast = ast
 		self.continueBlock = continueBlock
 		self.breakBlock = breakBlock
-		self.lastUses = set()
+		self.droppedSymbols = set()
 		self.inputSymbols = inputSymbols
+		self.parent = parent
 
 class IRState:
 	def __init__(self, fnDecl):
@@ -1203,10 +565,9 @@ class IRState:
 		self.name = fnDecl.mangledName
 		self.cVarArgs = fnDecl.cVarArgs
 		self.instr = []
-		self.loopInfoStack = []
 		self.loopInfo = None
 		self.staticDefs = []
-		self.retTypes = []
+		self.retType = None
 		self.paramTypes = []
 		self.blockDefs = []
 		self.operandStack = []
@@ -1214,34 +575,21 @@ class IRState:
 		
 		inputSymbols = []
 		for param in fnDecl.params:
-			if param.resolvedSymbolType.isVoidType:
+			if param.type.isVoidType:
 				continue
 			
-			fType = FundamentalType.fromResolvedType(param.resolvedSymbolType)
+			fType = FundamentalType.fromResolvedType(param.type)
 			inputSymbols.append(param)
 			self.paramTypes.append(fType)
 		
 		self.setupLocals(self.paramTypes, inputSymbols)
 		
-		print('{}({}) -> ({})'.format(self.name,
+		print('{}({}){}'.format(self.name,
 			', '.join([str(t) for t in self.paramTypes]),
-			', '.join([str(t) for t in self.retTypes])))
+			' -> {}'.format(self.retType) if self.retType else ''))
 		
-		for param in reversed(fnDecl.params):
-			if param.resolvedSymbolType.isVoidType:
-				continue
-			
-			if param.unused:
-				offset = self.localOffset(param)
-				if offset > 0:
-					self.appendInstr(Raise(param, offset))
-				self.appendInstr(Pop(param))
-		
-		if fnDecl.resolvedSymbolType.resolvedReturnType.isVoidType:
-			self.retTypes = []
-		else:
-			fType = FundamentalType.fromResolvedType(fnDecl.resolvedSymbolType.resolvedReturnType)
-			self.retTypes = [fType]
+		if not fnDecl.type.returnType.isVoidType:
+			self.retType = FundamentalType.fromResolvedType(fnDecl.type.returnType)
 	
 	def appendInstr(self, instr):
 		self.instr.append(instr)
@@ -1261,12 +609,10 @@ class IRState:
 		return blockDef
 	
 	def pushLoopInfo(self, ast, continueBlock, breakBlock, inputSymbols):
-		self.loopInfo = LoopInfo(ast, continueBlock, breakBlock, inputSymbols)
-		self.loopInfoStack.append(self.loopInfo)
+		self.loopInfo = LoopInfo(self.loopInfo, ast, continueBlock, breakBlock, inputSymbols)
 	
 	def popLoopInfo(self):
-		self.loopInfoStack.pop()
-		self.loopInfo = self.loopInfoStack[-1] if len(self.loopInfoStack) > 0 else None
+		self.loopInfo = self.loopInfo.parent
 	
 	def setupLocals(self, inputTypes, inputSymbols):
 		operandStack = []
@@ -1328,6 +674,32 @@ class IRState:
 		info = self.operandStack[index]
 		if info.symbol != None:
 			del self.operandsBySymbol[info.symbol]
+	
+	def initCompositeFields(self, lit, baseOffset):
+		if lit.type.isStructType:
+			self.initStructFields(lit, baseOffset)
+			return
+		
+		for (init, fieldInfo) in zip(lit.values, lit.type.fields):
+			if init.type.isCompositeType:
+				self.initCompositeFields(init, baseOffset + fieldInfo.offset)
+				continue
+			
+			init.writeIR(self)
+			self.appendInstr(Imm(init, IPTR, baseOffset + fieldInfo.offset))
+			self.appendInstr(FieldW(init, 2))
+
+	def initStructFields(self, structLit, baseOffset):
+		fieldDict = structLit.type.fieldDict
+		for init in structLit.fields:
+			fieldInfo = fieldDict[init.name]
+			if init.expr.type.isCompositeType:
+				self.initCompositeFields(init.expr, baseOffset + fieldInfo.offset)
+				continue
+			
+			init.expr.writeIR(self)
+			self.appendInstr(Imm(init, IPTR, baseOffset + fieldInfo.offset))
+			self.appendInstr(FieldW(init, 2))
 
 class FnIR:
 	def __init__(self, state):
@@ -1337,14 +709,14 @@ class FnIR:
 		self.staticDefs = state.staticDefs
 		self.blockDefs = state.blockDefs
 		self.paramTypes = state.paramTypes
-		self.retTypes = state.retTypes
+		self.retType = state.retType
 	
 	def __str__(self):
 		s = StringIO()
-		s.write('{}({}) -> ({})\n'.format(
+		s.write('{}({}){}\n'.format(
 			self.name,
 			', '.join([str(t) for t in self.paramTypes]),
-			', '.join([str(t) for t in self.retTypes])))
+			' -> {}'.format(self.retType) if self.retType else ''))
 		
 		for instr in self.instr:
 			indent = '' if type(instr) == BlockMarker else '    '
@@ -1352,9 +724,28 @@ class FnIR:
 		
 		return s.getvalue()
 
+def getInputInfo(state):
+	inputTypes = []
+	inputSymbols = []
+	for localInfo in state.operandStack:
+		inputTypes.append(localInfo.type)
+		inputSymbols.append(localInfo.symbol)
+	
+	return inputTypes, inputSymbols
+
+def beginBlock(state, ast, blockDef):
+	inputTypes, inputSymbols = getInputInfo(state)
+	
+	assert len(inputTypes) == len(blockDef.inputs)
+	for t, u in zip(inputTypes, blockDef.inputs):
+		assert t == u
+	
+	state.setupLocals(inputTypes, inputSymbols)
+	state.appendInstr(BlockMarker(ast, blockDef.index))
+
 def fnToIR(fnDecl):
 	state = IRState(fnDecl)
-	blockToIR(state, fnDecl.body)
+	fnDecl.body.writeIR(state)
 	
 	lastType = type(state.instr[-1])
 	assert lastType != Br and lastType != BrIf
@@ -1364,10 +755,10 @@ def fnToIR(fnDecl):
 	return FnIR(state)
 
 def generateIR(mod):
-	for decl in mod.modDecls:
+	for decl in mod.mods:
 		generateIR(decl)
 	
-	for decl in mod.fnDecls:
+	for decl in mod.fns:
 		if decl.extern:
 			continue
 		

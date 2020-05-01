@@ -2,7 +2,7 @@ import re
 from enum import Enum
 from .span import Span
 from .token import *
-from .err import logError
+from .log import logError
 
 class IndentMode(Enum):
 	SPACE = 'SPACE'
@@ -320,7 +320,13 @@ def lexNameOrKeyword(state):
 		('const', TokenType.CONST),
 		('static', TokenType.STATIC),
 		('match', TokenType.MATCH),
+		('import', TokenType.IMPORT),
+		('impl', TokenType.IMPL),
+		('trait', TokenType.TRAIT),
+		('unsafe', TokenType.UNSAFE),
 		('as', TokenType.AS),
+		('sizeof', TokenType.SIZEOF),
+		('offsetof', TokenType.OFFSETOF),
 		('void', TokenType.VOID),
 		('true', TokenType.TRUE),
 		('false', TokenType.FALSE)

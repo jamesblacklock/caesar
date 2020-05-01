@@ -1,17 +1,21 @@
 from enum import Enum
-from .ast import IntLitAST
+from .    import primitive
+from .ast import TypeModifiers
 
-class ResolvedType:
-	def __init__(self, name, byteSize, 
+PLATFORM_WORD_SIZE = 8
+
+class Type:
+	def __init__(self, name, byteSize, align, 
 		isFnType=False, isPtrType=False, isStructType=False, 
 		isIntType=False, isFloatType=False, isOptionType=False, 
-		isVoidType=False, isPrimitiveType=False, isSigned=False,
-		isArrayType=False, isTupleType=False, isCompositeType=False):
+		isPrimitiveType=False, isSigned=False, isArrayType=False,
+		isTupleType=False, isCompositeType=False):
 		self.name = name
 		self.byteSize = byteSize
+		self.align = align
 		self.isPrimitiveType = isPrimitiveType
-		self.isCopyable = isPrimitiveType or isFnType
-		self.isVoidType = isVoidType
+		self.isCopyable = isFnType or isPrimitiveType
+		self.isVoidType = byteSize == 0
 		self.isFnType = isFnType
 		self.isPtrType = isPtrType
 		self.isStructType = isStructType
@@ -22,46 +26,52 @@ class ResolvedType:
 		self.isArrayType = isArrayType
 		self.isTupleType = isTupleType
 		self.isCompositeType = isCompositeType
+		self.dropFn = None
 	
 	def __str__(self):
 		return self.name
 
-class ResolvedOptionType(ResolvedType):
-	def __init__(self, *resolvedTypes):
-		name = '|'.join([t.name for t in resolvedTypes])
-		byteSize = 0
-		for t in resolvedTypes:
-			if t.byteSize > byteSize:
-				byteSize = t.byteSize
-		
-		super().__init__(name, byteSize, isOptionType=True)
-		self.resolvedTypes = resolvedTypes
+class PrimitiveType(Type):
+	def __init__(self, name, byteSize, isIntType=False, 
+		isFloatType=False, isSigned=False):
+		super().__init__(name, byteSize, byteSize, 
+			isPrimitiveType=True, isIntType=isIntType, 
+			isFloatType=isFloatType, isSigned=isSigned)
 
-class ResolvedFnType(ResolvedType):
-	def __init__(self, resolvedParamTypes, cVarArgs, resolvedReturnType):
+class OptionType(Type):
+	def __init__(self, *types):
+		align = max(t.align for t in types)
+		name = '|'.join(t.name for t in types)
+		byteSize = max(t.byteSize for t in types)
+		super().__init__(name, byteSize, align, isOptionType=True)
+		self.types = types
+
+class FnType(Type):
+	def __init__(self, params, returnType, cVarArgs, cconv):
 		name = 'fn({}{}{}) -> {}'.format(
-			', '.join([t.name for t in resolvedParamTypes]), 
-			', ' if cVarArgs and len(resolvedParamTypes) > 0 else '',
+			', '.join([t.type.name for t in params]), 
+			', ' if cVarArgs and len(params) > 0 else '',
 			'...' if cVarArgs else '',
-			resolvedReturnType.name)
-		super().__init__(name, PLATFORM_WORD_SIZE, isFnType=True, isPtrType=True)
-		self.resolvedReturnType = resolvedReturnType
-		self.resolvedParamTypes = resolvedParamTypes
+			returnType.name)
+		super().__init__(name, PLATFORM_WORD_SIZE, PLATFORM_WORD_SIZE, 
+			isFnType=True, isPtrType=True)
+		self.returnType = returnType
+		self.returnTypeModifiers = TypeModifiers(False)
+		self.params = params
 		self.cVarArgs = cVarArgs
+		self.cconv = cconv
 
-class Field:
+class FieldInfo:
 	def __init__(self, name, symbolType, offset):
 		self.name = name
-		self.resolvedSymbolType = symbolType
+		self.type = symbolType
 		self.offset = offset
 
-class ResolvedStructType(ResolvedType):
+class StructType(Type):
 	def __init__(self, name, align, byteSize, fields):
-		super().__init__(name, byteSize, 
-			isStructType=True, isCompositeType=True, isVoidType=(byteSize == 0))
+		super().__init__(name, byteSize, align, 
+			isStructType=True, isCompositeType=True)
 		
-		self.align = align
-		self.byteSize = byteSize
 		self.fields = fields
 		self.fieldDict = {}
 		
@@ -69,14 +79,20 @@ class ResolvedStructType(ResolvedType):
 			for field in fields:
 				self.fieldDict[field.name] = field
 
-PLATFORM_WORD_SIZE = 8
-
-class ResolvedPtrType(ResolvedType):
-	def __init__(self, baseType, indirectionLevel):
-		name = baseType.name + ('&' * indirectionLevel)
-		super().__init__(name, PLATFORM_WORD_SIZE, isPtrType=True, isPrimitiveType=True)
+class PtrType(Type):
+	def __init__(self, baseType, indLevel):
+		name = ('&' * indLevel) + baseType.name
+		super().__init__(name, PLATFORM_WORD_SIZE, PLATFORM_WORD_SIZE, 
+			isPtrType=True, isPrimitiveType=True)
 		self.baseType = baseType
-		self.indirectionLevel = indirectionLevel
+		self.indLevel = indLevel
+	
+	def typeAfterDeref(self, count=1):
+		assert count > 0 and count <= self.indLevel
+		if count == self.indLevel:
+			return self.baseType
+		else:
+			return PtrType(self.baseType, self.indLevel - count)
 
 class ArrayFields:
 	def __init__(self, elementType, count):
@@ -86,66 +102,44 @@ class ArrayFields:
 	def __getitem__(self, index):
 		if index >= self.count:
 			raise IndexError()
-		return Field(None, self.elementType, index * getAlignedSize(self.elementType))
+		return FieldInfo(None, self.elementType, index * getAlignedSize(self.elementType))
 	
 	def __len__(self):
 		return self.count
 
-class ResolvedArrayType(ResolvedType):
+class ArrayType(Type):
 	def __init__(self, baseType, count):
 		name = '[{} * {}]'.format(baseType.name, count)
-		elementAlign = getAlignment(baseType)
 		byteSize = getAlignedSize(baseType) * count
-		super().__init__(name, byteSize, 
-			isArrayType=True, isCompositeType=True, isVoidType=(byteSize == 0))
+		super().__init__(name, byteSize, baseType.align, isArrayType=True, isCompositeType=True)
 		self.baseType = baseType
 		self.count = count
 		self.fields = ArrayFields(baseType, count)
-		self.align = elementAlign
 
-class ResolvedTupleType(ResolvedType):
+class TupleType(Type):
 	def __init__(self, align, byteSize, fields):
-		name = '({})'.format(', '.join(f.resolvedSymbolType.name for f in fields))
-		super().__init__(name, byteSize, 
-			isTupleType=True, isCompositeType=True, isVoidType=(byteSize == 0))
-		self.align = align
+		name = '({})'.format(', '.join(f.type.name for f in fields))
+		super().__init__(name, byteSize, align, isTupleType=True, isCompositeType=True)
 		self.fields = fields
 
-Void    = ResolvedType('void',    0, isVoidType=True)
-Bool    = ResolvedType('bool',    1, isPrimitiveType=True)
-Byte    = ResolvedType('byte',    1, isPrimitiveType=True)
-Int8    = ResolvedType('int8',    1, isPrimitiveType=True, isIntType=True, isSigned=True)
-UInt8   = ResolvedType('uint8',   1, isPrimitiveType=True, isIntType=True)
-Int16   = ResolvedType('int16',   2, isPrimitiveType=True, isIntType=True, isSigned=True)
-UInt16  = ResolvedType('uint16',  2, isPrimitiveType=True, isIntType=True)
-Int32   = ResolvedType('int',     4, isPrimitiveType=True, isIntType=True, isSigned=True)
-UInt32  = ResolvedType('uint',    4, isPrimitiveType=True, isIntType=True)
-Char    = ResolvedType('char',    4, isPrimitiveType=True)
-Int64   = ResolvedType('int64',   8, isPrimitiveType=True, isIntType=True, isSigned=True)
-UInt64  = ResolvedType('uint64',  8, isPrimitiveType=True, isIntType=True)
-ISize   = ResolvedType('isize',   PLATFORM_WORD_SIZE, isPrimitiveType=True, isIntType=True, isSigned=True)
-USize   = ResolvedType('usize',   PLATFORM_WORD_SIZE, isPrimitiveType=True, isIntType=True)
-Float32 = ResolvedType('float32', 4, isPrimitiveType=True, isFloatType=True, isSigned=True)
-Float64 = ResolvedType('float64', 8, isPrimitiveType=True, isFloatType=True, isSigned=True)
+SZ = PLATFORM_WORD_SIZE
 
-BUILTIN_TYPES = [
-	Void,
-	Bool,
-	Byte,
-	Int8,
-	UInt8,
-	Int16,
-	UInt16,
-	Int32,
-	UInt32,
-	Char,
-	Int64,
-	UInt64,
-	ISize,
-	USize,
-	Float32,
-	Float64
-]
+Void    = PrimitiveType('void',    0)
+Bool    = PrimitiveType('bool',    1)
+Byte    = PrimitiveType('byte',    1)
+Char    = PrimitiveType('char',    4)
+UInt8   = PrimitiveType('uint8',   1,   isIntType=True)
+UInt16  = PrimitiveType('uint16',  2,   isIntType=True)
+UInt32  = PrimitiveType('uint',    4,   isIntType=True)
+UInt64  = PrimitiveType('uint64',  8,   isIntType=True)
+USize   = PrimitiveType('usize',  SZ,   isIntType=True)
+Int8    = PrimitiveType('int8',    1,   isIntType=True, isSigned=True)
+Int16   = PrimitiveType('int16',   2,   isIntType=True, isSigned=True)
+Int32   = PrimitiveType('int',     4,   isIntType=True, isSigned=True)
+Int64   = PrimitiveType('int64',   8,   isIntType=True, isSigned=True)
+ISize   = PrimitiveType('isize',  SZ,   isIntType=True, isSigned=True)
+Float32 = PrimitiveType('float32', 4, isFloatType=True, isSigned=True)
+Float64 = PrimitiveType('float64', 8, isFloatType=True, isSigned=True)
 
 I8_MAX  = 127
 I16_MAX = 32767
@@ -193,26 +187,52 @@ def canAccommodate(type, intValue):
 	else:
 		assert 0
 
-def getValidAssignType(expectedType, foundType, allowVoidCercion=False):
+def typesMatch(type1, type2):
+	if type1 == type2:
+		return True
+	elif type1.isPtrType and type2.isPtrType and \
+		typesMatch(type1.baseType, type2.baseType) and \
+		type1.indLevel == type2.indLevel:
+		return True
+	elif type1.isOptionType and type2.isOptionType and \
+		len(type1.types) == len(type2.types):
+		for t in type1.types:
+			if t not in type2.types:
+				return False
+		return True
+	elif type1.isIntType and type2.isIntType and \
+		type1.byteSize == type2.byteSize and type1.isSigned == type2.isSigned:
+		return True
+	elif type1.isTupleType and type2.isTupleType and \
+		len(type1.fields) == len(type2.fields):
+		for (f1, f2) in zip(type1.fields, type2.fields):
+			if not typesMatch(f1.type, f2.type):
+				return False
+		return True
+	elif type1.isArrayType and type2.isArrayType and type1.count == type2.count and \
+		typesMatch(type1.baseType, type2.baseType):
+		return True
+	
+	return False
+
+def getValidAssignType(expectedType, foundType):
 	if expectedType is foundType:
 		return expectedType
 	elif expectedType == None:
 		return foundType
 	elif foundType == None:
 		return expectedType
-	elif expectedType == Void and allowVoidCercion:
-		return Void
 	elif expectedType.isPtrType and foundType.isPtrType and \
 		getValidAssignType(expectedType.baseType, foundType.baseType) != None and \
-		expectedType.indirectionLevel == foundType.indirectionLevel:
+		expectedType.indLevel == foundType.indLevel:
 		return expectedType
 	elif expectedType.isOptionType:
-		if foundType.isOptionType and len(expectedType.resolvedTypes) == len(foundType.resolvedTypes):
-			for t in expectedType.resolvedTypes:
-				if t not in foundType.resolvedTypes:
+		if foundType.isOptionType and len(expectedType.types) == len(foundType.types):
+			for t in expectedType.types:
+				if t not in foundType.types:
 					return None
 			return expectedType
-		elif foundType in expectedType.resolvedTypes:
+		elif foundType in expectedType.types:
 			return expectedType
 	elif expectedType.isIntType and foundType.isIntType and \
 		expectedType.byteSize == foundType.byteSize and expectedType.isSigned == foundType.isSigned:
@@ -238,7 +258,7 @@ def getValidStructAssignType(expectedType, foundType):
 		return None
 	
 	for (expected, found) in zip(expectedFields, foundFields):
-		if getValidAssignType(expected.resolvedSymbolType, found.resolvedSymbolType) == None:
+		if getValidAssignType(expected.type, found.type) == None:
 			return None
 		if expected.offset != found.offset:
 			return None
@@ -263,51 +283,53 @@ def getValidArrayAssignType(expectedType, foundType):
 def getValidTupleAssignType(expectedType, foundType):
 	if expectedType.byteSize != foundType.byteSize:
 		return None
-	if getAlignment(expectedType) != getAlignment(foundType):
+	if expectedType.align != foundType.align:
 		return None
 	
-	expectedFields = expectedType.fields if expectedType.isCompositeType else [Field(None, expectedType, 0)]
-	foundFields    =    foundType.fields if    foundType.isCompositeType else [Field(None,    foundType, 0)]
+	expectedFields = expectedType.fields if expectedType.isCompositeType else [FieldInfo(None, expectedType, 0)]
+	foundFields    =    foundType.fields if    foundType.isCompositeType else [FieldInfo(None,    foundType, 0)]
 	if len(expectedFields) != len(foundFields):
 		return None
 	
 	for (expected, found) in zip(expectedFields, foundFields):
-		if getValidAssignType(expected.resolvedSymbolType, found.resolvedSymbolType) == None:
+		if getValidAssignType(expected.type, found.type) == None:
 			return None
 		if expected.offset != found.offset:
 			return None
 	
 	return expectedType
 
+def canPromote(fromType, toType):
+	return (fromType and toType) and \
+		(fromType.isIntType and toType.isIntType or fromType.isFloatType and toType.isFloatType) and \
+		fromType.byteSize < toType.byteSize
+
 def canCoerce(fromType, toType):
-	if fromType and toType and fromType.isPrimitiveType and toType.isPrimitiveType:
+	fromIsInt = fromType.isIntType or fromType in (Bool, Byte, Char)
+	toIsInt = toType.isIntType or toType in (Bool, Byte, Char)
+	if toType == Void:
 		return True
-	elif toType == Void:
+	elif (fromType.isIntType or fromType.isFloatType) and \
+		(toType.isIntType or toType.isFloatType):
+		return True
+	elif (fromType.isIntType or fromType.isPtrType) and \
+		(toType.isIntType or toType.isPtrType):
+		return True
+	elif fromIsInt and toIsInt:
 		return True
 	else:
 		return False
 
 def hasDefiniteType(ast):
-	if type(ast) == IntLitAST and (ast.suffix == None) and \
+	if type(ast) == primitive.IntLit and (ast.suffix == None) and \
 		(ast.value >= I32_MIN or ast.value <= I64_MAX):
 		return False
 	
 	return True
 
-def getAlignment(t):
-	if t.isVoidType:
-		return 0
-	elif t.isPrimitiveType:
-		return t.byteSize
-	elif t.isStructType or t.isArrayType or t.isTupleType:
-		return t.align
-	else:
-		assert 0
-
 def getAlignedSize(t):
-	align = getAlignment(t)
 	byteSize = t.byteSize
-	if t.byteSize % align > 0:
-		byteSize += t.byteSize - t.byteSize % align
+	if t.byteSize % t.align > 0:
+		byteSize += t.byteSize - t.byteSize % t.align
 	
 	return byteSize

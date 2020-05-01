@@ -183,11 +183,11 @@ def main(args):
 			print(e)
 			exit(1)
 		
-		tokens = tokenize(source)
-		module = parse(source, tokens)
-		analyze(module)
-		generateIR(module)
-		asm = generateAsm(module)
+		tok = tokenize(source)
+		ast = parse(source, tok)
+		mod = analyze(ast)
+		generateIR(mod)
+		asm = generateAsm(mod)
 		
 		try:
 			outfile = open(asmFileNames[i], 'w')

@@ -1,4 +1,4 @@
-from re import findall
+from re   import findall
 from enum import Enum
 
 class Span:

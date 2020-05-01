@@ -9,6 +9,7 @@ from .ir                               import Dup, Global, Imm, Static, Deref, D
                                               BlockMarker, Neg, Addr, I8, I16, I32, I64, IPTR, F32, F64, \
                                               FundamentalType
 from .types                            import U32_RNG, I32_RNG
+# from .lowered                          import evaluateConstExpr
 
 class Storage(Enum):
 	IMM = 'IMM'
@@ -188,10 +189,16 @@ class Instr:
 		postfix = ':' if self.isLabel and not self.isComment else ''
 		return '{}{}{}{}'.format(indent, prefix, instrText, postfix)
 
+class GeneratorSettings:
+	def __init__(self):
+		self.omitFramePointer = True
+		self.stream = False
+
 class GeneratorState:
 	def __init__(self, fnIR):
-		self.fnIR = fnIR
+		self.settings = GeneratorSettings()
 		
+		self.fnIR = fnIR
 		self.blockDef = None
 		self.blockInputs = [None for _ in fnIR.blockDefs]
 		self.instr = []
@@ -225,6 +232,41 @@ class GeneratorState:
 		self.sp = 0
 		self.callStack = []
 		self.setupStackFrame()
+	
+	def generateAsm(self, output):
+		assert not (self.settings.stream and self.settings.omitFramePointer)
+		
+		output.write('\t{}:\n'.format(self.fnIR.name))
+		
+		# if not self.settings.omitFramePointer:
+		# 	output.write('\t\tpush rbp\n')
+		# 	output.write('\t\tmov rbp, rsp\n')
+		
+		irInstrs = self.fnIR.instr
+		if len(irInstrs) > 0:
+			ir = irInstrs[0]
+			for i in range(1, len(irInstrs)):
+				nextIR = irInstrs[i]
+				irToAsm(self, ir, nextIR)
+				ir = nextIR
+			irToAsm(self, ir, None)
+		
+		if True:#self.settings.omitFramePointer:
+			if self.sp % 16 == 0:
+				self.sp += 8
+			if self.sp > 0:
+				output.write('\t\tsub rsp, {}\n'.format(self.sp))
+		
+		for instr in self.instr:
+			output.write(instr.render(self.sp))
+			output.write('\n')
+		
+		output.write('\t{}__ret:\n'.format(self.fnIR.name))
+		
+		if self.sp > 0:
+			output.write('\t\tadd rsp, {}\n'.format(self.sp))
+		
+		output.write('\t\tret\n')
 	
 	def allocateStack(self, count=1):
 		targets = []
@@ -276,7 +318,7 @@ class GeneratorState:
 	def appendInstr(self, opcode, *operands, isLabel=False, isComment=False):
 		instr = Instr(opcode, operands, isLabel, isComment)
 		self.instr.append(instr)
-		# print(instr)
+		print(instr)
 	
 	def findReg(self, type=None, exclude=[]):
 		for reg in self.intRegs:
@@ -295,7 +337,7 @@ class GeneratorState:
 				return target
 		
 		offset = 0
-		count = max(1, type.byteSize // 8)
+		count = type.byteSize // 8
 		if type.byteSize % 8 != 0:
 			count += 1
 		
@@ -446,6 +488,9 @@ def irToAsm(state, ir, nextIR):
 		ret(state, ir)
 	else:
 		assert 0
+	
+	# state.appendInstr('[{}]'.format(', '.join(str(t.type) for t in state.operandStack)), 
+	# 	isComment=True, isLabel=(type(ir) == BlockMarker))
 
 class RestoreRegs:
 	pass
@@ -1010,11 +1055,8 @@ def call(state, ir):
 	for _ in range(0, ir.argCt + 1):
 		state.popOperand()
 	
-	if len(ir.retTypes) > 0:
-		if len(ir.retTypes) > 1:
-			assert 0
-		
-		state.rax.type = ir.retTypes[0]
+	if ir.retType:
+		state.rax.type = ir.retType
 		state.pushOperand(state.rax)
 
 def brOrBrIf(state, ir, nextIR, isBrIf):
@@ -1100,8 +1142,7 @@ def brIf(state, ir, nextIR):
 	brOrBrIf(state, ir, nextIR, True)
 	
 def ret(state, ir):
-	if len(state.fnIR.retTypes) > 0:
-		assert len(state.fnIR.retTypes) < 2
+	if state.fnIR.retType:
 		src = state.getOperand(0)
 		if src != state.rax:
 			state.rax.setActive(False)
@@ -1132,26 +1173,26 @@ def restoreReg(state, stack, reg):
 		Operand(stack, Usage.SRC))
 
 def delcareExterns(mod, output):	
-	for decl in mod.modDecls:
+	for decl in mod.mods:
 		delcareExterns(decl, output)
 	
-	for decl in mod.fnDecls:
+	for decl in mod.fns:
 		if decl.extern:
 			output.write('extern {}\n'.format(decl.mangledName))
 
 def declareFns(mod, output):
-	for decl in mod.modDecls:
+	for decl in mod.mods:
 		declareFns(decl, output)
 	
-	for decl in mod.fnDecls:
+	for decl in mod.fns:
 		if not decl.extern:
 			output.write('global {}\n'.format(decl.mangledName))
 
 def defineStatics(mod, output):
-	for decl in mod.modDecls:
+	for decl in mod.mods:
 		defineStatics(decl, output)
 	
-	for decl in mod.fnDecls:
+	for decl in mod.fns:
 		if decl.extern:
 			continue
 		
@@ -1159,48 +1200,24 @@ def defineStatics(mod, output):
 			bytes = ','.join(str(b) for b in staticDef.bytes)
 			output.write('\t{}: db {}\n'.format(staticDef.label, bytes))
 	
-	for decl in mod.staticDecls:
+	for decl in mod.statics:
 		if decl.extern:
 			assert 0
 		
-		bytes = ','.join(str(b) for b in decl.bytes)
+		bytes = ','.join(str(b) for b in evaluateConstExpr(decl.expr))
 		output.write('\t{}: db {}\n'.format(decl.mangledName, bytes))
 
 def defineFns(mod, output):
-	for decl in mod.modDecls:
+	for decl in mod.mods:
 		defineFns(decl, output)
 	
-	for decl in mod.fnDecls:
+	for decl in mod.fns:
 		if decl.extern:
 			continue
 		
-		output.write('\t{}:\n'.format(decl.ir.name))
-		
 		state = GeneratorState(decl.ir)
-		if len(decl.ir.instr) > 0:
-			ir = decl.ir.instr[0]
-			for i in range(1, len(decl.ir.instr)):
-				nextIR = decl.ir.instr[i]
-				irToAsm(state, ir, nextIR)
-				ir = nextIR
-			irToAsm(state, ir, None)
-		
-		stackSize = state.sp
-		if stackSize % 16 == 0:
-			stackSize += 8
-		if stackSize > 0:
-			output.write('\t\tsub rsp, {}\n'.format(stackSize))
-		
-		for instr in state.instr:
-			output.write(instr.render(stackSize))
-			output.write('\n')
-		
-		output.write('\t{}__ret:\n'.format(decl.ir.name))
-		
-		if stackSize > 0:
-			output.write('\t\tadd rsp, {}\n'.format(stackSize))
-		
-		output.write('\t\tret\n')
+		state.omitFramePointer = False
+		state.generateAsm(output)
 
 import sys
 
@@ -1209,7 +1226,7 @@ class OutputWriter:
 		self.output = StringIO()
 	
 	def write(self, s):
-		# sys.stdout.write(s)
+		sys.stdout.write(s)
 		self.output.write(s)
 	
 	def getvalue(self):
@@ -1220,7 +1237,7 @@ def generateAsm(mod):
 	
 	delcareExterns(mod, output)
 	
-	if mod.mainFnDecl != None:
+	if mod.mainFn:
 		output.write('\nglobal _start\n')
 	
 	declareFns(mod, output)
@@ -1230,10 +1247,10 @@ def generateAsm(mod):
 	
 	output.write('\nsection .text\n')
 	
-	if mod.mainFnDecl != None:
+	if mod.mainFn:
 		output.write('\t_start:\n')
 		output.write('\t\tsub rsp, 8\n')
-		output.write('\t\tcall {}\n'.format(mod.mainFnDecl.mangledName))
+		output.write('\t\tcall {}\n'.format(mod.mainFn.mangledName))
 		output.write('\t\tmov rax, 0x02000001\n')
 		output.write('\t\tmov rdi, 0\n')
 		output.write('\t\tsyscall\n')

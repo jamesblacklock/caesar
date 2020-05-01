@@ -1,0 +1,19 @@
+@ffi("C")
+extern unsafe fn malloc(size: usize) -> ~&mut void
+
+@ffi("C")
+extern unsafe fn free(p: ~&void)
+
+fn dropHasMem(self: HasMem)
+    if self.mem is &int
+        unsafe free(self.mem as &void)
+
+@drop(dropHasMem)
+struct HasMem
+    @alloc(malloc, free)
+    mem: ~&int?
+
+fn newHasMem() -> HasMem
+    let mem = unsafe malloc(int::sizeof) as &int
+    mem^ = 1
+    HasMem { mem }
