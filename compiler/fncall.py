@@ -1,6 +1,6 @@
 from .ast   import ValueExpr
 from .types import getValidAssignType
-from .ir    import FundamentalType, Call, IPTR
+from .ir    import FundamentalType, Call, IExtend, Extend, IPTR
 from .log   import logError
 
 class FnCall(ValueExpr):

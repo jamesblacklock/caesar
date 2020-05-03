@@ -1,9 +1,10 @@
-from enum       import Enum
-from .ast       import FnParam, StaticDecl
-from .drop      import DropSymbol
-from .log       import logError, logWarning, logExplain
-from .          import asgn as asgnmod, valueref, fndecl, constdecl, letdecl, field as fieldmod
-from .fncall    import FnCall
+from enum        import Enum
+from .ast        import FnParam, StaticDecl
+from .drop       import DropSymbol
+from .log        import logError, logWarning, logExplain
+from .           import asgn as asgnmod, valueref, fndecl, constdecl, letdecl, field as fieldmod
+from .fncall     import FnCall
+from .structdecl import StructDecl
 
 class ScopeType(Enum):
 	MOD = "MOD"
@@ -26,6 +27,7 @@ class FieldInfo:
 		info.moved = self.moved
 		info.maybeMoved = self.maybeMoved
 		info.maybeUninit = self.maybeUninit
+		return info
 
 # class UseInfo:
 # 	def __init__(self, loopExpr, isWrite):
@@ -42,7 +44,9 @@ class SymbolInfo:
 		self.maybeMoved = False
 		self.fieldInfo = {}
 		self.typeModifiers = symbol.typeModifiers.clone()
-		self.laterReturns = set()
+		self.returnsAfterMove = set()
+		self.returnsBeforeLastUse = set()
+		
 		
 		# def addFieldInfo(fields, expr):
 		# 	allInit = expr and type(expr) != StructLitAST
@@ -58,28 +62,32 @@ class SymbolInfo:
 		# 			addFieldInfo(field.resolvedSymbolType.fields, fieldExpr)
 		
 		if type(symbol) in (StaticDecl, FnParam):
-			self.uninit = False
+			self.typeModifiers.uninit = False
 			self.maybeUninit = False
 		elif type(symbol) == letdecl.LetDecl:
-			self.uninit = True
+			self.typeModifiers.uninit = True
 			self.maybeUninit = False
 			# if symbol.resolvedSymbolType.isCompositeType:
 			# 	addFieldInfo(symbol.resolvedSymbolType.fields, symbol.expr)
 		else:
 			assert 0
 	
+	@property
+	def uninit(self):
+		return self.typeModifiers.uninit
+	
 	def clone(self):
 		info = SymbolInfo(self.symbol)
 		info.wasDeclared = False
 		info.lastUses = self.lastUses
 		info.dropInBlock = self.dropInBlock
-		info.laterReturns = self.laterReturns
+		info.returnsAfterMove = self.returnsAfterMove
+		info.returnsBeforeLastUse = self.returnsBeforeLastUse
 		info.fieldInfo = { k: v.clone() for (k, v) in self.fieldInfo.items() }
 		info.moved = self.moved
 		info.maybeMoved = self.maybeMoved
-		info.uninit = self.uninit
 		info.maybeUninit = self.maybeUninit
-		
+		info.typeModifiers = self.typeModifiers.clone()
 		return info
 
 class Scope:
@@ -126,19 +134,22 @@ class Scope:
 					for block in info.dropInBlock:
 						self.dropSymbol(info.symbol, block)
 					for (lastUse, loopExpr) in info.lastUses.items():
-						if type(lastUse) in (asgnmod.Asgn, fieldmod.Field):
+						if type(lastUse) in (asgnmod.Asgn, fieldmod.Field, fieldmod.Index):
 							if loopExpr and loopExpr != self.loopExpr:
 								for loopBreak in loopExpr.breaks:
 									self.dropSymbol(info.symbol, loopBreak.block)
 							else:
 								self.dropSymbol(info.symbol, lastUse.dropBlock)
-						else:
+						elif type(lastUse) == valueref.ValueRef:
 							if loopExpr and loopExpr != self.loopExpr and info.symbol.type.isCopyable:
+								lastUse.copy = True
 								for loopBreak in loopExpr.breaks:
 									self.dropSymbol(info.symbol, loopBreak.block)
 							elif info.symbol.dropFn:
 								assert 0
 								# self.dropSymbol(info.symbol, lastUse.dropBlock)
+						else:
+							assert 0
 			else:
 				outerSymbolInfo[info.symbol] = info
 		
@@ -162,7 +173,7 @@ class Scope:
 						info1.moved = True
 						info1.maybeMoved = True
 					if info2.maybeUninit or info1.uninit != info2.uninit:
-						info.uninit = True
+						info.typeModifiers.uninit = True
 						info.maybeUninit = True
 				else:
 					if symbol in ifInfo:
@@ -184,7 +195,7 @@ class Scope:
 						info.moved = True
 						info.maybeMoved = True
 					if parentInfo.uninit != info.uninit:
-						info.uninit = True
+						info.typeModifiers.uninit = True
 						info.maybeUninit = True
 		
 		return outerSymbolInfo
@@ -197,11 +208,12 @@ class Scope:
 		scope = self.parent
 		while True:
 			for info in scope.symbolInfo.values():
-				if info.symbol == symbol or info.uninit:
-					if info.symbol.type and info.symbol.type.isCopyable:
-						info.laterReturns.add(ret)
-				else:
-					self.dropSymbol(info.symbol, ret.block)
+				if info.symbol == symbol:
+					continue
+				elif info.moved and info.symbol.type.isCopyable:
+					info.returnsAfterMove.add(ret)
+				elif not info.uninit:
+					info.returnsBeforeLastUse.add(ret)
 			
 			if scope.type == ScopeType.FN:
 				break
@@ -219,9 +231,13 @@ class Scope:
 	def readSymbol(self, expr):
 		ref = None
 		fieldAccess = None
+		isIndex = False
 		if type(expr) == fieldmod.Field:
 			fieldAccess = expr
 			ref = fieldAccess.expr
+		elif type(expr) == fieldmod.Index:
+			isIndex = True
+			ref = expr.expr
 		elif type(expr) == valueref.ValueRef:
 			ref = expr
 		else:
@@ -242,12 +258,12 @@ class Scope:
 				if type(lastUse) == valueref.ValueRef:
 					lastUse.copy = True
 			
-			for ret in info.laterReturns:
+			for ret in info.returnsAfterMove:
 				self.dropSymbol(info.symbol, ret.block)
 			
 			info.moved = False
 			info.maybeMoved = False
-			info.laterReturns = set()
+			info.returnsAfterMove = set()
 		elif info.moved:
 			maybeText = 'may have' if info.maybeMoved else 'has'
 			logError(self.state, ref.span, 'the value in `{}` {} been moved'.format(ref.name, maybeText))
@@ -276,14 +292,20 @@ class Scope:
 				logError(self.state, fieldSpan, 'the field `{}` {} been initialized'.format(field.name, maybeText))
 				return
 		
+		for ret in info.returnsBeforeLastUse:
+			self.dropSymbol(symbol, ret.block)
+		info.returnsBeforeLastUse = set()
+		
 		info.lastUses = { expr: self.loopExpr }
 		info.dropInBlock = set()
-		if fieldAccess:
+		if fieldInfo:
 			fieldInfo.moved = True#not fieldAccess.field.type.isCopyable
+		elif isIndex:
+			pass
 		else:
 			# ref.copy = symbol.type.isCopyable
 			info.moved = True#not ref.copy
-			info.uninit = True#info.moved
+			info.typeModifiers.uninit = True#info.moved
 	
 	def writeSymbol(self, asgn, field=None, typeModifiers=None):
 		ref = asgn.lvalue
@@ -310,17 +332,19 @@ class Scope:
 				# else:
 					# lastUse.copy = False
 		
+		for ret in info.returnsBeforeLastUse:
+			self.dropSymbol(symbol, ret.block)
+		info.returnsBeforeLastUse = set()
+		
 		info = self.symbolInfo[symbol]
 		info.lastUses = { asgn: self.loopExpr }
 		info.dropInBlock = set()
-		info.uninit = False
 		info.maybeUninit = False
 		info.moved = False
 		info.maybeMoved = False
 		if typeModifiers:
 			info.typeModifiers = typeModifiers.clone()
-		else:
-			info.typeModifiers.uninit = False
+		info.typeModifiers.uninit = False
 		# if field:
 		# 	info.fieldInfo[field].uninit = False
 	
@@ -368,18 +392,33 @@ class Scope:
 	
 	def lookupSymbol(self, name):
 		scope = self
+		symbol = None
 		while scope != None:
 			if name in scope.symbolTable:
 				symbol = scope.symbolTable[name]
-				if symbol not in self.symbolInfo:
-					if type(symbol) in (letdecl.LetDecl, FnParam):
-						self.symbolInfo[symbol] = scope.symbolInfo[symbol].clone()
-					elif type(symbol) == StaticDecl:
-						info = SymbolInfo(symbol)
-						info.wasDeclared = False
-						self.symbolInfo[symbol] = info
-				
-				return symbol
+				break
 			
 			scope = scope.parent
-		return None
+		
+		if symbol == None or symbol in self.symbolInfo:
+			return symbol
+		
+		scope = self.parent
+		info = None
+		while scope != None:
+			if symbol in scope.symbolInfo:
+				info = scope.symbolInfo[symbol].clone()
+				break
+			
+			scope = scope.parent
+		
+		if info == None and type(symbol) == StaticDecl:
+			info = SymbolInfo(symbol)
+			info.wasDeclared = False
+		elif type(symbol) in (letdecl.LetDecl, FnParam):
+			assert info
+		
+		if info:
+			self.symbolInfo[symbol] = info
+		
+		return symbol

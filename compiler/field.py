@@ -10,12 +10,39 @@ class Index(ValueExpr):
 		self.expr = expr
 		self.index = index
 		self.deref = False
+		self.write = False
+		self.lowered = False
+		self.dropBlock = None
 	
 	def lower(indexOp, state):
-		if type(indexOp.expr) == valueref.ValueRef:
+		if indexOp.lowered:
 			return indexOp
+		else:
+			indexOp.lowered = True
 		
-		if type(indexOp.expr) == deref.Deref:
+		exprs = []
+		
+		# if type(indexOp.expr) == valueref.ValueRef:
+		# 	temp = letdecl.LetDecl(None, None, False, None, indexOp.span, temp=True)
+			
+		# 	tempLValue = valueref.ValueRef(None, indexOp.span, temp=True)
+		# 	tempLValue.symbol = temp
+		# 	tempAsgn = asgn.Asgn(tempLValue, indexOp, indexOp.span, temp=True)
+		# 	tempAsgn.lowered = True
+			
+		# 	indexOp.dropBlock = block.Block(block.BlockInfo([], None))
+		# 	indexOp.dropBlock.lowered = True
+			
+		# 	tempRef = valueref.ValueRef(None, indexOp.span, temp=True)
+		# 	tempRef.symbol = temp
+			
+		# 	exprs = [temp, tempAsgn, indexOp.dropBlock, tempRef]
+		# 	return block.Block(block.BlockInfo(exprs, indexOp.span), scope.ScopeType.BLOCK)
+		# else:
+		
+		if type(indexOp.expr) == valueref.ValueRef:
+			pass
+		elif type(indexOp.expr) == deref.Deref:
 			indexOp.deref = True
 			tempRValue = None
 			if indexOp.expr.count > 1:
@@ -28,36 +55,45 @@ class Index(ValueExpr):
 				indexOp.expr = indexOp.expr.expr
 			
 			if tempRValue:
-				temp1 = letdecl.LetDecl(None, None, False, None, indexOp.span, temp=True)
+				temp = letdecl.LetDecl(None, None, False, None, indexOp.span, temp=True)
+				exprs.append(temp)
 				
-				temp1LValue = valueref.ValueRef(None, indexOp.span, temp=True)
-				temp1LValue.symbol = temp1
-				temp1Asgn = asgn.Asgn(temp1LValue, tempRValue, indexOp.span, temp=True)
-				temp1Asgn.lowered = True
-				temp1Asgn.dropBlock = block.Block(block.BlockInfo([], None))
-				temp1Asgn.dropBlock.lowered = True
-				
-				temp2 = letdecl.LetDecl(None, None, False, None, indexOp.span, temp=True)
+				tempLValue = valueref.ValueRef(None, indexOp.span, temp=True)
+				tempLValue.symbol = temp
+				tempAsgn = asgn.Asgn(tempLValue, tempRValue, indexOp.span, temp=True)
+				tempAsgn.lowered = True
+				exprs.append(tempAsgn)
 				
 				indexOp.expr = valueref.ValueRef(None, indexOp.span, temp=True)
-				indexOp.expr.symbol = temp1
-				temp2LValue = valueref.ValueRef(None, indexOp.span, temp=True)
-				temp2LValue.symbol = temp2
-				temp2Asgn = asgn.Asgn(temp2LValue, indexOp, indexOp.span, temp=True)
-				temp2Asgn.lowered = True
-				
-				temp2Ref = valueref.ValueRef(None, indexOp.span, temp=True)
-				temp2Ref.symbol = temp2
-				
-				exprs = [temp1, temp1Asgn, temp2, temp2Asgn, temp1Asgn.dropBlock, temp2Ref]
-				return block.Block(block.BlockInfo(exprs, indexOp.span))
-			else:
-				return indexOp
-		
-		if type(indexOp.expr) in (deref.Deref, Index):
-			assert 0
+				indexOp.expr.symbol = temp
 		else:
 			assert 0
+		
+		assert type(indexOp.expr) == valueref.ValueRef
+		
+		if indexOp.write:
+			exprs.append(indexOp)
+		else:
+			temp = letdecl.LetDecl(None, None, False, None, indexOp.span, temp=True)
+			exprs.append(temp)
+			
+			tempLValue = valueref.ValueRef(None, indexOp.span, temp=True)
+			tempLValue.symbol = temp
+			tempAsgn = asgn.Asgn(tempLValue, indexOp, indexOp.span, temp=True)
+			tempAsgn.lowered = True
+			exprs.append(tempAsgn)
+			
+			indexOp.dropBlock = block.Block(block.BlockInfo([], None))
+			indexOp.dropBlock.lowered = True
+			exprs.append(indexOp.dropBlock)
+			
+			tempRef = valueref.ValueRef(None, indexOp.span, temp=True)
+			tempRef.symbol = temp
+			exprs.append(tempRef)
+		
+		b = block.Block(block.BlockInfo(exprs, indexOp.span), scope.ScopeType.BLOCK)
+		b.lowered = True
+		return b
 
 	def analyze(expr, state, implicitType):
 		assert type(expr.expr) == valueref.ValueRef
@@ -78,6 +114,9 @@ class Index(ValueExpr):
 		
 		if expr.index.type and expr.index.type != USize:
 			logError(state, expr.index.span, 'index must be type usize (found {})'.format(expr.index.type))
+		
+		if not expr.write:
+			state.scope.readSymbol(expr)
 	
 	def writeIR(ast, state):
 		# swap = False

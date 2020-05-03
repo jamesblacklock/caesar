@@ -12,6 +12,7 @@ class Deref(ValueExpr):
 		super().__init__(span)
 		self.expr = expr
 		self.count = count
+		self.write = False
 	
 	def lower(deref, state):
 		if type(deref.expr) == valueref.ValueRef:

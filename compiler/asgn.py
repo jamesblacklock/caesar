@@ -11,6 +11,7 @@ from .log       import logError
 class Asgn(AST):
 	def __init__(self, lvalue, rvalue, span, temp=False):
 		super().__init__(span)
+		lvalue.write = True
 		self.lvalue = lvalue
 		self.rvalue = rvalue
 		self.block = None
@@ -20,8 +21,26 @@ class Asgn(AST):
 		self.temp = temp
 	
 	def lowerLValue(asgn, state):
+		asgn.dropBlock = block.Block(block.BlockInfo([], asgn.span))
+		asgn.dropBlock.lowered = True
+		
 		if type(asgn.lvalue) == valueref.ValueRef:
-			return
+			asgn.block = block.Block(block.BlockInfo([asgn], asgn.span))
+			asgn.block.lowered = True
+		elif type(asgn.lvalue) == Index:
+			asgn.block = asgn.lvalue.lower(state)
+			asgn.lvalue = asgn.block.exprs[-1]
+			asgn.block.exprs[-1] = asgn
+		else:
+			assert 0
+		
+		asgn.block.exprs.append(asgn.dropBlock)
+		return
+		
+		
+		
+		
+		
 		
 		tempRValue = None
 		if type(asgn.lvalue) == deref.Deref:
@@ -76,16 +95,12 @@ class Asgn(AST):
 	def lower(asgn, state):
 		if asgn.lowered:
 			return asgn
+		else:
+			asgn.lowered = True
 		
-		asgn.lowerLValue(state)
 		asgn.lowerRValue(state)
+		asgn.lowerLValue(state)
 		
-		asgn.dropBlock = block.Block(block.BlockInfo([], asgn.span))
-		asgn.dropBlock.lowered = True
-		asgn.block = block.Block(block.BlockInfo([asgn, asgn.dropBlock], asgn.span))
-		asgn.block.lowered = True
-		
-		asgn.lowered = True
 		return asgn.block
 	
 	def analyze(asgn, state, ignoredImplicitType):
@@ -95,7 +110,6 @@ class Asgn(AST):
 			implicitType = None
 		
 		asgn.rvalue = state.analyzeNode(asgn.rvalue, implicitType)#asgn.lvalue.symbol.type)
-		asgn.lvalue.write = True
 		asgn.lvalue = state.analyzeNode(asgn.lvalue)
 		
 		if type(asgn.lvalue) == Field and type(asgn.lvalue.expr) == valueref.ValueRef:

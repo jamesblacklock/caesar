@@ -902,13 +902,14 @@ def mulOrDiv(state, ir, isMul):
 	if isMul and src == state.rax:
 		dest, src = src, dest
 	
-	if src != state.rdx:
+	if src != state.rdx and state.rdx.active:
 		stack = saveReg(state, state.rdx)
 		state.moveOperand(state.rdx, stack)
 	
 	if dest != state.rax:
-		stack = saveReg(state, state.rax)
-		state.moveOperand(state.rax, stack)
+		if state.rax.active:
+			stack = saveReg(state, state.rax)
+			state.moveOperand(state.rax, stack)
 		state.rax.type = dest.type
 		state.appendInstr('mov', 
 			Operand(state.rax, Usage.DEST), 
