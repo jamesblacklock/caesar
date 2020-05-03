@@ -134,7 +134,8 @@ class Index(ValueExpr):
 		# 	swap = True
 		
 		ast.index.writeIR(state)
-		mul = types.getAlignedSize(ast.expr.type.baseType)
+		baseType = ast.expr.type.baseType.baseType if ast.deref else ast.expr.type.baseType
+		mul = types.getAlignedSize(baseType)
 		if mul > 1:
 			state.appendInstr(ir.Imm(ast, ir.IPTR, mul))
 			state.appendInstr(ir.Mul(ast))

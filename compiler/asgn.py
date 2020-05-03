@@ -151,8 +151,8 @@ class Asgn(AST):
 				state.loopInfo.droppedSymbols.discard(expr.lvalue.symbol)
 		elif type(expr.lvalue) == Index:
 			assert type(expr.lvalue.expr) == valueref.ValueRef
-			expr.lvalue.index.writeIR(state)
 			expr.rvalue.writeIR(state)
+			expr.lvalue.index.writeIR(state)
 			stackOffset = state.localOffset(expr.lvalue.expr.symbol)
 			if expr.lvalue.deref:
 				state.appendInstr(DerefFieldW(expr, stackOffset))
