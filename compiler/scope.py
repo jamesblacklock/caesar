@@ -143,8 +143,6 @@ class Scope:
 								for (br, otherLoopExpr) in info.breaksSinceLastUse.items():
 									if loopExpr == otherLoopExpr:
 										self.dropSymbol(info.symbol, br.block)
-								# for loopBreak in loopExpr.breaks:
-								# 	self.dropSymbol(info.symbol, loopBreak.block)
 							else:
 								self.dropSymbol(info.symbol, lastUse.dropBlock)
 						elif type(lastUse) == valueref.ValueRef:
@@ -153,11 +151,9 @@ class Scope:
 								for (br, otherLoopExpr) in info.breaksAfterMove.items():
 									if loopExpr == otherLoopExpr:
 										self.dropSymbol(info.symbol, br.block)
-								# for loopBreak in loopExpr.breaks:
-								# 	self.dropSymbol(info.symbol, loopBreak.block)
-							elif info.symbol.dropFn:
-								assert 0
-								# self.dropSymbol(info.symbol, lastUse.dropBlock)
+							elif info.symbol.dropFn and info.symbol.type.isCopyable:
+								lastUse.copy = True
+								self.dropSymbol(info.symbol, lastUse.dropBlock)
 						else:
 							assert 0
 			else:
@@ -373,6 +369,25 @@ class Scope:
 			logError(self.state, ref.span, 'assignment target is not mutable')
 			return
 		
+		if info.moved and symbol.type.isCopyable and symbol.dropFn:
+			for lastUse in info.lastUses:
+				if type(lastUse) == valueref.ValueRef:
+					lastUse.copy = True
+			
+			for ret in info.returnsAfterMove:
+				self.dropSymbol(info.symbol, ret.block)
+			info.returnsAfterMove = set()
+			
+			for (br, loopExpr) in info.breaksAfterMove.items():
+				if self.loopExpr == loopExpr:
+					self.dropSymbol(info.symbol, br.block)
+			info.breaksAfterMove = {}
+			
+			info.moved = False
+			info.maybeMoved = False
+			info.typeModifiers.uninit = False
+			info.maybeUninit = False
+		
 		if not info.uninit and symbol.dropFn:
 			self.dropSymbol(symbol, asgn.dropBeforeAssignBlock)
 		elif not info.uninit or info.maybeUninit:
@@ -407,35 +422,32 @@ class Scope:
 		# 	info.fieldInfo[field].uninit = False
 	
 	def dropSymbol(self, symbol, block, prepend=True):
-		# if symbol not in self.symbolInfo:
-		# 	scope = self.parent
-		# 	while True:
-		# 		if symbol in scope.symbolInfo:
-		# 			self.symbolInfo[symbol] = scope.symbolInfo[symbol].clone()
-		# 			break
-				
-		# 		scope = scope.parent
-		
 		valueWasMoved = False
 		exprs = []
 		if symbol.dropFn:
 			fnRef = valueref.ValueRef(None, None, name=symbol.dropFn.name)
 			fnRef.symbol = symbol.dropFn
+			fnRef.name = symbol.dropFn.name
+			fnRef.type = symbol.dropFn.type
 			args = []
 			if len(symbol.dropFn.params) > 0:
 				t = symbol.dropFn.params[0].type
 				ref = valueref.ValueRef(None, None, name=symbol.name)
 				ref.symbol = symbol
+				ref.name = symbol.name
+				ref.type = symbol.type
 				if t.isPtrType and typesMatch(t.baseType, symbol.type):
-					args.append(Address(ref, None))
+					ref = Address(ref, None)
+					ref.type = t
 				else:
-					args.append(ref)
 					valueWasMoved = True
+				args.append(ref)
 			fnCall = FnCall(fnRef, args, None)
 			fnCall.isDrop = True
-			fnCall = self.state.analyzeNode(fnCall)
-			if valueWasMoved:
-				ref.copy = False
+			# fnCall = self.state.analyzeNode(fnCall)
+			fnCall.type = fnRef.type.returnType
+			if not valueWasMoved:
+				ref.copy = True
 			exprs.append(fnCall)
 		
 		if not valueWasMoved:

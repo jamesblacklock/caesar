@@ -1,7 +1,5 @@
 from .ast      import ValueExpr, StaticDecl, FnParam
-from .         import fndecl
-from .         import letdecl
-from .         import constdecl
+from .         import fndecl, letdecl, constdecl, block, asgn
 from .coercion import Coercion
 from .types    import canPromote
 from .ir       import IPTR, Dup, Raise, Global, Deref
@@ -21,20 +19,61 @@ class ValueRef(ValueExpr):
 			self.name = self.nameTok.content
 		else:
 			self.name = '???'
+		self.dropBlock = None
+	
+	def lower(valueRef, state):
+		if valueRef.write or valueRef.dropBlock:
+			return valueRef
+		
+		if valueRef.symbol == None:
+			valueRef.symbol = state.lookupSymbol(valueRef)
+			if valueRef.symbol == None:
+				return valueRef
+		
+		if type(valueRef.symbol) != letdecl.LetDecl or not valueRef.symbol.dropFn:
+			return valueRef
+		
+		tempSymbol = letdecl.LetDecl(None, None, False, None, None, temp=True)
+		tempSymbol.type = valueRef.type
+		tempSymbol.lowered = True
+		
+		tempLValue = ValueRef(None, None, temp=True)
+		tempLValue.symbol = tempSymbol
+		tempAsgn = asgn.Asgn(tempLValue, valueRef, None, temp=True)
+		tempAsgn.lowered = True
+		
+		tempRef = ValueRef(None, None, temp=True)
+		tempRef.symbol = tempSymbol
+		
+		valueRef.dropBlock = block.Block(block.BlockInfo([], valueRef.span))
+		valueRef.dropBlock.lowered = True
+		
+		exprs = [
+			tempSymbol, 
+			tempAsgn, 
+			valueRef.dropBlock, 
+			tempRef
+		]
+		
+		return block.Block(block.BlockInfo(exprs, valueRef.span))
 	
 	def analyze(valueRef, state, implicitType):
 		if valueRef.symbol == None:
-			valueRef.symbol = state.lookupSymbol(valueRef)
-		if valueRef.symbol:
-			if valueRef.temp:
-				valueRef.name = valueRef.symbol.name
-			valueRef.symbol.unused = False
-			valueRef.type = valueRef.symbol.type
-			if valueRef.deref:
-				valueRef.type = valueRef.type.baseType
-			
-			if not (valueRef.write or valueRef.fieldAccess):
-				state.scope.readSymbol(valueRef)
+			if not valueRef.dropBlock:
+				valueRef.symbol = state.lookupSymbol(valueRef)
+			if valueRef.symbol == None:
+				return
+		
+		if valueRef.temp:
+			valueRef.name = valueRef.symbol.name
+		
+		valueRef.symbol.unused = False
+		valueRef.type = valueRef.symbol.type
+		if valueRef.deref:
+			valueRef.type = valueRef.type.baseType
+		
+		if not (valueRef.write or valueRef.fieldAccess):
+			state.scope.readSymbol(valueRef)
 		
 		if implicitType and canPromote(valueRef.type, implicitType):
 			coercion = Coercion(valueRef, None, valueRef.span)
