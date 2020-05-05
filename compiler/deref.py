@@ -15,22 +15,61 @@ class Deref(ValueExpr):
 		self.write = False
 	
 	def lower(deref, state):
-		if type(deref.expr) == valueref.ValueRef:
+		if type(deref.expr) == valueref.ValueRef and not deref.write:
 			return deref
 		
-		tempSymbol = letdecl.LetDecl(None, None, False, None, deref.span, temp=True)
+		exprs = []
+		# ref = None
+		# if deref.write and type(deref.expr) == valueref.ValueRef:
+		# 	ref = deref.expr
+		# 	ref.write = True
+		# 	ref.deref = True
 		
-		tempLValue = valueref.ValueRef(None, deref.span, temp=True)
-		tempLValue.symbol = tempSymbol
-		tempAsgn = asgn.Asgn(tempLValue, deref.expr, deref.span, temp=True)
-		tempAsgn.lowered = True
-		tempAsgn.dropBlock = block.Block(block.BlockInfo([], None))
-		tempAsgn.dropBlock.lowered = True
+		ref = None
+		if type(deref.expr) != valueref.ValueRef:
+			tempSymbol = letdecl.LetDecl(None, None, False, None, deref.span, temp=True)
+			tempLValue = valueref.ValueRef(None, deref.span, temp=True)
+			tempLValue.symbol = tempSymbol
+			tempAsgn = asgn.Asgn(tempLValue, deref.expr, deref.span, temp=True)
+			tempAsgn.lowered = True
+			tempAsgn.dropBlock = block.Block(block.BlockInfo([], None))
+			tempAsgn.dropBlock.lowered = True
+			
+			exprs.append(tempSymbol)
+			exprs.append(tempAsgn)
 		
-		deref.expr = valueref.ValueRef(None, deref.span, temp=True)
-		deref.expr.symbol = tempSymbol
+			deref.expr = valueref.ValueRef(None, deref.span, temp=True)
+			deref.expr.symbol = tempSymbol
 		
-		return block.Block(block.BlockInfo([tempSymbol, tempAsgn, deref], None), ScopeType.BLOCK)
+		if deref.write:
+			deref.count -= 1
+			if deref.count == 0:
+				deref.expr.write = True
+				deref.expr.deref = True
+				exprs.append(deref.expr)
+			else:
+				tempSymbol = letdecl.LetDecl(None, None, False, None, deref.span, temp=True)
+				tempLValue = valueref.ValueRef(None, deref.span, temp=True)
+				tempLValue.symbol = tempSymbol
+				tempAsgn = asgn.Asgn(tempLValue, deref, deref.span, temp=True)
+				tempAsgn.lowered = True
+				tempAsgn.dropBlock = block.Block(block.BlockInfo([], None))
+				tempAsgn.dropBlock.lowered = True
+				
+				exprs.append(tempSymbol)
+				exprs.append(tempAsgn)
+				
+				ref = valueref.ValueRef(None, deref.span, temp=True)
+				ref.symbol = tempSymbol
+				ref.write = True
+				ref.deref = True
+				exprs.append(ref)
+		else:
+			exprs.append(deref)
+		
+		b = block.Block(block.BlockInfo(exprs, None))#, ScopeType.BLOCK)
+		b.lowered = True
+		return b
 	
 	def analyze(deref, state, implicitType):
 		deref.expr = state.analyzeNode(deref.expr)

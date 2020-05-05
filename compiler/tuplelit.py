@@ -11,7 +11,7 @@ class TupleLit(ValueExpr):
 		implicitTypes = [None for _ in tup.values]
 		if implicitType and implicitType.isCompositeType:
 			for i in range(0, min(len(implicitType.fields), len(tup.values))):
-				implicitTypes[i] = implicitType.fields[i].resolvedSymbolType
+				implicitTypes[i] = implicitType.fields[i].type
 		
 		resolvedTypes = []
 		for (i, (expr, t)) in enumerate(zip(tup.values, implicitTypes)):
@@ -47,7 +47,7 @@ class ArrayLit(ValueExpr):
 		implicitElementType = Void
 		count = 0
 		if implicitType and implicitType.isCompositeType and len(implicitType.fields) > 0:
-			implicitElementType = implicitType.fields[0].resolvedSymbolType
+			implicitElementType = implicitType.fields[0].type
 			count = len(implicitType.fields)
 		
 		resolvedElementType = implicitElementType

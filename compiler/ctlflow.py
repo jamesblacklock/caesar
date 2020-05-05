@@ -1,8 +1,9 @@
 from .ast   import AST
 from .types import getValidAssignType, Void
 from .block import Block, BlockInfo
+from .      import valueref, letdecl, asgn
 from .scope import ScopeType
-from .ir    import Ret, Br
+from .ir    import Ret, Br, Raise
 from .log   import logError
 
 class LoopCtlFlow(AST):
@@ -11,37 +12,46 @@ class LoopCtlFlow(AST):
 		self.dropSymbols = []
 		self.block = None
 	
-	def analyze(expr, state, implicitType):
+	def analyze(expr, state, implicitType, isContinue=False):
+		expr.block = Block(BlockInfo([expr], expr.span))
+		expr.block.type = Void
+		
 		if state.scope.loopDepth == 0:
 			logError(state, expr.span, '`{}` expression is not inside a loop'
 				.format('break' if type(expr) == Break else 'continue'))
-		
-		symbolInfo = state.scope.symbolInfo
-		scope = state.scope
-		while True:
-			if scope.type == ScopeType.LOOP:
-				scope.loopExpr.breaks.append(expr)
-				break
-			
-			for symbol in scope.symbolTable.values():
-				if not symbolInfo[symbol].uninit:
-					expr.dropSymbols.append(symbol)
-			
-			scope = scope.parent
-		
-		expr.block = Block(BlockInfo([expr], expr.span))
-		expr.block.type = Void
+		else:
+			state.scope.doBreak(expr, isContinue)
 	
-	def writeIR(ast, state, isBreak=False):
-		blockDef = state.loopInfo.breakBlock if isBreak else state.loopInfo.continueBlock
+	def writeIR(ast, state, isContinue=False):
+		if isContinue:
+			for symbol in state.loopInfo.inputSymbols:
+				offset = state.localOffset(symbol)
+				if offset > 0:
+					state.appendInstr(Raise(ast, offset))
+		
+		blockDef = state.loopInfo.continueBlock if isContinue else state.loopInfo.breakBlock
 		state.appendInstr(Br(ast, blockDef.index))
 
 class Break(LoopCtlFlow):
 	def __init__(self, span):
 		super().__init__(span)
 	
-	def writeIR(ast, state):
-		super().writeIR(state, True)
+	# def analyze(expr, state, implicitType):
+		# super().analyze(state, implicitType)
+		
+		# symbolInfo = state.scope.symbolInfo
+		# scope = state.scope
+		# while True:
+		# 	if scope.type == ScopeType.LOOP:
+		# 		scope.loopExpr.breaks.append(expr)
+		# 		break
+			
+		# 	for symbol in scope.symbolTable.values():
+		# 		state.scope.loadSymbolInfo(symbol)
+		# 		if not symbolInfo[symbol].uninit:
+		# 			expr.dropSymbols.append(symbol)
+			
+		# 	scope = scope.parent
 	
 	def pretty(self, output, indent=0):
 		output.write('break', indent)
@@ -49,6 +59,12 @@ class Break(LoopCtlFlow):
 class Continue(LoopCtlFlow):
 	def __init__(self, span):
 		super().__init__(span)
+	
+	def analyze(expr, state, implicitType):
+		super().analyze(state, implicitType, True)
+	
+	def writeIR(ast, state):
+		super().writeIR(state, True)
 	
 	def pretty(self, output, indent=0):
 		output.write('continue', indent)
@@ -64,16 +80,16 @@ class Return(AST):
 		if ret.block:
 			return ret
 		
-		if ret.expr and type(ret.expr) != LetDecl:
+		if ret.expr and type(ret.expr) != valueref.ValueRef:
 			tempSymbol = letdecl.LetDecl(None, None, False, None, None, temp=True)
 			# tempSymbol.type = state.scope.fnDecl.returnType
 			
 			tempLValue = valueref.ValueRef(None, None, temp=True)
 			tempLValue.symbol = tempSymbol
-			tempAsgn = Asgn(tempLValue, ret.expr, ret.expr.span, temp=True)
+			tempAsgn = asgn.Asgn(tempLValue, ret.expr, ret.expr.span, temp=True)
 			tempAsgn.lowered = True
 			
-			ret.expr = valueref.ValueRef(None, None, temp=True)
+			ret.expr = valueref.ValueRef(None, ret.expr.span, temp=True)
 			ret.expr.symbol = tempSymbol
 			
 			ret.block = Block(BlockInfo([tempSymbol, tempAsgn, ret], ret.span))
@@ -82,7 +98,7 @@ class Return(AST):
 		
 		ret.block.type = Void
 		ret.block.lowered = True
-		return ret
+		return ret.block
 	
 	def analyze(ret, state, implicitType):
 		returnType = Void
@@ -101,23 +117,6 @@ class Return(AST):
 			span = ret.expr.span if ret.expr else ret.span
 			logError(state, span, 'invalid return type (expected {}, found {})'
 				.format(state.scope.fnDecl.returnType, foundType))
-		
-		# symbolInfo = state.scope.symbolInfo
-		# if state.scope.type != ScopeType.FN:
-		# 	scope = state.scope.parent
-		# 	while True:
-		# 		for symbol in scope.symbolTable.values():
-		# 			infoScope = state.scope
-		# 			while symbol not in infoScope.symbolInfo:
-		# 				infoScope = infoScope.parent
-		# 			if not infoScope.symbolInfo[symbol].uninit:
-		# 				ret.dropSymbols.append(symbol)
-				
-		# 		if scope.type == ScopeType.FN:
-		# 			scope.fnDecl.returns.append(ret)
-		# 			break
-				
-		# 		scope = scope.parent
 		
 		state.scope.doReturn(ret.expr.symbol if ret.expr else None, ret)
 	

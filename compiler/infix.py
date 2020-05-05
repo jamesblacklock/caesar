@@ -198,15 +198,15 @@ class InfixOp(ValueExpr):
 			return
 		
 		if infixOp.l.type == Bool and infixOp.r.type == Bool:
-			if infixOp.op == InfixOp.EQ:
+			if infixOp.op == InfixOps.EQ:
 				infixOp.type = Bool
 				return
 		elif infixOp.l.type == Byte and infixOp.r.type == Byte:
-			if infixOp.op == InfixOp.EQ:
+			if infixOp.op == InfixOps.EQ:
 				infixOp.type = Bool
 				return
 		elif infixOp.l.type == Char and infixOp.r.type == Char:
-			if infixOp.op == InfixOp.EQ:
+			if infixOp.op == InfixOps.EQ:
 				infixOp.type = Bool
 				return
 		elif infixOp.l.type.isPtrType and infixOp.r.type.isIntType:

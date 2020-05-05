@@ -24,7 +24,6 @@ class FnDecl(ValueSymbol):
 		self.returnTypeModifiers = TypeModifiers()
 		self.body = body
 		self.cconv = CConv.CAESAR
-		self.returns = []
 	
 	def analyzeSig(decl, state):
 		attrs.invokeAttrs(state, decl)

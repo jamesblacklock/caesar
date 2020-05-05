@@ -4,7 +4,7 @@ from .structlit import StructLit
 from .field     import Index, Field
 from .ifexpr    import If
 from .types     import typesMatch
-from .ir        import Swap, FieldW, DerefFieldW, IPTR
+from .ir        import Swap, DerefW, FieldW, DerefFieldW, IPTR
 from .scope     import ScopeType
 from .log       import logError
 
@@ -19,6 +19,7 @@ class Asgn(AST):
 		self.dropBeforeAssignBlock = None
 		self.lowered = False
 		self.temp = temp
+		self.hasRValueTempSymbol = False
 	
 	def lowerLValue(asgn, state):
 		asgn.dropBlock = block.Block(block.BlockInfo([], asgn.span))
@@ -27,7 +28,7 @@ class Asgn(AST):
 		if type(asgn.lvalue) == valueref.ValueRef:
 			asgn.block = block.Block(block.BlockInfo([asgn], asgn.span))
 			asgn.block.lowered = True
-		elif type(asgn.lvalue) == Index:
+		elif type(asgn.lvalue) in (deref.Deref, Index):
 			asgn.block = asgn.lvalue.lower(state)
 			asgn.lvalue = asgn.block.exprs[-1]
 			asgn.block.exprs[-1] = asgn
@@ -89,7 +90,7 @@ class Asgn(AST):
 			tempRef
 		]
 		
-		asgn.rvalue = block.Block(block.BlockInfo(exprs, asgn.span), ScopeType.BLOCK)
+		asgn.rvalue = block.Block(block.BlockInfo(exprs, asgn.rvalue.span), ScopeType.BLOCK)
 		asgn.rvalue.lowered = True
 	
 	def lower(asgn, state):
@@ -97,6 +98,7 @@ class Asgn(AST):
 			return asgn
 		else:
 			asgn.lowered = True
+			asgn.hasRValueTempSymbol = True
 		
 		asgn.lowerRValue(state)
 		asgn.lowerLValue(state)
@@ -104,17 +106,18 @@ class Asgn(AST):
 		return asgn.block
 	
 	def analyze(asgn, state, ignoredImplicitType):
-		if type(asgn.lvalue) == valueref.ValueRef and asgn.lvalue.symbol:
-			implicitType = asgn.lvalue.symbol.type
-		else:
-			implicitType = None
-		
-		asgn.rvalue = state.analyzeNode(asgn.rvalue, implicitType)#asgn.lvalue.symbol.type)
 		asgn.lvalue = state.analyzeNode(asgn.lvalue)
+		if asgn.hasRValueTempSymbol:
+			asgn.rvalue.exprs[0].type = asgn.lvalue.type
+		asgn.rvalue = state.analyzeNode(asgn.rvalue, asgn.lvalue.type)
 		
-		if type(asgn.lvalue) == Field and type(asgn.lvalue.expr) == valueref.ValueRef:
+		if asgn.lvalue.deref:
+			state.scope.readSymbol(asgn.lvalue)
+		elif type(asgn.lvalue) == Field and type(asgn.lvalue.expr) == valueref.ValueRef:
+			assert 0
 			state.scope.writeSymbol(asgn, asgn.lvalue.field)
 		elif type(asgn.lvalue) in (Field, Index, deref.Deref):
+			assert 0
 			pass
 		elif type(asgn.lvalue) == valueref.ValueRef:
 			state.scope.writeSymbol(asgn, None)
@@ -127,7 +130,7 @@ class Asgn(AST):
 		
 		if not typesMatch(asgn.lvalue.type, asgn.rvalue.type):
 			logError(state, asgn.rvalue.span, 
-				'expected type {}, found {}'.format(asgn.lvalue.symbol.type, asgn.rvalue.type))
+				'expected type {}, found {}'.format(asgn.lvalue.type, asgn.rvalue.type))
 		
 		return asgn
 	
@@ -138,7 +141,11 @@ class Asgn(AST):
 				state.appendInstr(Pop(expr))
 			return
 		
-		if type(expr.lvalue) == valueref.ValueRef:
+		if expr.lvalue.deref:
+			expr.lvalue.writeIR(state)
+			expr.rvalue.writeIR(state)
+			state.appendInstr(DerefW(expr))
+		elif type(expr.lvalue) == valueref.ValueRef:
 			expr.rvalue.writeIR(state)
 			if expr.lvalue.symbol in state.operandsBySymbol:
 				stackOffset = state.localOffset(expr.lvalue.symbol)
@@ -219,6 +226,8 @@ class Asgn(AST):
 	
 	def pretty(self, output, indent=0):
 		self.lvalue.pretty(output, indent)
+		if self.lvalue.deref:
+			output.write('^')
 		output.write(' = ')
 		if type(self.rvalue) not in (block.Block, If, StructLit):
 			indent = 0

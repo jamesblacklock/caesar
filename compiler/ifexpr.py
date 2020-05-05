@@ -25,6 +25,10 @@ class If(ValueExpr):
 		elseResolvedType = ifExpr.elseBlock.type
 		
 		ifExpr.doesReturn = ifExpr.block.doesReturn and ifExpr.elseBlock.doesReturn
+		state.scope.didReturn = state.scope.didReturn or ifExpr.doesReturn
+		
+		ifExpr.doesBreak = ifExpr.block.doesBreak and ifExpr.elseBlock.doesBreak
+		state.scope.didBreak = state.scope.didBreak or ifExpr.doesBreak
 		
 		if ifExpr.doesReturn:
 			resolvedType = implicitType if implicitType else Void

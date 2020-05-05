@@ -946,7 +946,7 @@ def cmp(state, ir):
 	r = state.getOperand(0)
 	l = state.getOperand(1)
 	
-	if l.storage == Storage.IMM and l.storage == Storage.IMM:
+	if l.storage == Storage.IMM and r.storage == Storage.IMM:
 		state.popOperand()
 		if type(ir) == Eq:
 			l.value = l.value == r.value
@@ -980,11 +980,13 @@ def cmp(state, ir):
 	else:
 		assert 0
 	
-	if l.storage == Storage.STACK and r.storage == Storage.STACK:
-		stack = saveReg(state, state.rax)
-		state.moveOperand(state.rax, stack)
+	if l.storage == Storage.IMM or l.storage == Storage.STACK and r.storage == Storage.STACK:
+		if state.rax.active:
+			stack = saveReg(state, state.rax)
+			state.moveOperand(state.rax, stack)
+		state.rax.type = l.type
 		state.appendInstr('mov', 
-			Operand(state.rax, Usage.DEST, l.type), 
+			Operand(state.rax, Usage.DEST), 
 			Operand(l, Usage.SRC))
 		l = state.rax
 	

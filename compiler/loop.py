@@ -4,17 +4,22 @@ from .block   import BlockInfo, Block
 from .ctlflow import Break
 from .types   import Void
 from .scope   import ScopeType
-from .ir      import Br, BrIf, Ret, BlockMarker, getInputInfo, beginBlock
+from .ir      import Br, BrIf, Ret, BlockMarker, Raise, getInputInfo, beginBlock
 
 class Loop(AST):
 	def __init__(self, block, span):
 		super().__init__(span)
 		self.breaks = []
 		self.block = block
+		self.doesBreak = False
+		self.doesReturn = False
 	
 	def analyze(loop, state, implicitType):
 		loop.block.loopExpr = loop
 		loop.block = state.analyzeNode(loop.block, Void)
+		
+		loop.doesBreak = loop.block.doesBreak
+		loop.doesReturn = loop.block.doesReturn
 	
 	def writeIR(ast, state):
 		inputTypes, inputSymbols = getInputInfo(state)
@@ -30,6 +35,10 @@ class Loop(AST):
 		ast.block.writeIR(state)
 		lastType = type(state.instr[-1])
 		if lastType not in (Br, BrIf, Ret):
+			for symbol in inputSymbols:
+				offset = state.localOffset(symbol)
+				if offset > 0:
+					state.appendInstr(Raise(ast, offset))
 			state.appendInstr(Br(ast, continueBlock.index))
 		
 		inputTypes = [i for i in inputTypes]

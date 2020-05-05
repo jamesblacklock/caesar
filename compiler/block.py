@@ -74,7 +74,7 @@ class Block(ValueExpr):
 		unreachableSpan = None
 		
 		newExprs = []
-		retDropSymbol = None
+		retVal = None
 		for (i, expr) in enumerate(block.exprs):
 			if state.scope.didReturn or state.scope.didBreak:
 				unreachableSpan = Span.merge(unreachableSpan, expr.span) if unreachableSpan else expr.span
@@ -109,44 +109,61 @@ class Block(ValueExpr):
 			# 	continue
 			
 			# state.dropBlockStack.append(BlockInfo([], None))
-			expr = state.analyzeNode(expr, implicitType if lastExpr else Void)
-			if type(expr) in (ctlflow.Break, ctlflow.Continue, ctlflow.Return):
-				expr = expr.block
 			
-			newExprs.append(expr)
-			
-			block.doesReturn = state.scope.didReturn
-			block.doesBreak = state.scope.didBreak
+			if lastExpr and isinstance(expr, ValueExpr) and \
+				block.scopeType == ScopeType.FN and implicitType != Void:
+				retVal = expr
+			else:
+				expr = state.analyzeNode(expr, implicitType if lastExpr else Void)
+				if type(expr) in (ctlflow.Break, ctlflow.Continue):
+					expr = expr.block
+				
+				newExprs.append(expr)
+				
+				block.doesReturn = state.scope.didReturn
+				block.doesBreak = state.scope.didBreak
 		
 		block.exprs = newExprs
-		ret = None
-		if len(block.exprs) == 0:
+		if block.scopeType == ScopeType.FN:
 			block.type = Void
-			if block.scopeType == ScopeType.FN:
-				ret = ctlflow.Return(None, block.span)
+			
+			if retVal:
+				tempSymbol = letdecl.LetDecl(None, None, False, None, None, temp=True)
+				tempLValue = valueref.ValueRef(None, None, temp=True)
+				tempLValue.symbol = tempSymbol
+				tempAsgn = asgn.Asgn(tempLValue, retVal, retVal.span, temp=True)
+				tempAsgn.lowered = True
+				tempAsgn.dropBlock = Block(BlockInfo([], None))
+				tempAsgn.dropBlock.lowered = True
+				
+				tempSymbol = state.analyzeNode(tempSymbol)
+				tempAsgn = state.analyzeNode(tempAsgn)
+				
+				block.exprs.append(tempAsgn)
+				block.exprs.append(tempSymbol)
+				
+				if not state.scope.didReturn:
+					tempRef = valueref.ValueRef(None, None, temp=True)
+					ret = ctlflow.Return(tempRef, retVal.span)
+					ret = state.analyzeNode(ret)
+					block.exprs.append(ret)
+			elif not state.scope.didReturn:
+				ret = ctlflow.Return(retVal, retVal.span if retVal else block.span)
+				ret = state.analyzeNode(ret)
+				block.exprs.append(ret)
+			
+			block.doesReturn = state.scope.didReturn
+			assert block.doesReturn
+		elif len(block.exprs) == 0:
+			block.type = Void
 		elif block.doesReturn or block.doesBreak:
 			block.type = implicitType if implicitType else Void
 		else:
 			lastExpr = block.exprs[-1]
-			if not isinstance(lastExpr, ValueExpr):
-				block.type = Void
-				if block.scopeType == ScopeType.FN:
-					ret = ctlflow.Return(None, block.span)
-			else:
+			if isinstance(lastExpr, ValueExpr):
 				block.type = lastExpr.type
-				if block.scopeType == ScopeType.FN:
-					if implicitType == Void:
-						ret = ctlflow.Return(None, block.span)
-						if retDropSymbol:
-							ret.dropSymbols.append(retDropSymbol)
-					else:
-						retVal = block.exprs.pop()
-						ret = ctlflow.Return(retVal, retVal.span)
-		
-		if ret:
-			ret = state.analyzeNode(ret)
-			block.exprs.append(ret.block)
-			block.doesReturn = state.scope.didReturn
+			else:
+				block.type = Void
 		
 		if unreachableSpan:
 			logWarning(state, unreachableSpan, 'unreachable code')

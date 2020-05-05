@@ -13,6 +13,7 @@ class ValueRef(ValueExpr):
 		self.symbol = None
 		self.copy = False
 		self.write = False
+		self.deref = False
 		self.fieldAccess = False
 		self.nameTok = path[-1] if path else None
 		self.temp = temp
@@ -29,6 +30,9 @@ class ValueRef(ValueExpr):
 				valueRef.name = valueRef.symbol.name
 			valueRef.symbol.unused = False
 			valueRef.type = valueRef.symbol.type
+			if valueRef.deref:
+				valueRef.type = valueRef.type.baseType
+			
 			if not (valueRef.write or valueRef.fieldAccess):
 				state.scope.readSymbol(valueRef)
 		

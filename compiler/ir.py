@@ -635,6 +635,7 @@ class IRState:
 		return i
 	
 	def nameTopOperand(self, symbol):
+		self.removeOperandName(-1)
 		self.operandStack[-1].symbol = symbol
 		self.operandsBySymbol[symbol] = self.operandStack[-1]
 	

@@ -896,6 +896,8 @@ def parseValueExpr(state, precedence=0, noSkipSpace=False):
 	return parseExpr(state, ExprClass.VALUE_EXPR, precedence, noSkipSpace)
 
 def parseValueExprImpl(state, precedence, noSkipSpace):
+	allowSimpleFnCall = False
+	
 	if state.tok.type == TokenType.NEWLINE:
 		block = parseBlock(state, parseFnBodyExpr)
 		if len(block.list) == 1 and isinstance(block.list[0], ValueExpr):
@@ -971,7 +973,7 @@ def parseValueExprImpl(state, precedence, noSkipSpace):
 				expr = parseInfixOps(state, expr, expr.span.startLine == expr.span.endLine, spaceBeforeOp)
 			elif state.tok.type == TokenType.CARET:
 				expr = parseDeref(state, expr)
-			elif type(expr) == ValueRef and state.tok.type != TokenType.NEWLINE and \
+			elif allowSimpleFnCall and type(expr) == ValueRef and state.tok.type != TokenType.NEWLINE and \
 				state.tok.type in VALUE_EXPR_TOKS:
 				expr = parseSimpleFnCall(state, expr)
 			else:
