@@ -101,3 +101,4 @@ class ValueExpr(AST):
 		self.typeModifiers = None
 		self.isConst = False
 		self.constBytes = None
+		self.borrows = None

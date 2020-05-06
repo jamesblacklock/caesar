@@ -59,6 +59,34 @@ class Block(ValueExpr):
 		block.lowered = True
 		return block
 	
+	# def handleScopeLevelDropBlock(block, state, expr):
+	# 	if not isinstance(expr, ValueExpr) or block.scopeType != None or len(state.scope.dropBlock) > 0:
+	# 		return expr
+		
+	# 	dropBlock = state.scope.dropBlock
+	# 	state.scope.createNewDropBlock()
+		
+		
+		
+	# 	tempSymbol = letdecl.LetDecl(None, None, False, None, None, temp=True)
+	# 	tempLValue = valueref.ValueRef(None, None, temp=True)
+	# 	tempLValue.symbol = tempSymbol
+	# 	tempAsgn = asgn.Asgn(tempLValue, expr, retVal.span, temp=True)
+	# 	tempAsgn.lowered = True
+	# 	tempAsgn.dropBlock = Block(BlockInfo([], None))
+	# 	tempAsgn.dropBlock.lowered = True
+		
+	# 	tempSymbol = state.analyzeNode(tempSymbol)
+	# 	tempAsgn = state.analyzeNode(tempAsgn)
+		
+	# 	if state.scope.didReturn:
+	# 		block.exprs.append(tempAsgn.rvalue)
+	# 	else:
+	# 		tempRef = valueref.ValueRef(None, None, temp=True)
+	# 		ret = ctlflow.Return(tempRef, retVal.span)
+	# 		ret = state.analyzeNode(ret)
+		
+	
 	def analyze(block, state, implicitType):
 		if block.scopeType != None:
 			state.pushScope(
@@ -98,17 +126,17 @@ class Block(ValueExpr):
 					tempRef.symbol = tempSymbol
 					valueExprLowered.append(tempRef)
 				
+				if block.scopeType != None:
+					state.scope.dropBlock = tempAsgn.dropBlock
+				
 				expr = Block(BlockInfo(valueExprLowered, expr.span))
 				expr.lowered = True
-			
-			# if type(expr) == asgn.Asgn and expr.temp and type(expr.rvalue) == ifexpr.If:
-			# 	expr.lvalue.symbol.type = implicitType if lastExpr else Void
-			# elif type(expr) == valueref.ValueRef and lastExpr and implicitType == Void:
-			# 	assert expr.name[0] == '$'
-			# 	# dropSymbol = expr.exprs[-1].symbol if type(expr) == Block else expr.symbol
-			# 	continue
-			
-			# state.dropBlockStack.append(BlockInfo([], None))
+			elif type(expr) == asgn.Asgn and block.scopeType != None:
+				if not expr.lowered:
+					assert not expr.dropBlock
+					expr.dropBlock = Block(BlockInfo([], None))
+					expr.dropBlock.lowered = True
+				state.scope.dropBlock = expr.dropBlock
 			
 			if lastExpr and isinstance(expr, ValueExpr) and \
 				block.scopeType == ScopeType.FN and implicitType != Void:
@@ -136,11 +164,15 @@ class Block(ValueExpr):
 				tempAsgn.dropBlock = Block(BlockInfo([], None))
 				tempAsgn.dropBlock.lowered = True
 				
+				if block.scopeType != None:
+					state.scope.dropBlock = tempAsgn.dropBlock
+				
 				tempSymbol = state.analyzeNode(tempSymbol)
 				tempAsgn = state.analyzeNode(tempAsgn)
 				
-				block.exprs.append(tempAsgn)
 				block.exprs.append(tempSymbol)
+				block.exprs.append(tempAsgn)
+				block.exprs.append(tempAsgn.dropBlock)
 				
 				if not state.scope.didReturn:
 					tempRef = valueref.ValueRef(None, None, temp=True)
@@ -162,6 +194,7 @@ class Block(ValueExpr):
 			lastExpr = block.exprs[-1]
 			if isinstance(lastExpr, ValueExpr):
 				block.type = lastExpr.type
+				block.borrows = lastExpr.borrows
 			else:
 				block.type = Void
 		

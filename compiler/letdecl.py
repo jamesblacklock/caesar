@@ -55,14 +55,16 @@ class LetDecl(ValueSymbol):
 		else:
 			state.scope.declSymbol(letExpr)
 		
-		letExpr.block = block.Block(block.BlockInfo([letExpr], letExpr.span), None)
+		letExpr.block = block.Block(block.BlockInfo([letExpr], letExpr.span))
 		
 		if letExpr.expr:
 			rvalue = letExpr.expr
 			letExpr.expr = None
 			
 			lvalue = valueref.ValueRef([letExpr.nameTok], letExpr.nameTok.span)
-			asgn = state.analyzeNode(asgnmod.Asgn(lvalue, rvalue, letExpr.span))
+			asgn = asgnmod.Asgn(lvalue, rvalue, letExpr.span)
+			asgn.lowered = True
+			asgn = state.analyzeNode(asgn)
 			# asgn.rvalue = state.analyzeNode(asgn.rvalue, letExpr.type)
 			# if letExpr.type == None:
 			# 	letExpr.type = rvalue.type
@@ -74,6 +76,12 @@ class LetDecl(ValueSymbol):
 			# 		'expected type {}, found {}'.format(asgn.symbol.type, asgn.rvalue.type))
 			
 			letExpr.block.exprs.append(asgn)
+			
+			if state.scope.dropBlock == None:
+				asgn.dropBlock = block.Block(block.BlockInfo([], None))
+				asgn.dropBlock.lowered = True
+				letExpr.block.exprs.append(asgn.dropBlock)
+				state.scope.dropBlock = asgn.dropBlock
 		
 		if letExpr.type:
 			letExpr.checkDropFn(state)

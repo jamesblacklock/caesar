@@ -22,8 +22,9 @@ class Asgn(AST):
 		self.hasRValueTempSymbol = False
 	
 	def lowerLValue(asgn, state):
-		asgn.dropBlock = block.Block(block.BlockInfo([], asgn.span))
-		asgn.dropBlock.lowered = True
+		assert asgn.dropBlock
+		# asgn.dropBlock = block.Block(block.BlockInfo([], asgn.span))
+		# asgn.dropBlock.lowered = True
 		
 		if type(asgn.lvalue) == valueref.ValueRef:
 			asgn.block = block.Block(block.BlockInfo([asgn], asgn.span))

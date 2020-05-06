@@ -12,6 +12,7 @@ class ValueRef(ValueExpr):
 		self.copy = False
 		self.write = False
 		self.deref = False
+		self.addr = False
 		self.fieldAccess = False
 		self.nameTok = path[-1] if path else None
 		self.temp = temp
@@ -72,13 +73,17 @@ class ValueRef(ValueExpr):
 		if valueRef.deref:
 			valueRef.type = valueRef.type.baseType
 		
-		if not (valueRef.write or valueRef.fieldAccess):
+		if not (valueRef.write or valueRef.fieldAccess or valueRef.addr):
 			state.scope.readSymbol(valueRef)
 		
 		if implicitType and canPromote(valueRef.type, implicitType):
 			coercion = Coercion(valueRef, None, valueRef.span)
 			coercion.type = implicitType
 			return coercion
+		
+		if valueRef.borrows and not valueRef.dropBlock:
+			assert state.scope.dropBlock
+			valueRef.dropBlock = state.scope.dropBlock
 	
 	def writeIR(ref, state):
 		if type(ref.symbol) == constdecl.ConstDecl:
@@ -102,7 +107,7 @@ class ValueRef(ValueExpr):
 		if self.copy:
 			output.addPrefix('$copy(')
 			closeParen = True
-		elif not self.write and not self.fieldAccess and type(self.symbol) in (StaticDecl, letdecl.LetDecl, FnParam):
+		elif not (self.write or self.fieldAccess or self.addr) and type(self.symbol) in (StaticDecl, letdecl.LetDecl, FnParam):
 			output.addPrefix('$move(')
 			closeParen = True
 		

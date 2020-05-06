@@ -2,7 +2,7 @@ from enum        import Enum
 from .ast        import FnParam, StaticDecl
 from .drop       import DropSymbol
 from .log        import logError, logWarning, logExplain
-from .           import asgn as asgnmod, valueref, fndecl, constdecl, letdecl, field as fieldmod
+from .           import asgn as asgnmod, valueref, fndecl, constdecl, letdecl, field as fieldmod, block as blockmod, address
 from .fncall     import FnCall
 from .structdecl import StructDecl
 
@@ -48,6 +48,8 @@ class SymbolInfo:
 		self.returnsSinceLastUse = set()
 		self.breaksAfterMove = {}
 		self.breaksSinceLastUse = {}
+		# self.borrowedBy = {}
+		self.borrows = None
 		
 		
 		# def addFieldInfo(fields, expr):
@@ -92,6 +94,7 @@ class SymbolInfo:
 		info.maybeMoved = self.maybeMoved
 		info.maybeUninit = self.maybeUninit
 		info.typeModifiers = self.typeModifiers.clone()
+		# info.borrowedBy = self.borrowedBy
 		return info
 
 class Scope:
@@ -110,6 +113,7 @@ class Scope:
 		self.ifExpr = ifExpr
 		self.loopExpr = loopExpr
 		self.ifBranchOuterSymbolInfo = ifBranchOuterSymbolInfo
+		self.dropBlock = None#blockmod.Block(blockmod.BlockInfo([], None))
 		
 		if parent:
 			self.loopDepth = parent.loopDepth
@@ -118,6 +122,9 @@ class Scope:
 		
 		if self.loopDepth > 0 or scopeType == ScopeType.LOOP:
 			self.loopDepth += 1
+	
+	# def createNewDropBlock(self):
+	# 	self.dropBlock = blockmod.Block(blockmod.BlockInfo([], None))
 	
 	def setSymbolTable(self, symbolTable):
 		self.symbolTable = symbolTable
@@ -131,10 +138,15 @@ class Scope:
 			if info.wasDeclared:
 				if info.symbol.unused:
 					if type(info.symbol) == letdecl.LetDecl:
-						logWarning(self, info.symbol.span, 'unused symbol')
+						logWarning(self.state, info.symbol.span, 'unused symbol')
 					elif type(info.symbol) == FnParam:
 						self.dropSymbol(info.symbol, info.symbol.dropBlock)
 				else:
+					# for (borrowedBy, borrow) in info.borrowedBy.items():
+					# 	if borrowedBy.temp:
+					# 		continue
+					# 	if borrowedBy not in self.symbolInfo or not self.symbolInfo[borrowedBy].wasDeclared:
+					# 		logError(self.state, borrow.span, 'borrow exists after value has gone out of scope')
 					for block in info.dropInBlock:
 						self.dropSymbol(info.symbol, block)
 					for (lastUse, loopExpr) in info.lastUses.items():
@@ -146,7 +158,11 @@ class Scope:
 							else:
 								self.dropSymbol(info.symbol, lastUse.dropBlock)
 						elif type(lastUse) == valueref.ValueRef:
-							if loopExpr and loopExpr != self.loopExpr and info.symbol.type.isCopyable:
+							if lastUse.addr:
+								assert 0
+							elif lastUse.borrows == info.symbol:
+								self.dropSymbol(info.symbol, lastUse.dropBlock)
+							elif loopExpr and loopExpr != self.loopExpr and info.symbol.type.isCopyable:
 								lastUse.copy = True
 								for (br, otherLoopExpr) in info.breaksAfterMove.items():
 									if loopExpr == otherLoopExpr:
@@ -174,6 +190,7 @@ class Scope:
 					info1.breaksAfterMove.update(info2.breaksAfterMove)
 					info1.breaksSinceLastUse.update(info2.breaksSinceLastUse)
 					info1.dropInBlock.update(info2.dropInBlock)
+					# info1.borrowedBy.update(info2.borrowedBy)
 					if info2.maybeMoved or info1.moved != info2.moved:
 						info1.moved = True
 						info1.maybeMoved = True
@@ -307,20 +324,21 @@ class Scope:
 		ref = None
 		fieldAccess = None
 		isIndex = False
-		if type(expr) == fieldmod.Field:
-			fieldAccess = expr
+		if type(addr.expr) == fieldmod.Field:
+			fieldAccess = addr
 			ref = fieldAccess.expr
-		elif type(expr) == fieldmod.Index:
+		elif type(addr.expr) == fieldmod.Index:
 			isIndex = True
-			ref = expr.expr
-		elif type(expr) == valueref.ValueRef:
-			ref = expr
+			ref = addr.expr
+		elif type(addr.expr) == valueref.ValueRef:
+			ref = addr.expr
 		else:
 			assert 0
 		
 		assert type(ref) == valueref.ValueRef
 		
-		
+		info = self.symbolInfo[ref.symbol]
+		self.setLastUse(info, ref, True)
 	
 	def readSymbol(self, expr):
 		ref = None
@@ -378,6 +396,13 @@ class Scope:
 		
 		self.setLastUse(info, expr, isRead=True)
 		
+		if info.borrows:
+			expr.borrows = info.borrows
+			if info.borrows not in self.symbolInfo:
+				logError(self.state, expr.span, 'borrowed value has gone out of scope')
+			else:
+				self.setLastUse(self.symbolInfo[info.borrows], expr, isRead=True)
+		
 		if fieldInfo:
 			fieldInfo.moved = True#not fieldAccess.field.type.isCopyable
 		elif isIndex:
@@ -386,9 +411,9 @@ class Scope:
 			info.moved = True
 			info.typeModifiers.uninit = True
 	
-	def writeSymbol(self, asgn, typeModifiers=None):
+	def writeSymbol(self, asgn, borrowedSymbol=None, typeModifiers=None):
 		ref = None
-		field = None
+		fieldAccess = None
 		isIndex = False
 		if type(asgn.lvalue) == valueref.ValueRef:
 			ref = asgn.lvalue
@@ -406,14 +431,23 @@ class Scope:
 		if not symbol.mut and not info.uninit:
 			logError(self.state, ref.span, 'assignment target is not mutable')
 			return
-		
-		self.setLastUse(info, asgn, isRead=False)
+		elif isIndex or fieldAccess:
+			if info.moved:
+				if not info.symbol.type.isCopyable:
+					maybeText = 'may have' if info.maybeMoved else 'has'
+					logError(self.state, ref.span, 'the value in `{}` {} been moved'.format(ref.name, maybeText))
+					logExplain(self.state, list(info.lastUses)[0].span, '`{}` was moved here'.format(ref.name))
+					return
+			elif info.uninit:
+				maybeText = 'may not have' if info.maybeUninit else 'has not'
+				logError(self.state, ref.span, '`{}` {} been initialized'.format(ref.name, maybeText))
+				return
 		
 		if not info.uninit and symbol.dropFn:
 			self.dropSymbol(symbol, asgn.dropBeforeAssignBlock)
 		elif not info.uninit or info.maybeUninit:
 			for (lastUse, loopExpr) in info.lastUses.items():
-				if type(lastUse) == asgnmod.Asgn:
+				if type(lastUse) == asgnmod.Asgn and type(lastUse.lvalue) == valueref.ValueRef:
 					self.dropSymbol(symbol, lastUse.dropBlock)
 		
 		if typeModifiers:
@@ -423,7 +457,20 @@ class Scope:
 		info.moved = False
 		info.maybeMoved = False
 		
-		if field:
+		# if info.borrows:
+			# del self.symbolInfo[info.borrows].borrowedBy[symbol]
+			# info.borrows = None
+		
+		# if asgn.rvalue.borrows:
+		info.borrows = asgn.rvalue.borrows
+		# elif type(asgn.rvalue) == valueref.ValueRef:
+			# info.borrows = self.symbolInfo[asgn.rvalue.symbol].borrows
+		
+		# if info.borrows in self.symbolInfo:
+			# self.symbolInfo[info.borrows].borrowedBy[symbol] = asgn
+		
+		if fieldAccess:
+			assert 0
 			info.fieldInfo[field].uninit = False
 		elif isIndex:
 			pass
@@ -431,6 +478,14 @@ class Scope:
 			info.typeModifiers.uninit = False
 	
 	def dropSymbol(self, symbol, block, prepend=True):
+		info = self.symbolInfo[symbol]
+		
+		# for borrow in info.borrowedBy.values():
+			# assert self.symbolInfo[borrow.lvalue.symbol].wasDeclared
+		
+		# if info.borrows in self.symbolInfo:
+			# del self.symbolInfo[info.borrows].borrowedBy[symbol]
+		
 		valueWasMoved = False
 		exprs = []
 		if symbol.dropFn:
