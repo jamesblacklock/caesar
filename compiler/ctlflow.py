@@ -9,7 +9,6 @@ from .log   import logError
 class LoopCtlFlow(AST):
 	def __init__(self, span):
 		super().__init__(span)
-		self.dropSymbols = []
 		self.block = None
 	
 	def analyze(expr, state, implicitType, isContinue=False):
@@ -56,7 +55,6 @@ class Return(AST):
 	def __init__(self, expr, span):
 		super().__init__(span)
 		self.expr = expr
-		# self.dropSymbols = []
 		self.block = None
 	
 	def lower(ret, state):
@@ -65,7 +63,6 @@ class Return(AST):
 		
 		if ret.expr and type(ret.expr) != valueref.ValueRef:
 			tempSymbol = letdecl.LetDecl(None, None, False, None, None, temp=True)
-			# tempSymbol.type = state.scope.fnDecl.returnType
 			
 			tempLValue = valueref.ValueRef(None, None, temp=True)
 			tempLValue.symbol = tempSymbol

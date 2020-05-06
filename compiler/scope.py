@@ -29,11 +29,6 @@ class FieldInfo:
 		info.maybeUninit = self.maybeUninit
 		return info
 
-# class UseInfo:
-# 	def __init__(self, loopExpr, isWrite):
-# 		self.loopExpr = loopExpr
-# 		self.isWrite = isWrite
-
 class SymbolInfo:
 	def __init__(self, symbol):
 		self.symbol = symbol
@@ -48,8 +43,7 @@ class SymbolInfo:
 		self.returnsSinceLastUse = set()
 		self.breaksAfterMove = {}
 		self.breaksSinceLastUse = {}
-		# self.borrowedBy = {}
-		self.borrows = None
+		self.borrows = set()
 		
 		
 		# def addFieldInfo(fields, expr):
@@ -94,7 +88,6 @@ class SymbolInfo:
 		info.maybeMoved = self.maybeMoved
 		info.maybeUninit = self.maybeUninit
 		info.typeModifiers = self.typeModifiers.clone()
-		# info.borrowedBy = self.borrowedBy
 		return info
 
 class Scope:
@@ -113,7 +106,7 @@ class Scope:
 		self.ifExpr = ifExpr
 		self.loopExpr = loopExpr
 		self.ifBranchOuterSymbolInfo = ifBranchOuterSymbolInfo
-		self.dropBlock = None#blockmod.Block(blockmod.BlockInfo([], None))
+		self.dropBlock = None
 		
 		if parent:
 			self.loopDepth = parent.loopDepth
@@ -122,9 +115,6 @@ class Scope:
 		
 		if self.loopDepth > 0 or scopeType == ScopeType.LOOP:
 			self.loopDepth += 1
-	
-	# def createNewDropBlock(self):
-	# 	self.dropBlock = blockmod.Block(blockmod.BlockInfo([], None))
 	
 	def setSymbolTable(self, symbolTable):
 		self.symbolTable = symbolTable
@@ -142,11 +132,6 @@ class Scope:
 					elif type(info.symbol) == FnParam:
 						self.dropSymbol(info.symbol, info.symbol.dropBlock)
 				else:
-					# for (borrowedBy, borrow) in info.borrowedBy.items():
-					# 	if borrowedBy.temp:
-					# 		continue
-					# 	if borrowedBy not in self.symbolInfo or not self.symbolInfo[borrowedBy].wasDeclared:
-					# 		logError(self.state, borrow.span, 'borrow exists after value has gone out of scope')
 					for block in info.dropInBlock:
 						self.dropSymbol(info.symbol, block)
 					for (lastUse, loopExpr) in info.lastUses.items():
@@ -160,8 +145,11 @@ class Scope:
 						elif type(lastUse) == valueref.ValueRef:
 							if lastUse.addr:
 								assert 0
-							elif lastUse.borrows == info.symbol:
-								self.dropSymbol(info.symbol, lastUse.dropBlock)
+							elif lastUse.borrows:
+								for borrow in lastUse.borrows:
+									if borrow.symbol == info.symbol:
+										self.dropSymbol(info.symbol, lastUse.dropBlock)
+										break
 							elif loopExpr and loopExpr != self.loopExpr and info.symbol.type.isCopyable:
 								lastUse.copy = True
 								for (br, otherLoopExpr) in info.breaksAfterMove.items():
@@ -190,13 +178,14 @@ class Scope:
 					info1.breaksAfterMove.update(info2.breaksAfterMove)
 					info1.breaksSinceLastUse.update(info2.breaksSinceLastUse)
 					info1.dropInBlock.update(info2.dropInBlock)
-					# info1.borrowedBy.update(info2.borrowedBy)
+					info1.borrows.update(info2.borrows)
 					if info2.maybeMoved or info1.moved != info2.moved:
 						info1.moved = True
 						info1.maybeMoved = True
 					if info2.maybeUninit or info1.uninit != info2.uninit:
-						info.typeModifiers.uninit = True
-						info.maybeUninit = True
+						info1.typeModifiers.uninit = True
+						info1.maybeUninit = True
+					outerSymbolInfo[symbol] = info1
 				else:
 					if symbol in ifInfo:
 						info = ifInfo[symbol]
@@ -398,10 +387,16 @@ class Scope:
 		
 		if info.borrows:
 			expr.borrows = info.borrows
-			if info.borrows not in self.symbolInfo:
-				logError(self.state, expr.span, 'borrowed value has gone out of scope')
-			else:
-				self.setLastUse(self.symbolInfo[info.borrows], expr, isRead=True)
+			errCount = 0
+			for borrow in info.borrows:
+				if borrow.symbol not in self.symbolInfo:
+					if errCount == 0:
+						logError(self.state, expr.span, 'borrowed value has gone out of scope')
+					errCount += 1
+					countStr = '' if errCount < 2 else '({}) '.format(errCount)
+					logExplain(self.state, borrow.span, 'borrow {}originally occurred here'.format(countStr))
+				else:
+					self.setLastUse(self.symbolInfo[borrow.symbol], expr, isRead=True)
 		
 		if fieldInfo:
 			fieldInfo.moved = True#not fieldAccess.field.type.isCopyable
@@ -456,18 +451,7 @@ class Scope:
 		info.maybeUninit = False
 		info.moved = False
 		info.maybeMoved = False
-		
-		# if info.borrows:
-			# del self.symbolInfo[info.borrows].borrowedBy[symbol]
-			# info.borrows = None
-		
-		# if asgn.rvalue.borrows:
 		info.borrows = asgn.rvalue.borrows
-		# elif type(asgn.rvalue) == valueref.ValueRef:
-			# info.borrows = self.symbolInfo[asgn.rvalue.symbol].borrows
-		
-		# if info.borrows in self.symbolInfo:
-			# self.symbolInfo[info.borrows].borrowedBy[symbol] = asgn
 		
 		if fieldAccess:
 			assert 0
@@ -478,14 +462,6 @@ class Scope:
 			info.typeModifiers.uninit = False
 	
 	def dropSymbol(self, symbol, block, prepend=True):
-		info = self.symbolInfo[symbol]
-		
-		# for borrow in info.borrowedBy.values():
-			# assert self.symbolInfo[borrow.lvalue.symbol].wasDeclared
-		
-		# if info.borrows in self.symbolInfo:
-			# del self.symbolInfo[info.borrows].borrowedBy[symbol]
-		
 		valueWasMoved = False
 		exprs = []
 		if symbol.dropFn:
@@ -520,8 +496,6 @@ class Scope:
 			block.exprs.insert(0, *exprs)
 		else:
 			block.exprs.append(*exprs)
-		
-		# self.symbolInfo[symbol].uninit = True
 	
 	def lookupSymbol(self, name):
 		scope = self

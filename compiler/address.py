@@ -8,6 +8,7 @@ class Address(ValueExpr):
 		super().__init__(span)
 		self.expr = expr
 		self.lowered = False
+		self.symbol = None
 	
 	def lower(self, state):
 		if self.lowered:
@@ -52,8 +53,9 @@ class Address(ValueExpr):
 		else:
 			self.type = PtrType(self.expr.type, 1)
 		
-		self.borrows = self.expr.symbol
-		assert self.borrows
+		self.borrows = {self}
+		self.symbol = self.expr.symbol
+		assert self.symbol
 		state.scope.addrSymbol(self)
 	
 	def writeIR(ast, state):
