@@ -9,7 +9,6 @@ from .ir      import Br, BrIf, Ret, BlockMarker, Raise, getInputInfo, beginBlock
 class Loop(AST):
 	def __init__(self, block, span):
 		super().__init__(span)
-		self.breaks = []
 		self.block = block
 		self.doesBreak = False
 		self.doesReturn = False

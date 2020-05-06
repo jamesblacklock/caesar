@@ -2,6 +2,7 @@ import re
 from .ast import ValueExpr
 from .    import types
 from .    import ir
+from .log import logError
 
 def strEsc(s):
 	result = ''
@@ -129,6 +130,9 @@ class IntLit(ValueExpr):
 		self.isConst = True
 	
 	def analyze(lit, state, implicitType):
+		if implicitType and not types.canAccommodate(implicitType, lit.value):
+			implicitType = None
+		
 		if lit.suffix == 'i8':
 			lit.type = types.Int8
 		elif lit.suffix == 'u8':
@@ -155,7 +159,7 @@ class IntLit(ValueExpr):
 			lit.type = implicitType
 		elif types.canAccommodate(types.Int32, lit.value):
 			lit.type = types.Int32
-		elif canAccommodate(types.Int64, lit.value) or lit.value < 0:
+		elif types.canAccommodate(types.Int64, lit.value) or lit.value < 0:
 			lit.type = types.Int64
 		else:
 			lit.type = types.UInt64

@@ -4,7 +4,8 @@ from enum        import Enum
 from .token      import TokenType
 from .span       import Span, revealSpan, AnsiColor
 from .log        import logError
-from .ast        import ValueExpr, FnParam, CVarArgsParam, Address, Sign, StaticDecl
+from .ast        import ValueExpr, FnParam, CVarArgsParam, StaticDecl
+from .sign       import Sign
 from .structdecl import FieldDecl, StructDecl
 from .attrs      import Attr
 from .typeref    import PtrTypeRef, NamedTypeRef, ArrayTypeRef, TupleTypeRef
@@ -26,6 +27,7 @@ from .field      import Index, Field
 from .deref      import Deref
 from .structlit  import StructLit, FieldLit
 from .tuplelit   import TupleLit, ArrayLit
+from .address    import Address
 from .scope      import ScopeType
 
 INFIX_PRECEDENCE = {
@@ -892,12 +894,10 @@ def isStructLitStart(state):
 	state.rollback(offset)
 	return result
 
-def parseValueExpr(state, precedence=0, noSkipSpace=False):
-	return parseExpr(state, ExprClass.VALUE_EXPR, precedence, noSkipSpace)
+def parseValueExpr(state, precedence=0, noSkipSpace=False, allowSimpleFnCall=False):
+	return parseExpr(state, ExprClass.VALUE_EXPR, precedence, noSkipSpace, allowSimpleFnCall)
 
-def parseValueExprImpl(state, precedence, noSkipSpace):
-	allowSimpleFnCall = False
-	
+def parseValueExprImpl(state, precedence, noSkipSpace, allowSimpleFnCall):
 	if state.tok.type == TokenType.NEWLINE:
 		block = parseBlock(state, parseFnBodyExpr)
 		if len(block.list) == 1 and isinstance(block.list[0], ValueExpr):
@@ -990,7 +990,7 @@ def parseValueExprImpl(state, precedence, noSkipSpace):
 	return expr
 
 def parseValueExprOrAsgn(state):
-	expr = parseValueExpr(state)
+	expr = parseValueExpr(state, allowSimpleFnCall=True)
 	if expr == None:
 		return None
 	
@@ -1192,7 +1192,7 @@ FN_EXPR_TOKS = (
 	TokenType.BREAK
 )
 
-def parseExpr(state, exprClass, precedence=0, noSkipSpace=False):
+def parseExpr(state, exprClass, precedence=0, noSkipSpace=False, allowSimpleFnCall=False):
 	startToken = None
 	doccomment = None
 	if state.tok.type == TokenType.DOCCOMMENT:
@@ -1251,7 +1251,7 @@ def parseExpr(state, exprClass, precedence=0, noSkipSpace=False):
 		decl = parseConstDecl(state, doccomment)
 	elif state.tok.type in VALUE_EXPR_TOKS:
 		if exprClass == ExprClass.VALUE_EXPR:
-			decl = parseValueExprImpl(state, precedence, noSkipSpace)
+			decl = parseValueExprImpl(state, precedence, noSkipSpace, allowSimpleFnCall)
 		else:
 			decl = parseValueExprOrAsgn(state)
 	elif state.tok.type == TokenType.RETURN:

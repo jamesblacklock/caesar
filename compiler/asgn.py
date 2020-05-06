@@ -116,11 +116,12 @@ class Asgn(AST):
 		elif type(asgn.lvalue) == Field and type(asgn.lvalue.expr) == valueref.ValueRef:
 			assert 0
 			state.scope.writeSymbol(asgn, asgn.lvalue.field)
-		elif type(asgn.lvalue) in (Field, Index, deref.Deref):
+		elif type(asgn.lvalue) in (Field, deref.Deref):
 			assert 0
-			pass
+		elif type(asgn.lvalue) == Index:
+			state.scope.writeSymbol(asgn)
 		elif type(asgn.lvalue) == valueref.ValueRef:
-			state.scope.writeSymbol(asgn, None)
+			state.scope.writeSymbol(asgn)
 			if asgn.lvalue.symbol.type == None:
 				asgn.lvalue.type = asgn.rvalue.type
 				asgn.lvalue.symbol.type = asgn.rvalue.type

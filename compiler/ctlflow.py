@@ -36,23 +36,6 @@ class Break(LoopCtlFlow):
 	def __init__(self, span):
 		super().__init__(span)
 	
-	# def analyze(expr, state, implicitType):
-		# super().analyze(state, implicitType)
-		
-		# symbolInfo = state.scope.symbolInfo
-		# scope = state.scope
-		# while True:
-		# 	if scope.type == ScopeType.LOOP:
-		# 		scope.loopExpr.breaks.append(expr)
-		# 		break
-			
-		# 	for symbol in scope.symbolTable.values():
-		# 		state.scope.loadSymbolInfo(symbol)
-		# 		if not symbolInfo[symbol].uninit:
-		# 			expr.dropSymbols.append(symbol)
-			
-		# 	scope = scope.parent
-	
 	def pretty(self, output, indent=0):
 		output.write('break', indent)
 
