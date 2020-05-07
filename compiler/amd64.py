@@ -9,7 +9,6 @@ from .ir                               import Dup, Global, Imm, Static, Deref, D
                                               BlockMarker, Addr, I8, I16, I32, I64, IPTR, F32, F64, \
                                               FundamentalType
 from .types                            import U32_RNG, I32_RNG
-# from .lowered                          import evaluateConstExpr
 
 class Storage(Enum):
 	IMM = 'IMM'
@@ -298,7 +297,7 @@ class GeneratorState:
 			stackArgTargets = []
 			for (i, src) in enumerate(stackArgTypes):
 				assert not fType.isFloatType
-				target = StackTarget(fType, i - len(stackArgTypes) - 1)
+				target = StackTarget(fType, (i - len(stackArgTypes)) * 8)
 				stackArgTargets.append(target)
 				self.callStack.append(target)
 			
@@ -318,7 +317,7 @@ class GeneratorState:
 	def appendInstr(self, opcode, *operands, isLabel=False, isComment=False):
 		instr = Instr(opcode, operands, isLabel, isComment)
 		self.instr.append(instr)
-		print(instr)
+		# print(instr)
 	
 	def findReg(self, type=None, exclude=[]):
 		for reg in self.intRegs:
@@ -1213,7 +1212,7 @@ def defineStatics(mod, output):
 		if decl.extern:
 			assert 0
 		
-		bytes = ','.join(str(b) for b in evaluateConstExpr(decl.expr))
+		bytes = ','.join(str(b) for b in decl.staticValue.toBytes())
 		output.write('\t{}: db {}\n'.format(decl.mangledName, bytes))
 
 def defineFns(mod, output):
@@ -1235,7 +1234,7 @@ class OutputWriter:
 		self.output = StringIO()
 	
 	def write(self, s):
-		sys.stdout.write(s)
+		# sys.stdout.write(s)
 		self.output.write(s)
 	
 	def getvalue(self):
