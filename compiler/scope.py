@@ -328,7 +328,7 @@ class Scope:
 		
 		info = self.symbolInfo[ref.symbol]
 		info.symbol.fixed = True
-		self.setLastUse(info, ref, True)
+		self.setLastUse(info, ref, isRead=True)
 	
 	def readSymbol(self, expr):
 		ref = None
@@ -438,6 +438,8 @@ class Scope:
 				maybeText = 'may not have' if info.maybeUninit else 'has not'
 				logError(self.state, ref.span, '`{}` {} been initialized'.format(ref.name, maybeText))
 				return
+		
+		self.setLastUse(info, asgn, isRead=False)
 		
 		if not info.uninit and symbol.dropFn:
 			self.dropSymbol(symbol, asgn.dropBeforeAssignBlock)

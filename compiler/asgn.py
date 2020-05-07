@@ -122,11 +122,11 @@ class Asgn(AST):
 		elif type(asgn.lvalue) == Index:
 			state.scope.writeSymbol(asgn)
 		elif type(asgn.lvalue) == valueref.ValueRef:
-			state.scope.writeSymbol(asgn)
 			if asgn.lvalue.symbol.type == None:
 				asgn.lvalue.type = asgn.rvalue.type
 				asgn.lvalue.symbol.type = asgn.rvalue.type
 				asgn.lvalue.symbol.checkDropFn(state)
+			state.scope.writeSymbol(asgn)
 		else:
 			assert 0
 		
