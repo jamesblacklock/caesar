@@ -55,7 +55,6 @@ class Address(ValueExpr):
 		
 		self.borrows = {self}
 		self.symbol = self.expr.symbol
-		assert self.symbol
 		state.scope.addrSymbol(self)
 	
 	def writeIR(ast, state):

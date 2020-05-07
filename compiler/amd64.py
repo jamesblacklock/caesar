@@ -4,9 +4,9 @@ from enum                              import Enum
 from .ir                               import Dup, Global, Imm, Static, Deref, DerefW, Add, Sub, Mul, \
                                               Div, Eq, NEq, Less, LessEq, Greater, GreaterEq, Call, \
                                               Extend, IExtend, Truncate, FExtend, FTruncate, IToF, \
-                                              UToF, FToI, FToU, Ret, BrIf, Br, Swap, Pop, Raise, \
-                                              Struct, Field, FieldW, DerefField, DerefFieldW, \
-                                              BlockMarker, Neg, Addr, I8, I16, I32, I64, IPTR, F32, F64, \
+                                              UToF, FToI, FToU, Ret, BrIf, Br, Swap, Pop, Raise, Neg, \
+                                              Struct, Field, FieldW, DerefField, DerefFieldW, Fix, \
+                                              BlockMarker, Addr, I8, I16, I32, I64, IPTR, F32, F64, \
                                               FundamentalType
 from .types                            import U32_RNG, I32_RNG
 # from .lowered                          import evaluateConstExpr
@@ -444,6 +444,8 @@ def irToAsm(state, ir, nextIR):
 		swap(state, ir)
 	elif type(ir) == Raise:
 		raise_(state, ir)
+	elif type(ir) == Fix:
+		fix(state, ir)
 	elif type(ir) == Addr:
 		addr(state, ir)
 	elif type(ir) == Deref:
@@ -723,8 +725,8 @@ def swap(state, ir):
 def raise_(state, ir):
 	state.raiseOperand(ir.offset)
 
-def addr(state, ir):
-	src = state.getOperand(ir.offset)
+def fix(state, ir):
+	src = state.getOperand(0)
 	if src.storage != Storage.STACK:
 		newSrc = state.findTarget(src.type, True)
 		state.moveOperand(src, newSrc)
@@ -733,6 +735,10 @@ def addr(state, ir):
 		src = newSrc
 	
 	src.fixed = True
+
+def addr(state, ir):
+	src = state.getOperand(ir.offset)
+	assert src.storage == Storage.STACK and src.fixed
 	
 	dest = state.findTarget(IPTR)
 	state.appendInstr('lea', 

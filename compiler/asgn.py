@@ -4,7 +4,7 @@ from .structlit import StructLit
 from .field     import Index, Field
 from .ifexpr    import If
 from .types     import typesMatch
-from .ir        import Swap, DerefW, FieldW, DerefFieldW, IPTR
+from .ir        import Swap, DerefW, FieldW, DerefFieldW, Fix, IPTR
 from .scope     import ScopeType
 from .log       import logError
 
@@ -154,6 +154,8 @@ class Asgn(AST):
 				if stackOffset > 0:
 					state.appendInstr(Swap(expr, stackOffset))
 			else:
+				if expr.lvalue.symbol.fixed:
+					state.appendInstr(Fix(expr))
 				state.nameTopOperand(expr.lvalue.symbol)
 			
 			if state.loopInfo:

@@ -327,6 +327,7 @@ class Scope:
 		assert type(ref) == valueref.ValueRef
 		
 		info = self.symbolInfo[ref.symbol]
+		info.symbol.fixed = True
 		self.setLastUse(info, ref, True)
 	
 	def readSymbol(self, expr):

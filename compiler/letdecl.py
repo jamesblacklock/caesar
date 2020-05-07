@@ -20,6 +20,7 @@ class LetDecl(ValueSymbol):
 		self.noBinding = False
 		self.block = None
 		self.temp = temp
+		self.fixed = False
 	
 	def checkDropFn(letExpr, state):
 		if letExpr.dropFn == None:

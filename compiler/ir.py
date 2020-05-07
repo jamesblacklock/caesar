@@ -285,6 +285,13 @@ class Addr(Instr):
 	def __str__(self):
 		return 'addr {}'.format(self.offset)
 
+class Fix(Instr):
+	def __init__(self, ast):
+		self.ast = ast
+	
+	def __str__(self):
+		return 'fix'
+
 class Call(Instr):
 	def __init__(self, ast, argCt, retType, cVarArgs):
 		super().__init__(ast)
