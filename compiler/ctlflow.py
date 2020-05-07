@@ -63,6 +63,7 @@ class Return(AST):
 		
 		if ret.expr and type(ret.expr) != valueref.ValueRef:
 			(tempSymbol, tempAsgn, tempRef) = letdecl.createTempTriple(ret.expr)
+			tempAsgn.rvalueImplicitType = state.scope.fnDecl.returnType
 			ret.expr = tempRef
 			ret.block = Block([tempSymbol, tempAsgn, ret], ret.span)
 		else:

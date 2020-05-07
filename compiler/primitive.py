@@ -53,7 +53,6 @@ class StrLit(ValueExpr):
 	def __init__(self, value, span):
 		super().__init__(span)
 		self.value = strEsc(value)
-		self.isConst = True
 		self.constBytes = strBytes(self.value)
 	
 	def analyze(lit, state, implicitType):
@@ -72,7 +71,6 @@ class CharLit(ValueExpr):
 		super().__init__(span)
 		bytes = strEsc(value)
 		self.value = ord(bytes)
-		self.isConst = True
 	
 	def analyze(lit, state, implicitType):
 		lit.type = types.Char
@@ -86,7 +84,6 @@ class CharLit(ValueExpr):
 class VoidLit(ValueExpr):
 	def __init__(self, span):
 		super().__init__(span)
-		self.isConst = True
 	
 	def analyze(lit, state, implicitType):
 		lit.type = types.Void
@@ -101,7 +98,6 @@ class BoolLit(ValueExpr):
 	def __init__(self, value, span):
 		super().__init__(span)
 		self.value = value
-		self.isConst = True
 	
 	def analyze(lit, state, implicitType):
 		lit.type = types.Bool
@@ -127,7 +123,6 @@ class IntLit(ValueExpr):
 		self.base = base
 		self.value = -value if negate else value
 		self.suffix = suffix
-		self.isConst = True
 	
 	def analyze(lit, state, implicitType):
 		if implicitType and not types.canAccommodate(implicitType, lit.value):
@@ -190,7 +185,6 @@ class FloatLit(ValueExpr):
 		
 		self.value = -value if negate else value
 		self.suffix = suffix
-		self.isConst = True
 	
 	def analyze(lit, state, implicitType):
 		if lit.suffix == 'f32':

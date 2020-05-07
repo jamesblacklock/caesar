@@ -18,8 +18,11 @@ class ValueRef(ValueExpr):
 		self.temp = tempSymbol != None
 		if path:
 			self.name = self.nameTok.content
-		else:
+		elif tempSymbol:
 			self.name = tempSymbol.name
+		else:
+			assert name
+			self.name = name
 		self.dropBlock = None
 	
 	@staticmethod

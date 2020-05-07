@@ -20,6 +20,7 @@ class Asgn(AST):
 		self.lowered = temp
 		self.temp = temp
 		self.hasRValueTempSymbol = False
+		self.rvalueImplicitType = None
 	
 	@staticmethod
 	def createTemp(tempSymbol, rvalue):
@@ -110,7 +111,11 @@ class Asgn(AST):
 		asgn.lvalue = state.analyzeNode(asgn.lvalue)
 		if asgn.hasRValueTempSymbol:
 			asgn.rvalue.exprs[0].type = asgn.lvalue.type
-		asgn.rvalue = state.analyzeNode(asgn.rvalue, asgn.lvalue.type)
+		
+		implicitType = asgn.lvalue.type
+		if asgn.rvalueImplicitType:
+			implicitType = asgn.rvalueImplicitType
+		asgn.rvalue = state.analyzeNode(asgn.rvalue, implicitType)
 		
 		if asgn.lvalue.deref:
 			state.scope.readSymbol(asgn.lvalue)

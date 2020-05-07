@@ -1,79 +1,76 @@
 #==! file: libc.csr ==#
 
 mod stdio
-{
-	pub const __SLBF: c_int = 0x0001
-	pub const __SNBF: c_int = 0x0002
-	pub const __SRD: c_int = 0x0004
-	pub const __SWR: c_int = 0x0008
-	pub const __SRW: c_int = 0x0010
-	pub const __SEOF: c_int = 0x0020
-	pub const __SERR: c_int = 0x0040
-	pub const __SMBF: c_int = 0x0080
-	pub const __SAPP: c_int = 0x0100
-	pub const __SSTR: c_int = 0x0200
-	pub const __SOPT: c_int = 0x0400
-	pub const __SNPT: c_int = 0x0800
-	pub const __SOFF: c_int = 0x1000
-	pub const __SMOD: c_int = 0x2000
-	
-	pub const _IOFBF: c_int = 0
-	pub const _IOLBF: c_int = 1
-	pub const _IONBF: c_int = 2
-	
-	pub const NULL: c_void^ = 0
-	
-	pub const BUFSIZ: c_int = 1024
-	pub const EOF: c_int = -1
-	
-	pub const FOPEN_MAX: c_int = 20
-	pub const FILENAME_MAX: c_int = 1024
-	pub const L_tmpnam: c_int = 1024
-	
-	pub const P_tmpdir: c_char^ = @c_str "/tmp"
-	
-	pub const SEEK_SET: c_int = 0
-	pub const SEEK_CUR: c_int = 1
-	pub const SEEK_END: c_int = 2
-	
-	pub const TMP_MAX = 308915776
-	
-	@FFI("C")
-	extern
-	{
-		pub struct FILE
+	pub
+		const __SLBF: c_int = 0x0001
+		const __SNBF: c_int = 0x0002
+		const __SRD: c_int = 0x0004
+		const __SWR: c_int = 0x0008
+		const __SRW: c_int = 0x0010
+		const __SEOF: c_int = 0x0020
+		const __SERR: c_int = 0x0040
+		const __SMBF: c_int = 0x0080
+		const __SAPP: c_int = 0x0100
+		const __SSTR: c_int = 0x0200
+		const __SOPT: c_int = 0x0400
+		const __SNPT: c_int = 0x0800
+		const __SOFF: c_int = 0x1000
+		const __SMOD: c_int = 0x2000
 		
-		pub static __stdinp: FILE^
-		pub static __stdoutp: FILE^
-		pub static __stderrp: FILE^
+		const _IOFBF: c_int = 0
+		const _IOLBF: c_int = 1
+		const _IONBF: c_int = 2
 		
-		pub fn printf(c_char^, ...) -> c_int
-		pub fn scanf(c_char^, ...) -> c_int
-		pub fn sscanf(c_char^, c_char^, ...) -> c_int
-		pub fn vfprintf(FILE^, c_char^, __VALIST) -> c_int
-		pub fn vprintf(c_char^, __VALIST) -> c_int
-		pub fn vsprintf(mut c_char^, c_char^, __VALIST) -> c_int
-		pub fn vsnprintf(mut c_char^, c_size_t, c_char^, __VALIST) -> c_int
-		pub fn fgetc(FILE^) -> c_int
-		pub fn fgets(mut c_char^, c_int, FILE^) -> mut c_char^
-		pub fn fputc(c_int, FILE^) -> c_int
-		pub fn fputs(c_char^, FILE^) -> c_int
-		pub fn getc(FILE^) -> c_int
-		pub fn getchar() -> c_int
-		pub fn gets(mut c_char^) -> mut c_char^
-		pub fn putc(c_int, FILE^) -> c_int
-		pub fn putchar(c_int) -> c_int
-		pub fn puts(c_char^) -> c_int
-		pub fn ungetc(c_int, FILE^) -> c_int
-		pub fn fread(mut c_void^, c_size_t _size, c_size_t _n, FILE^) -> c_size_t
-		pub fn fwrite(c_void^, c_size_t _size, c_size_t _n, FILE^) -> c_size_t
-		pub fn sprintf(mut c_char^, c_char^, ...) -> c_int
-		pub fn snprintf(mut c_char^, c_size_t, c_char^, ...) -> c_int
-	}
+		const NULL: &c_void = 0
+		
+		const BUFSIZ: c_int = 1024
+		const EOF: c_int = -1
+		
+		const FOPEN_MAX: c_int = 20
+		const FILENAME_MAX: c_int = 1024
+		const L_tmpnam: c_int = 1024
+		
+		const P_tmpdir: &c_char = @c_str "/tmp"
+		
+		const SEEK_SET: c_int = 0
+		const SEEK_CUR: c_int = 1
+		const SEEK_END: c_int = 2
+		
+		const TMP_MAX = 308915776
 	
-	pub alias stdin = __stdinp
-	pub alias stdout = __stdoutp
-	pub alias stderr = __stderrp
-	
-	pub alias __VALIST = c_char^
-}
+		@FFI("C")
+		extern
+			struct FILE
+			
+			static __stdinp: &FILE
+			static __stdoutp: &FILE
+			static __stderrp: &FILE
+			
+			fn printf(&c_char, ...) -> c_int
+			fn scanf(&c_char, ...) -> c_int
+			fn sscanf(&c_char, &c_char, ...) -> c_int
+			fn vfprintf(&FILE, &c_char, __VALIST) -> c_int
+			fn vprintf(&c_char, __VALIST) -> c_int
+			fn vsprintf(mut &c_char, &c_char, __VALIST) -> c_int
+			fn vsnprintf(mut &c_char, c_size_t, &c_char, __VALIST) -> c_int
+			fn fgetc(&FILE) -> c_int
+			fn fgets(mut &c_char, c_int, &FILE) -> mut &c_char
+			fn fputc(c_int, &FILE) -> c_int
+			fn fputs(&c_char, &FILE) -> c_int
+			fn getc(&FILE) -> c_int
+			fn getchar() -> c_int
+			fn gets(mut &c_char) -> mut &c_char
+			fn putc(c_int, &FILE) -> c_int
+			fn putchar(c_int) -> c_int
+			fn puts(&c_char) -> c_int
+			fn ungetc(c_int, &FILE) -> c_int
+			fn fread(mut &c_void, c_size_t _size, c_size_t _n, &FILE) -> c_size_t
+			fn fwrite(&c_void, c_size_t _size, c_size_t _n, &FILE) -> c_size_t
+			fn sprintf(mut &c_char, &c_char, ...) -> c_int
+			fn snprintf(mut &c_char, c_size_t, &c_char, ...) -> c_int
+		
+		alias stdin = __stdinp
+		alias stdout = __stdoutp
+		alias stderr = __stderrp
+		
+		alias __VALIST = &c_char

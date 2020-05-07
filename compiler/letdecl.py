@@ -88,24 +88,15 @@ class LetDecl(ValueSymbol):
 			lvalue = valueref.ValueRef([letExpr.nameTok], letExpr.nameTok.span)
 			asgn = asgnmod.Asgn(lvalue, rvalue, letExpr.span)
 			asgn.lowered = True
+			asgn.dropBlock = block.Block([], asgn.span)
+			asgn.dropBlock.lowered = True
+			letExpr.block.exprs.append(asgn.dropBlock)
 			asgn = state.analyzeNode(asgn)
-			# asgn.rvalue = state.analyzeNode(asgn.rvalue, letExpr.type)
-			# if letExpr.type == None:
-			# 	letExpr.type = rvalue.type
-			
-			# asgn.lvalue = state.analyzeNode(asgn.lvalue)
-			
-			# if getValidAssignType(asgn.lvalue.type, asgn.rvalue.type) == None:
-			# 	logError(state, asgn.rvalue.span, 
-			# 		'expected type {}, found {}'.format(asgn.symbol.type, asgn.rvalue.type))
 			
 			letExpr.block.exprs.append(asgn)
+			letExpr.block.exprs.append(asgn.dropBlock)
 			
-			if state.scope.dropBlock == None:
-				asgn.dropBlock = block.Block([], asgn.span)
-				asgn.dropBlock.lowered = True
-				letExpr.block.exprs.append(asgn.dropBlock)
-				state.scope.dropBlock = asgn.dropBlock
+			state.scope.dropBlock = asgn.dropBlock
 		
 		if letExpr.type:
 			letExpr.checkDropFn(state)

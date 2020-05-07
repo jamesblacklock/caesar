@@ -80,6 +80,7 @@ class Block(ValueExpr):
 				valueExprLowered = [tempSymbol, tempAsgn, tempAsgn.dropBlock]
 				
 				if lastExpr and implicitType != Void:
+					tempAsgn.rvalueImplicitType = implicitType
 					valueExprLowered.append(tempRef)
 				
 				if block.scopeType != None:
@@ -113,6 +114,7 @@ class Block(ValueExpr):
 			
 			if retVal:
 				(tempSymbol, tempAsgn, tempRef) = letdecl.createTempTriple(retVal)
+				tempAsgn.rvalueImplicitType = state.scope.fnDecl.returnType
 				
 				if block.scopeType != None:
 					state.scope.dropBlock = tempAsgn.dropBlock

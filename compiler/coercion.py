@@ -20,12 +20,12 @@ class Coercion(ValueExpr):
 			logError(state, asExpr.span, 'cannot coerce from {} to {}'
 				.format(asExpr.expr.type, asExpr.type))
 		
-		exprIsInt = asExpr.expr.type and (asExpr.expr.type.isIntType or asExpr.expr.type.isPtrType)
-		typeIsInt = asExpr.type and (asExpr.type.isIntType or asExpr.type.isPtrType)
-		if exprIsInt and typeIsInt and asExpr.expr.type.byteSize == asExpr.type.byteSize and \
-			asExpr.expr.type.isSigned == asExpr.type.isSigned:
-			asExpr.expr.type = asExpr.type
-			return asExpr.expr
+		# exprIsInt = asExpr.expr.type and (asExpr.expr.type.isIntType or asExpr.expr.type.isPtrType)
+		# typeIsInt = asExpr.type and (asExpr.type.isIntType or asExpr.type.isPtrType)
+		# if exprIsInt and typeIsInt and asExpr.expr.type.byteSize == asExpr.type.byteSize and \
+		# 	asExpr.expr.type.isSigned == asExpr.type.isSigned:
+		# 	asExpr.expr.type = asExpr.type
+		# 	return asExpr.expr
 	
 	def writeIR(expr, state):
 		expr.expr.writeIR(state)

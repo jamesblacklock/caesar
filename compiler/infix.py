@@ -2,7 +2,7 @@ from enum       import Enum
 from .token     import TokenType
 from .ast       import ValueExpr
 from .primitive import IntLit
-from .types     import hasDefiniteType, Int32, Int64, UInt64, ISize, USize, Bool, Byte, Char
+from .types     import canAccommodate, hasDefiniteType, Int32, Int64, UInt64, ISize, USize, Bool, Byte, Char
 from .ir        import Imm, Add, Sub, Mul, Div, Eq, NEq, Greater, Less, GreaterEq, LessEq, IPTR
 from .log       import logError
 

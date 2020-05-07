@@ -3,10 +3,13 @@ from .types import getValidAssignType
 from .log   import logError
 from .      import attrs
 
-class ConstDecl(ValueSymbol):
-	def __init__(self, nameTok, typeRef, doccomment, expr, span):
-		super().__init__(nameTok, typeRef, span, doccomment)
+class StaticDecl(ValueSymbol):
+	def __init__(self, nameTok, typeRef, doccomment, extern, mut, expr, span):
+		super().__init__(nameTok, typeRef, span, doccomment, extern)
+		self.mangledName = None
+		self.mut = mut
 		self.expr = expr
+		self.staticValue = None
 		
 	def analyzeSig(decl, state):
 		attrs.invokeAttrs(state, decl)
@@ -41,30 +44,25 @@ class ConstDecl(ValueSymbol):
 		if decl.name == '_':
 			logError(state, decl.expr.span, '`_` is not a valid mod-level binding')
 		
-		if not decl.expr.isConst:
-			logError(state, decl.expr.span, 
-				'initializer for `{}` cannot be statically evaluated'.format(decl.name))
+		decl.staticValue = decl.expr.staticEval(state)
 	
-	def pretty(self, output, indent=0):
-		output.write('const ' + self.name, indent)
+	def __pretty(self, output, indent, s):
+		output.write('{} {}'.format(s, self.name), indent)
 		if self.typeRef:
 			output.write(': ')
 			self.typeRef.pretty(output)
 		output.write(' = ')
 		self.expr.pretty(output)
+	
+	def pretty(self, output, indent=0):
+		self._StaticDecl__pretty(output, indent, 'static')
 
-class StaticDecl(ValueSymbol):
-	def __init__(self, nameTok, typeRef, doccomment, extern, mut, expr, span):
-		super().__init__(nameTok, typeRef, span, doccomment, extern)
-		self.mangledName = None
-		self.mut = mut
-		self.expr = expr
-		
-	def analyzeSig(decl, state):
-		attrs.invokeAttrs(state, decl)
-		
-		if decl.typeRef:
-			decl.type = state.resolveTypeRef(decl.typeRef)
+class ConstDecl(StaticDecl):
+	def __init__(self, nameTok, typeRef, doccomment, expr, span):
+		super().__init__(nameTok, typeRef, doccomment, False, False, expr, span)
+	
+	def pretty(self, output, indent=0):
+		self._StaticDecl__pretty(output, indent, 'const')
 	
 	
 
@@ -100,3 +98,17 @@ class StaticDecl(ValueSymbol):
 # 		return resolveConstExpr(state, expr.expr, resolvedType)
 # 	else:
 # 		assert 0
+
+
+
+
+
+
+
+# class StructLit(ValueExpr):
+		# if isConstExpr:
+		# 	self.bytes = [0 for _ in range(0, self.type.byteSize)]
+		# 	for (name, init) in fieldInits.items():
+		# 		offset = self.type.fieldDict[name].offset
+		# 		end = offset + len(init.bytes)
+		# 		self.bytes[offset : end] = init.bytes

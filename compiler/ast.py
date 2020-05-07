@@ -1,4 +1,5 @@
 import sys
+from .log import logError
 
 class TypeModifiers:
 	def __init__(self, uninit=True):
@@ -73,6 +74,9 @@ class ValueExpr(AST):
 		super().__init__(span)
 		self.type = None
 		self.typeModifiers = None
-		self.isConst = False
-		self.constBytes = None
 		self.borrows = None
+	
+	def staticEval(self, state):
+		logError(state, self.span, 'expression cannot be statically evaluated')
+		return None
+		

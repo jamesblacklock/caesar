@@ -23,11 +23,6 @@ class StructLit(ValueExpr):
 		self.name = self.nameTok.content
 		self.fields = fields
 		self.typeModifiers = TypeModifiers(False)
-		self.isConst = True
-		for init in self.fields:
-			if not init.expr.isConst:
-				self.isConst = False
-				break
 
 	def analyze(expr, state, implicitType):
 		resolvedType = state.lookupSymbol(expr, True)
@@ -103,11 +98,3 @@ class StructLit(ValueExpr):
 			output.write('\n')
 		if len(self.fields) > 1:
 			self.fields[-1].pretty(output, indent + 1)
-
-# class StructLit(ValueExpr):
-		# if isConstExpr:
-		# 	self.bytes = [0 for _ in range(0, self.type.byteSize)]
-		# 	for (name, init) in fieldInits.items():
-		# 		offset = self.type.fieldDict[name].offset
-		# 		end = offset + len(init.bytes)
-		# 		self.bytes[offset : end] = init.bytes
