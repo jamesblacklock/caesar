@@ -61,22 +61,6 @@ builtinAttrs = {
 	DropAttr.name: DropAttr
 }
 
-def evaluateConstExpr(expr):
-	if type(expr) == IntLit:
-		if expr.type.byteSize == 1:
-			t = ctypes.c_uint8
-		elif expr.type.byteSize == 2:
-			t = ctypes.c_uint16
-		elif expr.type.byteSize == 4:
-			t = ctypes.c_uint32
-		elif expr.type.byteSize == 8:
-			t = ctypes.c_uint64
-		else:
-			assert 0
-		return [b for b in bytes(t(expr.value))]
-	else:
-		assert 0
-
 def invokeAttrs(state, expr):
 	if expr.attrs == None or expr.attrsInvoked:
 		return

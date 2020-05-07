@@ -7,7 +7,7 @@ PLATFORM_WORD_SIZE = 8
 class Type:
 	def __init__(self, name, byteSize, align, 
 		isFnType=False, isPtrType=False, isStructType=False, 
-		isIntType=False, isFloatType=False, isOptionType=False, 
+		isIntType=False, isIntLikeType=False, isFloatType=False, isOptionType=False, 
 		isPrimitiveType=False, isSigned=False, isArrayType=False,
 		isTupleType=False, isCompositeType=False):
 		self.name = name
@@ -20,6 +20,7 @@ class Type:
 		self.isPtrType = isPtrType
 		self.isStructType = isStructType
 		self.isIntType = isIntType
+		self.isIntLikeType = isIntType or isIntLikeType
 		self.isFloatType = isFloatType
 		self.isOptionType = isOptionType
 		self.isSigned = isSigned
@@ -33,7 +34,7 @@ class Type:
 
 class PrimitiveType(Type):
 	def __init__(self, name, byteSize, isIntType=False, 
-		isFloatType=False, isSigned=False):
+		isIntLikeType=False, isFloatType=False, isSigned=False):
 		super().__init__(name, byteSize, byteSize, 
 			isPrimitiveType=True, isIntType=isIntType, 
 			isFloatType=isFloatType, isSigned=isSigned)
@@ -83,9 +84,12 @@ class PtrType(Type):
 	def __init__(self, baseType, indLevel):
 		name = ('&' * indLevel) + baseType.name
 		super().__init__(name, PLATFORM_WORD_SIZE, PLATFORM_WORD_SIZE, 
-			isPtrType=True, isPrimitiveType=True)
+			isIntLikeType=True, isPtrType=True, isPrimitiveType=True)
 		self.baseType = baseType
 		self.indLevel = indLevel
+		self.MIN = 0
+		self.MAX = USZ_MAX
+		self.RNG = USZ_RNG
 	
 	def typeAfterDeref(self, count=1):
 		assert count > 0 and count <= self.indLevel
@@ -126,8 +130,8 @@ SZ = PLATFORM_WORD_SIZE
 
 Void    = PrimitiveType('void',    0)
 Bool    = PrimitiveType('bool',    1)
-Byte    = PrimitiveType('byte',    1)
-Char    = PrimitiveType('char',    4)
+Byte    = PrimitiveType('byte',    1,   isIntLikeType=True)
+Char    = PrimitiveType('char',    4,   isIntLikeType=True)
 UInt8   = PrimitiveType('uint8',   1,   isIntType=True)
 UInt16  = PrimitiveType('uint16',  2,   isIntType=True)
 UInt32  = PrimitiveType('uint',    4,   isIntType=True)
@@ -166,6 +170,43 @@ U16_RNG = range(0, U16_MAX+1)
 U32_RNG = range(0, U32_MAX+1)
 U64_RNG = range(0, U64_MAX+1)
 USZ_RNG = range(0, USZ_MAX+1)
+
+Byte.MIN = 0
+Byte.MAX = U8_MAX
+Byte.RNG = U8_RNG
+Char.MIN = 0
+Char.MAX = U8_MAX
+Char.RNG = U8_RNG
+UInt8.MIN = 0
+UInt8.MAX = U8_MAX
+UInt8.RNG = U8_RNG
+UInt16.MIN = 0
+UInt16.MAX = U16_MAX
+UInt16.RNG = U16_RNG
+UInt32.MIN = 0
+UInt32.MAX = U32_MAX
+UInt32.RNG = U32_RNG
+UInt64.MIN = 0
+UInt64.MAX = U64_MAX
+UInt64.RNG = U64_RNG
+USize.MIN = 0
+USize.MAX = USZ_MAX
+USize.RNG = USZ_RNG
+Int8.MIN = I8_MIN
+Int8.MAX = I8_MAX
+Int8.RNG = I8_RNG
+Int16.MIN = I16_MIN
+Int16.MAX = I16_MAX
+Int16.RNG = I16_RNG
+Int32.MIN = I32_MIN
+Int32.MAX = I32_MAX
+Int32.RNG = I32_RNG
+Int64.MIN = I64_MIN
+Int64.MAX = I64_MAX
+Int64.RNG = I64_RNG
+ISize.MIN = ISZ_MIN
+ISize.MAX = ISZ_MAX
+ISize.RNG = ISZ_RNG
 
 def canAccommodate(type, intValue):
 	if type.byteSize == 1 and type.isSigned:

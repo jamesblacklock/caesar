@@ -1,4 +1,4 @@
-from .ast   import AST, ValueExpr, TypeModifiers
+from .ast   import StaticData, StaticDataType, AST, ValueExpr, TypeModifiers
 from .types import getValidAssignType
 from .log   import logError
 from .      import ir
@@ -81,6 +81,21 @@ class StructLit(ValueExpr):
 		# 	logError(state, expr.nameTok.span, message)
 		
 		expr.type = resolvedType
+	
+	def staticEval(self, state):
+		structBytes = [0 for _ in range(0, self.type.byteSize)]
+		for fieldLit in self.fields:
+			fieldInfo = self.type.fieldDict[fieldLit.name]
+			staticFieldValue = fieldLit.expr.staticEval(state)
+			if staticFieldValue == None:
+				return None
+			
+			fieldBytes = staticFieldValue.toBytes()
+			end = fieldInfo.offset + len(fieldBytes)
+			structBytes[fieldInfo.offset : end] = fieldBytes
+		
+		fType = ir.FundamentalType.fromResolvedType(self.type)
+		return StaticData(structBytes, StaticDataType.BYTES, fType)
 	
 	def writeIR(ast, state):
 		fType = ir.FundamentalType.fromResolvedType(ast.type)

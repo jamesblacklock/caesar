@@ -1,5 +1,38 @@
 import sys
-from .log import logError
+import ctypes
+from enum import Enum
+
+class StaticDataType(Enum):
+	INT = 'INT'
+	FLOAT = 'FLOAT'
+	BYTES = 'BYTES'
+
+class StaticData:
+	def __init__(self, data, dataType, fType):
+		self.data = data
+		self.dataType = dataType
+		self.fType = fType
+	
+	def __intToBytes(self):
+		if self.fType.byteSize == 1:
+			t = ctypes.c_uint8
+		elif self.fType.byteSize == 2:
+			t = ctypes.c_uint16
+		elif self.fType.byteSize == 4:
+			t = ctypes.c_uint32
+		elif self.fType.byteSize == 8:
+			t = ctypes.c_uint64
+		else:
+			assert 0
+		return [b for b in bytes(t(self.data))]
+	
+	def toBytes(self):
+		if self.dataType == StaticDataType.BYTES:
+			return self.data
+		elif self.dataType == StaticDataType.INT:
+			return self._StaticData__intToBytes()
+		else:
+			assert 0
 
 class TypeModifiers:
 	def __init__(self, uninit=True):
@@ -77,6 +110,5 @@ class ValueExpr(AST):
 		self.borrows = None
 	
 	def staticEval(self, state):
-		logError(state, self.span, 'expression cannot be statically evaluated')
 		return None
 		

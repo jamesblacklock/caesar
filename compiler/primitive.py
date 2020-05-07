@@ -1,5 +1,5 @@
 import re
-from .ast import ValueExpr
+from .ast import ValueExpr, StaticData, StaticDataType
 from .    import types
 from .    import ir
 from .log import logError
@@ -161,6 +161,10 @@ class IntLit(ValueExpr):
 		
 		if not types.canAccommodate(lit.type, lit.value):
 			logError(state, lit.span, 'integer value out of range for type {}'.format(lit.type))
+	
+	def staticEval(self, state):
+		fType = ir.FundamentalType.fromResolvedType(self.type)
+		return StaticData(self.value, StaticDataType.INT, fType)
 	
 	def writeIR(ast, state):
 		fType = ir.FundamentalType.fromResolvedType(ast.type)

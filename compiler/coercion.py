@@ -1,4 +1,4 @@
-from .ast   import ValueExpr
+from .ast   import ValueExpr, StaticDataType
 from .log   import logError
 from .types import canCoerce, typesMatch
 from .ir    import FundamentalType, IExtend, Extend, Truncate, FExtend, FTruncate, IToF, UToF, FToI, FToU
@@ -19,13 +19,29 @@ class Coercion(ValueExpr):
 		if not canCoerce(asExpr.expr.type, asExpr.type):
 			logError(state, asExpr.span, 'cannot coerce from {} to {}'
 				.format(asExpr.expr.type, asExpr.type))
+	
+	def staticEval(self, state):
+		staticValue = self.expr.staticEval(state)
+		if staticValue == None:
+			return None
 		
-		# exprIsInt = asExpr.expr.type and (asExpr.expr.type.isIntType or asExpr.expr.type.isPtrType)
-		# typeIsInt = asExpr.type and (asExpr.type.isIntType or asExpr.type.isPtrType)
-		# if exprIsInt and typeIsInt and asExpr.expr.type.byteSize == asExpr.type.byteSize and \
-		# 	asExpr.expr.type.isSigned == asExpr.type.isSigned:
-		# 	asExpr.expr.type = asExpr.type
-		# 	return asExpr.expr
+		if staticValue.dataType == StaticDataType.INT and self.type.isIntLikeType:
+			outOfRange = False
+			if staticValue.data < self.type.MIN:
+				outOfRange = True
+				staticValue.data = self.type.MIN
+			elif staticValue.data > self.type.MAX:
+				outOfRange = True
+				staticValue.data = self.type.MAX
+			
+			if outOfRange:
+				logWarning(state, self.expr.span, 'value out of range for type `{}` and will be clamped'
+					.format(self.type))
+			
+			staticValue.fType = FundamentalType.fromResolvedType(self.type)
+			return staticValue
+		else:
+			return None
 	
 	def writeIR(expr, state):
 		expr.expr.writeIR(state)

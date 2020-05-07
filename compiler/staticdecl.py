@@ -45,6 +45,8 @@ class StaticDecl(ValueSymbol):
 			logError(state, decl.expr.span, '`_` is not a valid mod-level binding')
 		
 		decl.staticValue = decl.expr.staticEval(state)
+		if decl.staticValue == None:
+			logError(state, decl.expr.span, 'expression cannot be statically evaluated')
 	
 	def __pretty(self, output, indent, s):
 		output.write('{} {}'.format(s, self.name), indent)
@@ -63,52 +65,3 @@ class ConstDecl(StaticDecl):
 	
 	def pretty(self, output, indent=0):
 		self._StaticDecl__pretty(output, indent, 'const')
-	
-	
-
-# def resolveStaticDecl(state, decl):
-# 	decl.bytes = resolveConstExpr(state, decl.expr)
-
-# def resolveConstExpr(state, expr, resolvedType=None):
-# 	if resolvedType == None:
-# 		resolvedType = expr.type
-	
-# 	if type(expr) == IntLit:
-# 		if resolvedType.byteSize == 1:
-# 			t = ctypes.c_uint8
-# 		elif resolvedType.byteSize == 2:
-# 			t = ctypes.c_uint16
-# 		elif resolvedType.byteSize == 4:
-# 			t = ctypes.c_uint32
-# 		elif resolvedType.byteSize == 8:
-# 			t = ctypes.c_uint64
-# 		else:
-# 			assert 0
-# 		return [b for b in bytes(t(expr.value))]
-# 	elif type(expr) == StructLit:
-# 		structBytes = [0 for _ in range(0, expr.type.byteSize)]
-# 		for f in expr.type.fields:
-# 			if f.name not in expr.fieldDict:
-# 				continue
-# 			fieldBytes = resolveConstExpr(state, expr.fieldDict[f.name].expr)
-# 			end = f.offset + len(fieldBytes)
-# 			structBytes[f.offset : end] = fieldBytes
-# 		return structBytes
-# 	elif type(expr) == Coercion:
-# 		return resolveConstExpr(state, expr.expr, resolvedType)
-# 	else:
-# 		assert 0
-
-
-
-
-
-
-
-# class StructLit(ValueExpr):
-		# if isConstExpr:
-		# 	self.bytes = [0 for _ in range(0, self.type.byteSize)]
-		# 	for (name, init) in fieldInits.items():
-		# 		offset = self.type.fieldDict[name].offset
-		# 		end = offset + len(init.bytes)
-		# 		self.bytes[offset : end] = init.bytes
