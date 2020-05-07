@@ -1,8 +1,8 @@
 import re
-from enum import Enum
-from .span import Span
+from enum   import Enum
+from .span  import Span
 from .token import *
-from .log import logError
+from .log   import logError
 
 class IndentMode(Enum):
 	SPACE = 'SPACE'

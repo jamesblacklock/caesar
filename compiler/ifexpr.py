@@ -1,5 +1,5 @@
 from .ast   import ValueExpr
-from .types import getValidAssignType, Bool, Void, OptionType
+from .types import getValidAssignType, Void, Bool, OptionType
 from .ir    import getInputInfo, beginBlock, Br, BrIf, Ret, BlockMarker
 
 class If(ValueExpr):

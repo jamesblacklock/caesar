@@ -4,9 +4,20 @@ Compiler for the Caesar programming language
 ## What is the Caesar programming language?
 Caesar is:
 - a systems-level language
-- that allows straightforward manual memory management and provides a C FFI
-- but also provides memory safety guarantees
-- all while offering a modern and comfortable syntax
+ - requires no runtime
+ - allows straightforward manual memory management
+ - links to native C libraries
+ - can export native libraries through a C FFI
+- an easy-to-use language
+ - offers a modern and comfortable syntax
+ - systems-level features are not needed for common application-level use cases
+ - high-level features and structures are built into the language
+- a safe language
+ - features a memory-safe subset
+ - features powerful analysis constructs for providing safety guarantees, but...
+ - also provides an "unsafe" escape hatch for times when you just need to do something the compiler doesn't like
+
+Under heavy development. Not yet ready for production use.
 
 Currently the compiler generates assembler targeting 64-bit 
 macOS and relies upon [NASM](https://www.nasm.us/) as a dependency.

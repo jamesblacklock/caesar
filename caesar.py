@@ -5,12 +5,12 @@ import os
 import argparse
 import uuid
 
-from compiler.sourcefile                   import SourceFile
-from compiler.tokenizer                    import tokenize
-from compiler.parser                       import parse
-from compiler.analyzer                     import analyze
-from compiler.ir                           import generateIR
-from compiler.amd64                        import generateAsm
+from compiler.sourcefile import SourceFile
+from compiler.tokenizer  import tokenize
+from compiler.parser     import parse
+from compiler.analyzer   import analyze
+from compiler.ir         import generateIR
+from compiler.amd64      import generateAsm
 
 def main(args):
 	parser = argparse.ArgumentParser(description='Compiler for the Caesar programming language')

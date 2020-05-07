@@ -8,6 +8,12 @@ class TypeRef(AST):
 	def pretty(self, output, indent=0):
 		output.write(self.name, indent)
 
+class NamedTypeRef(TypeRef):
+	def __init__(self, path, span):
+		self.path = path
+		self.nameTok = path[-1]
+		super().__init__(self.nameTok.content, span)
+
 class PtrTypeRef(TypeRef):
 	def __init__(self, baseType, indLevel, span):
 		name = ('&' * indLevel) + baseType.name
@@ -28,9 +34,3 @@ class ArrayTypeRef(TypeRef):
 		super().__init__(name, span)
 		self.baseType = baseType
 		self.count = count
-
-class NamedTypeRef(TypeRef):
-	def __init__(self, path, span):
-		self.path = path
-		self.nameTok = path[-1]
-		super().__init__(self.nameTok.content, span)
