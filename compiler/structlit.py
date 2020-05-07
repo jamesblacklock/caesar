@@ -103,3 +103,11 @@ class StructLit(ValueExpr):
 			output.write('\n')
 		if len(self.fields) > 1:
 			self.fields[-1].pretty(output, indent + 1)
+
+# class StructLit(ValueExpr):
+		# if isConstExpr:
+		# 	self.bytes = [0 for _ in range(0, self.type.byteSize)]
+		# 	for (name, init) in fieldInits.items():
+		# 		offset = self.type.fieldDict[name].offset
+		# 		end = offset + len(init.bytes)
+		# 		self.bytes[offset : end] = init.bytes
