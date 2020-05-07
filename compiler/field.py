@@ -30,14 +30,14 @@ class Index(ValueExpr):
 		# 	tempAsgn = asgn.Asgn(tempLValue, indexOp, indexOp.span, temp=True)
 		# 	tempAsgn.lowered = True
 			
-		# 	indexOp.dropBlock = block.Block(block.BlockInfo([], None))
+		# 	indexOp.dropBlock = block.Block([], None)
 		# 	indexOp.dropBlock.lowered = True
 			
 		# 	tempRef = valueref.ValueRef(None, indexOp.span, temp=True)
 		# 	tempRef.symbol = temp
 			
 		# 	exprs = [temp, tempAsgn, indexOp.dropBlock, tempRef]
-		# 	return block.Block(block.BlockInfo(exprs, indexOp.span), scope.ScopeType.BLOCK)
+		# 	return block.Block(exprs, indexOp.span, scope.ScopeType.BLOCK)
 		# else:
 		
 		if type(indexOp.expr) == valueref.ValueRef:
@@ -55,17 +55,10 @@ class Index(ValueExpr):
 				indexOp.expr = indexOp.expr.expr
 			
 			if tempRValue:
-				temp = letdecl.LetDecl(None, None, False, None, indexOp.span, temp=True)
-				exprs.append(temp)
-				
-				tempLValue = valueref.ValueRef(None, indexOp.span, temp=True)
-				tempLValue.symbol = temp
-				tempAsgn = asgn.Asgn(tempLValue, tempRValue, indexOp.span, temp=True)
-				tempAsgn.lowered = True
+				(tempSymbol, tempAsgn, tempRef) = letdecl.createTempTriple(tempRValue)
+				exprs.append(tempSymbol)
 				exprs.append(tempAsgn)
-				
-				indexOp.expr = valueref.ValueRef(None, indexOp.span, temp=True)
-				indexOp.expr.symbol = temp
+				indexOp.expr = tempRef
 		else:
 			assert 0
 		
@@ -74,24 +67,12 @@ class Index(ValueExpr):
 		if indexOp.write:
 			exprs.append(indexOp)
 		else:
-			temp = letdecl.LetDecl(None, None, False, None, indexOp.span, temp=True)
-			exprs.append(temp)
-			
-			tempLValue = valueref.ValueRef(None, indexOp.span, temp=True)
-			tempLValue.symbol = temp
-			tempAsgn = asgn.Asgn(tempLValue, indexOp, indexOp.span, temp=True)
-			tempAsgn.lowered = True
-			exprs.append(tempAsgn)
-			
-			indexOp.dropBlock = block.Block(block.BlockInfo([], None))
+			indexOp.dropBlock = block.Block([], indexOp.span)
 			indexOp.dropBlock.lowered = True
-			exprs.append(indexOp.dropBlock)
-			
-			tempRef = valueref.ValueRef(None, indexOp.span, temp=True)
-			tempRef.symbol = temp
-			exprs.append(tempRef)
+			(tempSymbol, tempAsgn, tempRef) = letdecl.createTempTriple(indexOp)
+			exprs.extend([tempSymbol, tempAsgn, indexOp.dropBlock, tempRef])
 		
-		b = block.Block(block.BlockInfo(exprs, indexOp.span), scope.ScopeType.BLOCK)
+		b = block.Block(exprs, indexOp.span, scope.ScopeType.BLOCK)
 		b.lowered = True
 		return b
 
@@ -175,48 +156,21 @@ class Field(ValueExpr):
 			expr.lowered = True
 		
 		if type(expr.expr) == valueref.ValueRef:
-			temp = letdecl.LetDecl(None, None, False, None, expr.span, temp=True)
-			
-			tempLValue = valueref.ValueRef(None, expr.span, temp=True)
-			tempLValue.symbol = temp
-			tempAsgn = asgn.Asgn(tempLValue, expr, expr.span, temp=True)
-			tempAsgn.lowered = True
-			
-			expr.dropBlock = block.Block(block.BlockInfo([], None))
+			expr.dropBlock = block.Block([], expr.span)
 			expr.dropBlock.lowered = True
-			
-			tempRef = valueref.ValueRef(None, expr.span, temp=True)
-			tempRef.symbol = temp
-			
-			exprs = [temp, tempAsgn, expr.dropBlock, tempRef]
-			return block.Block(block.BlockInfo(exprs, expr.span), scope.ScopeType.BLOCK)
+			(tempSymbol, tempAsgn, tempRef) = letdecl.createTempTriple(expr)
+			exprs = [tempSymbol, tempAsgn, expr.dropBlock, tempRef]
+			return block.Block(exprs, expr.span, scope.ScopeType.BLOCK)
 		else:
 			if type(expr.expr) in (deref.Deref, Index):
 				assert 0
 			
-			temp1 = letdecl.LetDecl(None, None, False, None, expr.span, temp=True)
-			
-			temp1LValue = valueref.ValueRef(None, expr.span, temp=True)
-			temp1LValue.symbol = temp1
-			temp1Asgn = asgn.Asgn(temp1LValue, expr.expr, expr.span, temp=True)
-			temp1Asgn.lowered = True
-			temp1Asgn.dropBlock = block.Block(block.BlockInfo([], None))
-			temp1Asgn.dropBlock.lowered = True
-			
-			temp2 = letdecl.LetDecl(None, None, False, None, expr.span, temp=True)
-			
-			expr.expr = valueref.ValueRef(None, expr.span, temp=True)
-			expr.expr.symbol = temp1
-			temp2LValue = valueref.ValueRef(None, expr.span, temp=True)
-			temp2LValue.symbol = temp2
-			temp2Asgn = asgn.Asgn(temp2LValue, expr, expr.span, temp=True)
-			temp2Asgn.lowered = True
-			
-			temp2Ref = valueref.ValueRef(None, expr.span, temp=True)
-			temp2Ref.symbol = temp2
+			(temp1, temp1Asgn, temp1Ref) = letdecl.createTempTriple(expr.expr)
+			expr.expr = temp1Ref
+			(temp2, temp2Asgn, temp2Ref) = letdecl.createTempTriple(expr)
 			
 			exprs = [temp1, temp1Asgn, temp2, temp2Asgn, temp1Asgn.dropBlock, temp2Ref]
-			return block.Block(block.BlockInfo(exprs, expr.span), scope.ScopeType.BLOCK)
+			return block.Block(exprs, expr.span, scope.ScopeType.BLOCK)
 	
 	def analyze(expr, state, implicitType):
 		assert type(expr.expr) == valueref.ValueRef

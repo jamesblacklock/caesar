@@ -1,6 +1,6 @@
 from .ast     import AST
 from .ifexpr  import If
-from .block   import BlockInfo, Block
+from .block   import Block
 from .ctlflow import Break
 from .types   import Void
 from .scope   import ScopeType
@@ -68,10 +68,10 @@ class While(AST):
 		self.block = block
 	
 	def lower(ast, state):
-		ifBlock = Block(BlockInfo(ast.block.exprs, ast.block.span), ScopeType.IF)
-		elseBlock = Block(BlockInfo([Break(ast.span)], ast.span), ScopeType.ELSE)
+		ifBlock = Block(ast.block.exprs, ast.block.span, ScopeType.IF)
+		elseBlock = Block([Break(ast.span)], ast.span, ScopeType.ELSE)
 		ifExpr = If(ast.expr, ifBlock, elseBlock, ast.span)
-		loopBlock = Block(BlockInfo([ifExpr], ast.span), ScopeType.LOOP)
+		loopBlock = Block([ifExpr], ast.span, ScopeType.LOOP)
 		loopExpr = Loop(loopBlock, ast.span)
 		loopExpr.loweredFrom = ast
 		

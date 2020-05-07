@@ -1,26 +1,30 @@
-from .ast      import ValueExpr, StaticDecl, FnParam
-from .         import fndecl, letdecl, constdecl, block, asgn
+from .ast      import ValueExpr
+from .         import fndecl, letdecl, staticdecl, block, asgn
 from .coercion import Coercion
 from .types    import canPromote
 from .ir       import IPTR, Dup, Raise, Global, Deref
 
 class ValueRef(ValueExpr):
-	def __init__(self, path, span, name=None, temp=False):
+	def __init__(self, path, span, name=None, tempSymbol=None):
 		super().__init__(span)
 		self.path = path
-		self.symbol = None
+		self.symbol = tempSymbol
 		self.copy = False
 		self.write = False
 		self.deref = False
 		self.addr = False
 		self.fieldAccess = False
 		self.nameTok = path[-1] if path else None
-		self.temp = temp
+		self.temp = tempSymbol != None
 		if path:
 			self.name = self.nameTok.content
 		else:
-			self.name = '???'
+			self.name = tempSymbol.name
 		self.dropBlock = None
+	
+	@staticmethod
+	def createTemp(tempSymbol):
+		return ValueRef(None, tempSymbol.span, tempSymbol=tempSymbol)
 	
 	def lower(valueRef, state):
 		if valueRef.write or valueRef.dropBlock:
@@ -34,19 +38,9 @@ class ValueRef(ValueExpr):
 		if type(valueRef.symbol) != letdecl.LetDecl or not valueRef.symbol.dropFn:
 			return valueRef
 		
-		tempSymbol = letdecl.LetDecl(None, None, False, None, None, temp=True)
-		tempSymbol.type = valueRef.type
-		tempSymbol.lowered = True
+		(tempSymbol, tempAsgn, tempRef) = letdecl.createTempTriple(valueRef)
 		
-		tempLValue = ValueRef(None, None, temp=True)
-		tempLValue.symbol = tempSymbol
-		tempAsgn = asgn.Asgn(tempLValue, valueRef, None, temp=True)
-		tempAsgn.lowered = True
-		
-		tempRef = ValueRef(None, None, temp=True)
-		tempRef.symbol = tempSymbol
-		
-		valueRef.dropBlock = block.Block(block.BlockInfo([], valueRef.span))
+		valueRef.dropBlock = block.Block([], valueRef.span)
 		valueRef.dropBlock.lowered = True
 		
 		exprs = [
@@ -56,7 +50,7 @@ class ValueRef(ValueExpr):
 			tempRef
 		]
 		
-		return block.Block(block.BlockInfo(exprs, valueRef.span))
+		return block.Block(exprs, valueRef.span)
 	
 	def analyze(valueRef, state, implicitType):
 		if valueRef.symbol == None:
@@ -64,9 +58,6 @@ class ValueRef(ValueExpr):
 				valueRef.symbol = state.lookupSymbol(valueRef)
 			if valueRef.symbol == None:
 				return
-		
-		if valueRef.temp:
-			valueRef.name = valueRef.symbol.name
 		
 		valueRef.symbol.unused = False
 		valueRef.type = valueRef.symbol.type
@@ -86,14 +77,14 @@ class ValueRef(ValueExpr):
 			valueRef.dropBlock = state.scope.dropBlock
 	
 	def writeIR(ref, state):
-		if type(ref.symbol) == constdecl.ConstDecl:
+		if type(ref.symbol) == staticdecl.ConstDecl:
 			ref.symbol.expr.writeIR(state)
-		elif type(ref.symbol) == StaticDecl:
+		elif type(ref.symbol) == staticdecl.StaticDecl:
 			state.appendInstr(Global(ref, IPTR, ref.symbol.mangledName))
 			state.appendInstr(Deref(ref, ref.type))
 		elif type(ref.symbol) == fndecl.FnDecl:
 			state.appendInstr(Global(ref, IPTR, ref.symbol.mangledName))
-		elif type(ref.symbol) in (letdecl.LetDecl, FnParam):
+		elif type(ref.symbol) in (letdecl.LetDecl, letdecl.FnParam):
 			stackOffset = state.localOffset(ref.symbol)
 			if ref.copy:
 				state.appendInstr(Dup(ref, stackOffset))
@@ -107,7 +98,8 @@ class ValueRef(ValueExpr):
 		if self.copy:
 			output.addPrefix('$copy(')
 			closeParen = True
-		elif not (self.write or self.fieldAccess or self.addr) and type(self.symbol) in (StaticDecl, letdecl.LetDecl, FnParam):
+		elif not (self.write or self.fieldAccess or self.addr) and \
+			type(self.symbol) in (staticdecl.StaticDecl, letdecl.LetDecl, letdecl.FnParam):
 			output.addPrefix('$move(')
 			closeParen = True
 		

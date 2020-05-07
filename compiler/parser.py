@@ -2,23 +2,23 @@ import re
 from os          import path
 from enum        import Enum
 from .token      import TokenType
-from .span       import Span, revealSpan, AnsiColor
+from .span       import Span
 from .log        import logError
-from .ast        import ValueExpr, FnParam, CVarArgsParam, StaticDecl
+from .ast        import ValueExpr
 from .sign       import Sign
 from .structdecl import FieldDecl, StructDecl
 from .attrs      import Attr
 from .typeref    import PtrTypeRef, NamedTypeRef, ArrayTypeRef, TupleTypeRef
 from .mod        import Mod
 from .fndecl     import FnDecl, CConv
-from .constdecl  import ConstDecl
+from .staticdecl import StaticDecl, ConstDecl
 from .coercion   import Coercion
 from .primitive  import IntLit, FloatLit, BoolLit, CharLit, StrLit, VoidLit
 from .block      import BlockInfo, Block
 from .fncall     import FnCall
 from .ctlflow    import Return, Break, Continue
 from .loop       import While, Loop
-from .letdecl    import LetDecl
+from .letdecl    import LetDecl, FnParam, CVarArgsParam
 from .asgn       import Asgn
 from .ifexpr     import If
 from .infix      import InfixOp, InfixOps
@@ -587,7 +587,7 @@ def parseIf(state):
 	if expr == None:
 		return None
 	
-	ifBlock = Block(parseBlock(state, parseFnBodyExpr), ScopeType.IF)
+	ifBlock = Block.fromInfo(parseBlock(state, parseFnBodyExpr), ScopeType.IF)
 	span = Span.merge(span, ifBlock.span)
 	
 	offset = state.offset
@@ -605,14 +605,15 @@ def parseIf(state):
 		if state.tok.type == TokenType.IF:
 			tok = state.tok
 			elseIf = parseIf(state)
-			elseIfBlock = BlockInfo([elseIf], elseIf.span) if elseIf else BlockInfo([], tok.span)
-			elseBlock = Block(elseIfBlock, ScopeType.ELSE)
+			exprs = [elseIf] if elseIf else []
+			span = elseIf.span if elseIf else tok.span
+			elseBlock = Block(exprs, span, ScopeType.ELSE)
 		else:
-			elseBlock = Block(parseBlock(state, parseFnBodyExpr), ScopeType.ELSE)
+			elseBlock = Block.fromInfo(parseBlock(state, parseFnBodyExpr), ScopeType.ELSE)
 		
 		span = Span.merge(span, elseBlock.span)
 	else:
-		elseBlock = Block(BlockInfo([], span), ScopeType.ELSE)
+		elseBlock = Block([], span, ScopeType.ELSE)
 		state.rollback(offset)
 	
 	return If(expr, ifBlock, elseBlock, span)
@@ -625,18 +626,18 @@ def parseWhile(state):
 	if expr == None:
 		return None
 	
-	block = parseBlock(state, parseFnBodyExpr)
-	span = Span.merge(span, block.span)
+	blockInfo = parseBlock(state, parseFnBodyExpr)
+	span = Span.merge(span, blockInfo.span)
 	
-	return While(expr, Block(block, ScopeType.LOOP), span)
+	return While(expr, Block.fromInfo(blockInfo, ScopeType.LOOP), span)
 
 def parseLoop(state):
 	span = state.tok.span
 	state.advance()
-	block = parseBlock(state, parseFnBodyExpr)
-	span = Span.merge(span, block.span)
+	blockInfo = parseBlock(state, parseFnBodyExpr)
+	span = Span.merge(span, blockInfo.span)
 	
-	return Loop(Block(block, ScopeType.LOOP), span)
+	return Loop(Block.fromInfo(blockInfo, ScopeType.LOOP), span)
 
 def parseLoopCtl(state):
 	span = state.tok.span
@@ -903,13 +904,13 @@ def parseValueExprImpl(state, precedence, noSkipSpace, allowSimpleFnCall):
 		if len(block.list) == 1 and isinstance(block.list[0], ValueExpr):
 			expr = block.list[0]
 		else:
-			expr = Block(block, ScopeType.BLOCK)
+			expr = Block.fromInfo(block, ScopeType.BLOCK)
 	elif state.tok.type == TokenType.LBRACK:
 		block = parseBlock(state, parseValueExpr, requireBlockMarkers=True, blockMarkers=BlockMarkers.BRACK)
 		expr = ArrayLit(block.list, block.span)
 	elif state.tok.type == TokenType.LBRACE:
 		block = parseBlock(state, parseFnBodyExpr, requireBlockMarkers=True)
-		expr = Block(block, ScopeType.BLOCK)
+		expr = Block.fromInfo(block, ScopeType.BLOCK)
 	elif state.tok.type == TokenType.LPAREN:
 		block = parseBlock(state, parseValueExpr, BlockMarkers.PAREN, True)
 		if len(block.list) == 1 and not block.trailingSeparator:
@@ -1134,8 +1135,8 @@ def parseFnDecl(state, doccomment, extern):
 	
 	body = None
 	if not extern:
-		block = parseBlock(state, parseFnBodyExpr)
-		body = Block(block, ScopeType.FN)
+		blockInfo = parseBlock(state, parseFnBodyExpr)
+		body = Block.fromInfo(blockInfo, ScopeType.FN)
 		span = Span.merge(span, body.span)
 	
 	return FnDecl(nameTok, doccomment, extern, params, cVarArgs, returnType, body, span, cVarArgsSpan)

@@ -23,17 +23,9 @@ class Address(ValueExpr):
 		
 		assert state.scope.dropBlock
 		
-		temp = letdecl.LetDecl(None, None, False, None, self.span, temp=True)
-		tempLValue = valueref.ValueRef(None, self.span, temp=True)
-		tempLValue.symbol = temp
-		tempAsgn = asgn.Asgn(tempLValue, self, self.span, temp=True)
-		tempAsgn.lowered = True
+		(temp, tempAsgn, tempRef) = letdecl.createTempTriple(self)
 		
-		tempRef = valueref.ValueRef(None, self.span, temp=True)
-		tempRef.symbol = temp
-		tempRef.dropBlock = state.scope.dropBlock
-		
-		b = block.Block(block.BlockInfo([temp, tempAsgn, tempRef], None))
+		b = block.Block([temp, tempAsgn, tempRef], None)
 		b.lowered = True
 		return b
 	

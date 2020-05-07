@@ -15,7 +15,7 @@ extern fn getchar() -> int
 const NULL = 0 as &int64
 
 fn drop(q: int) { printf("dropping value: %d\n", q) }
-#=fn doTheThing(n: int16) -> int16 #=hello=#
+fn doTheThing(n: int16) -> int16 #=hello=#
 	printf("Normal function-call syntax%s\n", ".")
 	"Here is a number: %d\n" -> printf(n)
 	
@@ -38,7 +38,7 @@ const CONST_STRUCT =
 		e: 131415
 		f: 161718
 		g: 192021
-	}=#
+	}
 
 #========================================================
 	This is the documentation for the `main` function, 
@@ -48,7 +48,7 @@ fn main()
 	# sizeof TestStruct::g
 	# offsetof TestStruct::a
 	
-	#=printf("a static value: %d\n", myStatic)
+	printf("a static value: %d\n", myStatic)
 	
 	let s = CONST_STRUCT
 	printf("a struct initialized from a const: TestStruct { a: %d, ... f: %d }\n", s.a, s.f)
@@ -73,29 +73,29 @@ fn main()
 		printf("You did not type the letter 'a'. You typed '%c'\n", c + 
 			10 * 2 - 11 * 2 + 2)
 	
-	=#let n: int = 5
-	# printf("count down from: ")
-	# scanf("%d", &n)
+	let n: int = 5
+	printf("count down from: ")
+	scanf("%d", &n)
 	
-	# let mut maybeInit
-	# if true
-	# 	maybeInit = 5
-	# 	maybeInit
-	# maybeInit = 2
-	# maybeInit = 3 + maybeInit
+	let mut maybeInit
+	if true
+		maybeInit = 5
+		maybeInit
+	maybeInit = 2
+	maybeInit = 3 + maybeInit
 	
 	@drop(drop)
 	let mut count = 0
 	while count <= n
-		# let t = time(NULL)
-		# while time(NULL) == t
-		# 	void
-		# printf("%d\n", n-count)
+		let t = time(NULL)
+		while time(NULL) == t
+			void
+		printf("%d\n", n-count)
 		count = count+1
 	
 	drop(count)
 	
-	#=printf("%c%c%c%c%c%c%c!!\n",
+	printf("%c%c%c%c%c%c%c!!\n",
 			103, 111, 111, 100,
 			98, 121, 101)
 
@@ -103,5 +103,4 @@ fn moreThanSixArgs(
 	a: int8, b: int, c: int, d: int
 	e: int, f: int, g: int, h: int
 	i: int)
-	#printf("%d %d %d %d %d %d %d %d %d\n", a, i, b, c, d, e, f, g, h)
-	printf("%d %d %d\n", g, h, i)=#
+	printf("%d %d %d %d %d %d %d %d %d\n", a, i, b, c, d, e, f, g, h)

@@ -17,17 +17,26 @@ class Asgn(AST):
 		self.block = None
 		self.dropBlock = None
 		self.dropBeforeAssignBlock = None
-		self.lowered = False
+		self.lowered = temp
 		self.temp = temp
 		self.hasRValueTempSymbol = False
 	
+	@staticmethod
+	def createTemp(tempSymbol, rvalue):
+		lvalue = valueref.ValueRef(None, tempSymbol.span, tempSymbol=tempSymbol)
+		asgn = Asgn(lvalue, rvalue, tempSymbol.span, temp=True)
+		asgn.dropBlock = block.Block([], tempSymbol.span)
+		asgn.dropBlock.lowered = True
+		asgn.lowered = True
+		return asgn
+	
 	def lowerLValue(asgn, state):
 		assert asgn.dropBlock
-		# asgn.dropBlock = block.Block(block.BlockInfo([], asgn.span))
+		# asgn.dropBlock = block.Block([], asgn.span)
 		# asgn.dropBlock.lowered = True
 		
 		if type(asgn.lvalue) == valueref.ValueRef:
-			asgn.block = block.Block(block.BlockInfo([asgn], asgn.span))
+			asgn.block = block.Block([asgn], asgn.span)
 			asgn.block.lowered = True
 		elif type(asgn.lvalue) in (deref.Deref, Index):
 			asgn.block = asgn.lvalue.lower(state)
@@ -70,18 +79,9 @@ class Asgn(AST):
 			assert 0
 	
 	def lowerRValue(asgn, state):
-		tempSymbol = letdecl.LetDecl(None, None, False, None, None, temp=True)
+		(tempSymbol, tempAsgn, tempRef) = letdecl.createTempTriple(asgn.rvalue)
 		
-		tempLValue = valueref.ValueRef(None, None, temp=True)
-		tempLValue.symbol = tempSymbol
-		tempAsgn = Asgn(tempLValue, asgn.rvalue, None, temp=True)
-		tempAsgn.dropBlock = block.Block(block.BlockInfo([], None))
-		tempAsgn.lowered = True
-		
-		tempRef = valueref.ValueRef(None, None, temp=True)
-		tempRef.symbol = tempSymbol
-		
-		asgn.dropBeforeAssignBlock = block.Block(block.BlockInfo([], asgn.span))
+		asgn.dropBeforeAssignBlock = block.Block([], asgn.span)
 		asgn.dropBeforeAssignBlock.lowered = True
 		
 		exprs = [
@@ -91,7 +91,7 @@ class Asgn(AST):
 			tempRef
 		]
 		
-		asgn.rvalue = block.Block(block.BlockInfo(exprs, asgn.rvalue.span), ScopeType.BLOCK)
+		asgn.rvalue = block.Block(exprs, asgn.rvalue.span, ScopeType.BLOCK)
 		asgn.rvalue.lowered = True
 	
 	def lower(asgn, state):

@@ -1,9 +1,3 @@
-from enum   import Enum
-from .ast   import ValueExpr, FnParam, StaticDecl
-from .      import valueref
-from .      import letdecl
-from .types import canPromote
-
 class AccessType(Enum):
 	INDEX = 'INDEX'
 	FIELD = 'FIELD'
@@ -103,19 +97,3 @@ class Access(ValueExpr):
 			ast.expr.writeIR(state, ast.copy)
 		else:
 			assert 0
-	
-	def pretty(self, output, indent=0):
-		closeParen = False
-		if self.copy:
-			output.addPrefix('$copy(')
-			closeParen = True
-		elif not self.write and type(self.expr.symbol) in (StaticDecl, letdecl.LetDecl, FnParam):
-			output.addPrefix('$move(')
-			closeParen = True
-		
-		self.expr.pretty(output, indent)
-		for op in self.ops:
-			op.pretty(op)
-		
-		if closeParen:
-			output.write(')')

@@ -1,4 +1,4 @@
-from .ast    import ValueSymbol
+from .ast    import AST, ValueSymbol
 from .       import valueref
 from .       import asgn as asgnmod
 from .       import block
@@ -6,6 +6,25 @@ from .types  import getValidAssignType, typesMatch, PtrType
 from .log    import logError
 
 TEMP_COUNTER = 0
+
+class CVarArgsParam(AST):
+	def __init__(self, span):
+		super().__init__(span)
+
+class FnParam(ValueSymbol):
+	def __init__(self, nameTok, typeRef, span):
+		super().__init__(nameTok, typeRef, span)
+		self.dropFn = None
+		self.dropBlock = None
+	
+	def analyze(param, state, implicitType):
+		param.dropBlock = state.scope.fnDecl.body
+		state.scope.declSymbol(param)
+	
+	def pretty(self, output, indent=0):
+		output.write(self.name, indent)
+		output.write(': ')
+		self.typeRef.pretty(output)
 
 class LetDecl(ValueSymbol):
 	def __init__(self, nameTok, typeRef, mut, expr, span, temp=False):
@@ -21,6 +40,10 @@ class LetDecl(ValueSymbol):
 		self.block = None
 		self.temp = temp
 		self.fixed = False
+	
+	@staticmethod
+	def createTemp(span):
+		return LetDecl(None, None, False, None, span, temp=True)
 	
 	def checkDropFn(letExpr, state):
 		if letExpr.dropFn == None:
@@ -56,7 +79,7 @@ class LetDecl(ValueSymbol):
 		else:
 			state.scope.declSymbol(letExpr)
 		
-		letExpr.block = block.Block(block.BlockInfo([letExpr], letExpr.span))
+		letExpr.block = block.Block([letExpr], letExpr.span)
 		
 		if letExpr.expr:
 			rvalue = letExpr.expr
@@ -79,7 +102,7 @@ class LetDecl(ValueSymbol):
 			letExpr.block.exprs.append(asgn)
 			
 			if state.scope.dropBlock == None:
-				asgn.dropBlock = block.Block(block.BlockInfo([], None))
+				asgn.dropBlock = block.Block([], asgn.span)
 				asgn.dropBlock.lowered = True
 				letExpr.block.exprs.append(asgn.dropBlock)
 				state.scope.dropBlock = asgn.dropBlock
@@ -100,3 +123,10 @@ class LetDecl(ValueSymbol):
 		if self.expr:
 			output.write(' = ')
 			self.expr.pretty(output)
+
+def createTempTriple(expr):
+	symbol = LetDecl.createTemp(expr.span)
+	symbol.type = expr.type
+	asgn = asgnmod.Asgn.createTemp(symbol, expr)
+	ref = valueref.ValueRef.createTemp(symbol)
+	return (symbol, asgn, ref)

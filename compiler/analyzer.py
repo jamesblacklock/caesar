@@ -1,17 +1,14 @@
 import ctypes
 from .typeref    import NamedTypeRef, PtrTypeRef, ArrayTypeRef, TupleTypeRef
-from .types      import getValidAssignType, canAccommodate, canCoerce, canPromote, hasDefiniteType, \
-                        Type, PrimitiveType, OptionType, FnType, StructType, FieldInfo, PtrType, \
-                        ArrayType, TupleType, Void, Bool, Byte, Char, Int8, UInt8, Int16, UInt16, \
-                        Int32, UInt32, Int64, UInt64, ISize, USize, Float32, Float64
-from .log        import logError, logWarning, logExplain
-from .span       import Span
-from .ast        import ASTPrinter, StaticDecl, TypeSymbol
+from .types      import Type, FieldInfo, PtrType, ArrayType, TupleType, Void, Bool, Byte, Char, Int8, \
+                        UInt8, Int16, UInt16, Int32, UInt32, Int64, UInt64, ISize, USize, Float32, Float64
+from .log        import logError, logExplain
+from .ast        import ASTPrinter, TypeSymbol
 from .scope      import Scope, ScopeType
 from .attrs      import invokeAttrs
 from .mod        import Mod
 from .fndecl     import FnDecl, CConv
-from .constdecl  import ConstDecl
+from .staticdecl import StaticDecl, ConstDecl
 from .structdecl import StructDecl
 
 BUILTIN_TYPES = {
@@ -32,90 +29,6 @@ BUILTIN_TYPES = {
 	Float32.name: Float32,
 	Float64.name: Float64
 }
-
-def createTempBlock(state, expr):
-	assert 0
-	nameTok = Token(expr.span, TokenType.NAME, '$1')
-	symbol = LetDecl(nameTok, None)
-	symbol.type = expr.type
-	asgn = Asgn(ValueRef([nameTok], expr.span), expr.span)
-	block = Block(BlockInfo([symbol, asgn], expr.span), ScopeType.BLOCK)
-	return symbol, block
-
-def analyzeAddress(state, addr, implicitType):
-	symbol = None
-	if type(addr.target) == ValueRef:
-		(addr.target, symbol) = resolveValueRef(state, addr.target)
-	else:
-		implicitBaseType = None
-		if implicitType and implicitType.isPtrType:
-			if implicitType.indLevel == 1:
-				implicitBaseType = implicitType.baseType
-			else:
-				implicitBaseType = PtrType(addr, implicitType.baseType, implicitType.indLevel - 1)
-		analyzeValueExpr(state, addr.target, implicitBaseType)
-	
-	if addr.target.type == None:
-		return
-	
-	baseType = addr.target.type
-	for op in addr.ops:
-		analyzeValueOp(state, symbol, op, baseType)
-		if symbol:
-			if type(op) == Deref:
-				#symbol = ???
-				assert 0
-			else:
-				state.scope.addrSymbol(addr.target, op)
-				symbol = None
-		baseType = op.type
-	
-	if symbol:
-		state.scope.addrSymbol(addr.target)
-	
-	indLevel = 1
-	if baseType.isPtrType:
-		indLevel = baseType.indLevel + 1
-		baseType = baseType.baseType
-	
-	addr.type = PtrType(addr, baseType, indLevel)
-
-# def analyzeAsgn(state, asgn):
-# 	assert type(asgn.lvalue) == Access
-# 	analyzeAccess(state, asgn.lvalue, None)
-# 	analyzeValueExpr(state, asgn.rvalue, asgn.lvalue.type)
-	
-	# state.scope.writeSymbol(writeVal.target, typeModifiers=writeVal.expr.typeModifiers)
-	
-	# if type(asgnExpr.lvalue) == ValueRef:
-	# 	analyzeValueRef(state, asgnExpr.lvalue, noRef=True)
-	# elif type(asgnExpr.lvalue) == FieldAccess:
-	# 	analyzeFieldAccess(state, asgnExpr.lvalue, noRef=True)
-	# else:
-	# 	analyzeValueExpr(state, asgnExpr.lvalue)
-	# analyzeValueExpr(state, asgnExpr.rvalue, asgnExpr.lvalue.type)
-	
-	# assignType = getValidAssignType(asgnExpr.lvalue.type, asgnExpr.rvalue.type)
-	# if assignType:
-	# 	asgnExpr.rvalue.type = assignType
-	# else:
-	# 	logError(state, asgnExpr.rvalue.span, 'invalid types in assignment (expected {}, found {})'
-	# 		.format(asgnExpr.lvalue.type, asgnExpr.rvalue.type))
-	
-	# if type(asgnExpr.lvalue) == ValueRef:
-	# 	if asgnExpr.lvalue.symbol != None:
-	# 		state.assignSymbol(asgnExpr.lvalue)
-	# elif type(asgnExpr.lvalue) == FieldAccess:
-	# 	if type(asgnExpr.lvalue.expr) == ValueRef and asgnExpr.lvalue.expr.symbol != None:
-	# 		state.assignSymbol(asgnExpr.lvalue.expr, asgnExpr.lvalue.field, asgnExpr.lvalue)
-	# elif type(asgnExpr.lvalue) == IndexOp:
-	# 	pass
-	# # if type(asgnExpr.lvalue.expr) == ValueRef and asgnExpr.lvalue.expr.symbol != None:
-	# 	# 	state.assignSymbol(asgnExpr.lvalue.expr, asgnExpr.lvalue.expr.type.fields[asgnExpr.lvalue.]        asgnExpr.lvalue.field, asgnExpr.lvalue)
-	# elif type(asgnExpr.lvalue) == Deref:
-	# 	pass
-	# else:
-	# 	assert 0
 
 class FieldLayout:
 	def __init__(self, align, byteSize, fields):
@@ -245,11 +158,6 @@ class AnalyzerState:
 		self.lastIfBranchOuterSymbolInfo = None
 		self.scope = None
 		self.failed = False
-		# self.dropBlockStack = []
-	
-	# @property
-	# def dropBlock(self):
-	# 	return self.dropBlockStack[-1]
 	
 	def analyzeNode(state, ast, implicitType=None):
 		invokeAttrs(state, ast)

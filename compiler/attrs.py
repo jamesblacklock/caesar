@@ -1,9 +1,9 @@
-from .ast        import AST, FnParam
+from .ast        import AST
 from .valueref   import ValueRef
 from .primitive  import IntLit, StrLit
 from .structdecl import StructDecl, FieldDecl
 from .fndecl     import FnDecl, CConv
-from .letdecl    import LetDecl
+from .letdecl    import LetDecl, FnParam
 from .log        import logError
 
 class Attr(AST):

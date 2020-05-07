@@ -1,8 +1,8 @@
 from enum        import Enum
-from .ast        import FnParam, StaticDecl
 from .drop       import DropSymbol
 from .log        import logError, logWarning, logExplain
-from .           import asgn as asgnmod, valueref, fndecl, constdecl, letdecl, field as fieldmod, block as blockmod, address
+from .           import valueref, fndecl, staticdecl, letdecl, address, \
+                        asgn as asgnmod, field as fieldmod, block as blockmod
 from .fncall     import FnCall
 from .structdecl import StructDecl
 
@@ -59,7 +59,7 @@ class SymbolInfo:
 		# 		if field.resolvedSymbolType.isStructType:
 		# 			addFieldInfo(field.resolvedSymbolType.fields, fieldExpr)
 		
-		if type(symbol) in (StaticDecl, FnParam):
+		if type(symbol) in (staticdecl.StaticDecl, letdecl.FnParam):
 			self.typeModifiers.uninit = False
 			self.maybeUninit = False
 		elif type(symbol) == letdecl.LetDecl:
@@ -129,7 +129,7 @@ class Scope:
 				if info.symbol.unused:
 					if type(info.symbol) == letdecl.LetDecl:
 						logWarning(self.state, info.symbol.span, 'unused symbol')
-					elif type(info.symbol) == FnParam:
+					elif type(info.symbol) == letdecl.FnParam:
 						self.dropSymbol(info.symbol, info.symbol.dropBlock)
 				else:
 					for block in info.dropInBlock:
@@ -350,7 +350,7 @@ class Scope:
 		fieldInfo = None
 		symbol = ref.symbol
 		if symbol not in self.symbolInfo:
-			assert type(symbol) in (constdecl.ConstDecl, fndecl.FnDecl)
+			assert type(symbol) in (staticdecl.ConstDecl, fndecl.FnDecl)
 			return
 		
 		info = self.symbolInfo[symbol]
@@ -513,13 +513,13 @@ class Scope:
 		if symbol == None:
 			return None
 		
-		if type(symbol) in (letdecl.LetDecl, FnParam, StaticDecl):
+		if type(symbol) in (letdecl.LetDecl, letdecl.FnParam, staticdecl.StaticDecl):
 			self.symbolInfo[symbol] = self.loadSymbolInfo(symbol, clone=True)
 		
 		return symbol
 	
 	def loadSymbolInfo(self, symbol, clone=False):
-		assert type(symbol) in (letdecl.LetDecl, FnParam, StaticDecl)
+		assert type(symbol) in (letdecl.LetDecl, letdecl.FnParam, staticdecl.StaticDecl)
 		scope = self
 		while scope != None:
 			if symbol in scope.symbolInfo:
@@ -527,7 +527,7 @@ class Scope:
 				return info.clone() if clone and scope != self else info
 			scope = scope.parent
 		
-		assert type(symbol) == StaticDecl
+		assert type(symbol) == staticdecl.StaticDecl
 		info = SymbolInfo(symbol)
 		info.wasDeclared = False
 		return info

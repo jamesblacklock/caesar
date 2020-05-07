@@ -6,7 +6,7 @@ from .log     import logError
 from .types   import getValidAssignType, Void
 from .        import scope
 from .        import attrs
-from .block   import Block, BlockInfo
+from .block   import Block
 
 class CConv(Enum):
 	CAESAR = 'CAESAR'

@@ -27,19 +27,10 @@ class Deref(ValueExpr):
 		
 		ref = None
 		if type(deref.expr) != valueref.ValueRef:
-			tempSymbol = letdecl.LetDecl(None, None, False, None, deref.span, temp=True)
-			tempLValue = valueref.ValueRef(None, deref.span, temp=True)
-			tempLValue.symbol = tempSymbol
-			tempAsgn = asgn.Asgn(tempLValue, deref.expr, deref.span, temp=True)
-			tempAsgn.lowered = True
-			tempAsgn.dropBlock = block.Block(block.BlockInfo([], None))
-			tempAsgn.dropBlock.lowered = True
-			
+			(tempSymbol, tempAsgn, tempRef) = letdecl.createTempTriple(deref.expr)
 			exprs.append(tempSymbol)
 			exprs.append(tempAsgn)
-		
-			deref.expr = valueref.ValueRef(None, deref.span, temp=True)
-			deref.expr.symbol = tempSymbol
+			deref.expr = tempRef
 		
 		if deref.write:
 			deref.count -= 1
@@ -48,26 +39,16 @@ class Deref(ValueExpr):
 				deref.expr.deref = True
 				exprs.append(deref.expr)
 			else:
-				tempSymbol = letdecl.LetDecl(None, None, False, None, deref.span, temp=True)
-				tempLValue = valueref.ValueRef(None, deref.span, temp=True)
-				tempLValue.symbol = tempSymbol
-				tempAsgn = asgn.Asgn(tempLValue, deref, deref.span, temp=True)
-				tempAsgn.lowered = True
-				tempAsgn.dropBlock = block.Block(block.BlockInfo([], None))
-				tempAsgn.dropBlock.lowered = True
-				
+				(tempSymbol, tempAsgn, tempRef) = letdecl.createTempTriple(deref)
+				tempRef.write = True
+				tempRef.deref = True
 				exprs.append(tempSymbol)
 				exprs.append(tempAsgn)
-				
-				ref = valueref.ValueRef(None, deref.span, temp=True)
-				ref.symbol = tempSymbol
-				ref.write = True
-				ref.deref = True
-				exprs.append(ref)
+				exprs.append(tempRef)
 		else:
 			exprs.append(deref)
 		
-		b = block.Block(block.BlockInfo(exprs, None))#, ScopeType.BLOCK)
+		b = block.Block(exprs, deref.span)
 		b.lowered = True
 		return b
 	

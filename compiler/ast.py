@@ -68,32 +68,6 @@ class ValueSymbol(Symbol):
 		self.type = None
 		self.typeModifiers = TypeModifiers()
 
-class FnParam(ValueSymbol):
-	def __init__(self, nameTok, typeRef, span):
-		super().__init__(nameTok, typeRef, span)
-		self.dropFn = None
-		self.dropBlock = None
-	
-	def analyze(param, state, implicitType):
-		param.dropBlock = state.scope.fnDecl.body
-		state.scope.declSymbol(param)
-	
-	def pretty(self, output, indent=0):
-		output.write(self.name, indent)
-		output.write(': ')
-		self.typeRef.pretty(output)
-
-class CVarArgsParam(AST):
-	def __init__(self, span):
-		super().__init__(span)
-
-class StaticDecl(ValueSymbol):
-	def __init__(self, nameTok, typeRef, doccomment, extern, mut, expr, span):
-		super().__init__(nameTok, typeRef, span, doccomment, extern)
-		self.mangledName = None
-		self.mut = mut
-		self.expr = expr
-
 class ValueExpr(AST):
 	def __init__(self, span):
 		super().__init__(span)

@@ -1,4 +1,4 @@
-from .ast   import ValueSymbol
+from .ast import ValueSymbol
 from .types import getValidAssignType
 from .log   import logError
 from .      import attrs
@@ -52,3 +52,16 @@ class ConstDecl(ValueSymbol):
 			self.typeRef.pretty(output)
 		output.write(' = ')
 		self.expr.pretty(output)
+
+class StaticDecl(ValueSymbol):
+	def __init__(self, nameTok, typeRef, doccomment, extern, mut, expr, span):
+		super().__init__(nameTok, typeRef, span, doccomment, extern)
+		self.mangledName = None
+		self.mut = mut
+		self.expr = expr
+		
+	def analyzeSig(decl, state):
+		attrs.invokeAttrs(state, decl)
+		
+		if decl.typeRef:
+			decl.type = state.resolveTypeRef(decl.typeRef)

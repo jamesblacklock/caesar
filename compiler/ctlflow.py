@@ -1,6 +1,6 @@
 from .ast   import AST
 from .types import getValidAssignType, Void
-from .block import Block, BlockInfo
+from .block import Block
 from .      import valueref, letdecl, asgn
 from .scope import ScopeType
 from .ir    import Ret, Br, Raise
@@ -12,7 +12,7 @@ class LoopCtlFlow(AST):
 		self.block = None
 	
 	def analyze(expr, state, implicitType, isContinue=False):
-		expr.block = Block(BlockInfo([expr], expr.span))
+		expr.block = Block([expr], expr.span)
 		expr.block.type = Void
 		
 		if state.scope.loopDepth == 0:
@@ -62,19 +62,11 @@ class Return(AST):
 			return ret
 		
 		if ret.expr and type(ret.expr) != valueref.ValueRef:
-			tempSymbol = letdecl.LetDecl(None, None, False, None, None, temp=True)
-			
-			tempLValue = valueref.ValueRef(None, None, temp=True)
-			tempLValue.symbol = tempSymbol
-			tempAsgn = asgn.Asgn(tempLValue, ret.expr, ret.expr.span, temp=True)
-			tempAsgn.lowered = True
-			
-			ret.expr = valueref.ValueRef(None, ret.expr.span, temp=True)
-			ret.expr.symbol = tempSymbol
-			
-			ret.block = Block(BlockInfo([tempSymbol, tempAsgn, ret], ret.span))
+			(tempSymbol, tempAsgn, tempRef) = letdecl.createTempTriple(ret.expr)
+			ret.expr = tempRef
+			ret.block = Block([tempSymbol, tempAsgn, ret], ret.span)
 		else:
-			ret.block = Block(BlockInfo([ret], ret.span))
+			ret.block = Block([ret], ret.span)
 		
 		ret.block.type = Void
 		ret.block.lowered = True
