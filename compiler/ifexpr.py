@@ -31,7 +31,7 @@ class If(ValueExpr):
 		state.scope.didBreak = state.scope.didBreak or ifExpr.doesBreak
 		
 		if ifExpr.doesReturn:
-			resolvedType = implicitType if implicitType else Void
+			resolvedType = Void#implicitType if implicitType else Void
 		elif ifExpr.block.doesReturn:
 			resolvedType = ifExpr.elseBlock.type
 		elif ifExpr.elseBlock.doesReturn:

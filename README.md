@@ -9,11 +9,14 @@ Caesar is:
 	- allows straightforward manual memory management
 	- links to native C libraries
 	- can export native libraries through a C FFI
+
 - an easy-to-use language
 
-	- offers a modern and comfortable syntax
+	- features a JIT-compiled REPL mode, suitable for use as a shell language
+	- offers a modern and comfortable syntax similar to modern scripting languages
 	- systems-level features are not needed for common application-level use cases
 	- high-level features and structures are built into the language
+
 - a safe language
 
 	- features a memory-safe subset
