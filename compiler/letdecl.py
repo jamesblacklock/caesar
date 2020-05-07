@@ -90,7 +90,6 @@ class LetDecl(ValueSymbol):
 			asgn.lowered = True
 			asgn.dropBlock = block.Block([], asgn.span)
 			asgn.dropBlock.lowered = True
-			letExpr.block.exprs.append(asgn.dropBlock)
 			asgn = state.analyzeNode(asgn)
 			
 			letExpr.block.exprs.append(asgn)
