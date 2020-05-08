@@ -79,7 +79,7 @@ class TokenType(Enum):
 	EOF        = '<end-of-file>'
 	
 	def desc(self):
-		return self.name
+		return self.value
 
 class Token:
 	def __init__(self, span, type, content, offset=None):

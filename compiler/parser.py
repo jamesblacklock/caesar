@@ -673,7 +673,12 @@ def parseDeref(state, expr):
 		state.advance()
 		state.skipSpace()
 	
-	return Deref(expr, count, span)
+	if type(expr) == Deref:
+		expr.count += count
+	else:
+		expr = Deref(expr, count, span)
+	
+	return expr
 
 def parseAddress(state):
 	span = state.tok.span
