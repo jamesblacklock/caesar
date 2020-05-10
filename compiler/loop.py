@@ -67,15 +67,12 @@ class While(AST):
 		self.expr = expr
 		self.block = block
 	
-	def lower(ast, state):
+	def analyze(ast, state, implicitType):
 		ifBlock = Block(ast.block.exprs, ast.block.span, ScopeType.IF)
 		elseBlock = Block([Break(ast.span)], ast.span, ScopeType.ELSE)
 		ifExpr = If(ast.expr, ifBlock, elseBlock, ast.span)
 		loopBlock = Block([ifExpr], ast.span, ScopeType.LOOP)
-		loopExpr = Loop(loopBlock, ast.span)
-		loopExpr.loweredFrom = ast
-		
-		return loopExpr
+		return state.analyzeNode(Loop(loopBlock, ast.span), implicitType)
 	
 	def pretty(self, output, indent=0):
 		output.write('while ', indent)

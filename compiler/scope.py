@@ -1,8 +1,7 @@
 from enum        import Enum
 from .drop       import DropSymbol
 from .log        import logError, logWarning, logExplain
-from .           import valueref, fndecl, staticdecl, letdecl, address, \
-                        asgn as asgnmod, field as fieldmod, block as blockmod
+from .           import fndecl, staticdecl, letdecl, address, block as blockmod, access
 from .fncall     import FnCall
 from .structdecl import StructDecl
 
@@ -135,17 +134,11 @@ class Scope:
 					for block in info.dropInBlock:
 						self.dropSymbol(info.symbol, block)
 					for (lastUse, loopExpr) in info.lastUses.items():
-						if type(lastUse) in (asgnmod.Asgn, fieldmod.Field, fieldmod.Index):
-							if loopExpr and loopExpr != self.loopExpr:
-								for (br, otherLoopExpr) in info.breaksSinceLastUse.items():
-									if loopExpr == otherLoopExpr:
-										self.dropSymbol(info.symbol, br.block)
-							else:
-								self.dropSymbol(info.symbol, lastUse.dropBlock)
-						elif type(lastUse) == valueref.ValueRef:
-							if lastUse.addr:
-								assert 0
-							elif lastUse.borrows:
+						if lastUse.ref:
+							# if lastUse.addr:
+								# assert 0
+							# el
+							if lastUse.borrows:
 								for borrow in lastUse.borrows:
 									if borrow.symbol == info.symbol:
 										self.dropSymbol(info.symbol, lastUse.dropBlock)
@@ -158,8 +151,15 @@ class Scope:
 							elif info.symbol.dropFn and info.symbol.type.isCopyable:
 								lastUse.copy = True
 								self.dropSymbol(info.symbol, lastUse.dropBlock)
-						else:
-							assert 0
+						else:#if lastUse.write or lastUse.isFieldAccess:#type(lastUse) in (asgnmod.Asgn, fieldmod.Field, fieldmod.Index):
+							if loopExpr and loopExpr != self.loopExpr:
+								for (br, otherLoopExpr) in info.breaksSinceLastUse.items():
+									if loopExpr == otherLoopExpr:
+										self.dropSymbol(info.symbol, br.block)
+							else:
+								self.dropSymbol(info.symbol, lastUse.dropBlock)
+						# else:
+							# assert 0
 			else:
 				outerSymbolInfo[info.symbol] = info
 		
@@ -269,7 +269,7 @@ class Scope:
 		if info.moved and info.symbol.type.isCopyable and \
 			(isRead or info.symbol.dropFn):
 			for lastUse in info.lastUses:
-				if type(lastUse) == valueref.ValueRef:
+				if lastUse.ref:
 					lastUse.copy = True
 			
 			if info.returnsAfterMove:
@@ -309,46 +309,31 @@ class Scope:
 		self.symbolInfo[symbol] = info
 		self.symbolTable[symbol.name] = symbol
 	
-	def addrSymbol(self, addr):
-		ref = None
-		fieldAccess = None
-		isIndex = False
-		if type(addr.expr) == fieldmod.Field:
-			fieldAccess = addr
-			ref = fieldAccess.expr
-		elif type(addr.expr) == fieldmod.Index:
-			isIndex = True
-			ref = addr.expr
-		elif type(addr.expr) == valueref.ValueRef:
-			ref = addr.expr
+	def accessSymbol(self, access):
+		access.symbol.unused = False
+		if not access.write and access.addr:
+			self.addrSymbol(access)
+		elif access.write and not access.deref:
+			self.writeSymbol(access)
 		else:
-			assert 0
+			self.readSymbol(access)
+	
+	def addrSymbol(self, expr):
+		symbol = expr.symbol
+		field = expr.field
+		fieldSpan = expr.fieldSpan
+		isIndex = len(expr.dynOffsets) > 0
 		
-		assert type(ref) == valueref.ValueRef
-		
-		info = self.symbolInfo[ref.symbol]
-		info.symbol.fixed = True
-		self.setLastUse(info, ref, isRead=True)
+		symbol.fixed = True
+		info = self.symbolInfo[symbol]
+		self.setLastUse(info, expr, isRead=True)
 	
 	def readSymbol(self, expr):
-		ref = None
-		fieldAccess = None
-		isIndex = False
-		if type(expr) == fieldmod.Field:
-			fieldAccess = expr
-			ref = fieldAccess.expr
-		elif type(expr) == fieldmod.Index:
-			isIndex = True
-			ref = expr.expr
-		elif type(expr) == valueref.ValueRef:
-			ref = expr
-		else:
-			assert 0
+		symbol = expr.symbol
+		field = expr.field
+		fieldSpan = expr.fieldSpan
+		isIndex = len(expr.dynOffsets) > 0
 		
-		assert type(ref) == valueref.ValueRef
-		
-		fieldInfo = None
-		symbol = ref.symbol
 		if symbol not in self.symbolInfo:
 			assert type(symbol) in (staticdecl.ConstDecl, fndecl.FnDecl)
 			return
@@ -358,18 +343,17 @@ class Scope:
 		if info.moved:
 			if not info.symbol.type.isCopyable:
 				maybeText = 'may have' if info.maybeMoved else 'has'
-				logError(self.state, ref.span, 'the value in `{}` {} been moved'.format(ref.name, maybeText))
-				logExplain(self.state, list(info.lastUses)[0].span, '`{}` was moved here'.format(ref.name))
+				logError(self.state, expr.span, 'the value in `{}` {} been moved'.format(symbol.name, maybeText))
+				logExplain(self.state, list(info.lastUses)[0].span, '`{}` was moved here'.format(symbol.name))
 				return
 		elif info.uninit:
 			maybeText = 'may not have' if info.maybeUninit else 'has not'
-			logError(self.state, ref.span, '`{}` {} been initialized'.format(ref.name, maybeText))
+			logError(self.state, expr.span, '`{}` {} been initialized'.format(symbol.name, maybeText))
 			return
-		elif fieldAccess:
-			field = fieldAccess.field
-			fieldSpan = fieldAccess.path[-1].span
+		
+		if field:
 			if field not in info.fieldInfo:
-				uninit = info.typeModifiers.uninit or field in info.typeModifiers.uninitFields
+				uninit = False#info.typeModifiers.uninit or field in info.typeModifiers.uninitFields
 				fieldInfo = FieldInfo(field, uninit)
 				info.fieldInfo[field] = fieldInfo
 			else:
@@ -399,7 +383,7 @@ class Scope:
 				else:
 					self.setLastUse(self.symbolInfo[borrow.symbol], expr, isRead=True)
 		
-		if fieldInfo:
+		if field:
 			fieldInfo.moved = True#not fieldAccess.field.type.isCopyable
 		elif isIndex:
 			pass
@@ -407,45 +391,35 @@ class Scope:
 			info.moved = True
 			info.typeModifiers.uninit = True
 	
-	def writeSymbol(self, asgn, borrowedSymbol=None, typeModifiers=None):
-		ref = None
-		fieldAccess = None
-		isIndex = False
-		if type(asgn.lvalue) == valueref.ValueRef:
-			ref = asgn.lvalue
-		elif type(asgn.lvalue) == fieldmod.Index:
-			assert type(asgn.lvalue.expr) == valueref.ValueRef
-			ref = asgn.lvalue.expr
-			isIndex = True
-		
-		assert type(ref) == valueref.ValueRef
-		
-		symbol = ref.symbol
-		assert symbol in self.symbolInfo
+	def writeSymbol(self, expr, typeModifiers=None):
+		symbol = expr.symbol
+		field = expr.field
+		fieldSpan = expr.fieldSpan
+		isIndex = len(expr.dynOffsets) > 0
 		
 		info = self.symbolInfo[symbol]
 		if not symbol.mut and not info.uninit:
-			logError(self.state, ref.span, 'assignment target is not mutable')
+			logError(self.state, expr.span, 'assignment target is not mutable')
 			return
-		elif isIndex or fieldAccess:
+		elif isIndex or field:
 			if info.moved:
 				if not info.symbol.type.isCopyable:
 					maybeText = 'may have' if info.maybeMoved else 'has'
-					logError(self.state, ref.span, 'the value in `{}` {} been moved'.format(ref.name, maybeText))
-					logExplain(self.state, list(info.lastUses)[0].span, '`{}` was moved here'.format(ref.name))
+					logError(self.state, expr.span, 'the value in `{}` {} been moved'.format(symbol.name, maybeText))
+					logExplain(self.state, list(info.lastUses)[0].span, '`{}` was moved here'.format(symbol.name))
 					return
 			elif info.uninit:
 				maybeText = 'may not have' if info.maybeUninit else 'has not'
-				logError(self.state, ref.span, '`{}` {} been initialized'.format(ref.name, maybeText))
+				logError(self.state, expr.span, '`{}` {} been initialized'.format(symbol.name, maybeText))
 				return
 		
-		self.setLastUse(info, asgn, isRead=False)
+		self.setLastUse(info, expr, isRead=False)
 		
 		if not info.uninit and symbol.dropFn:
-			self.dropSymbol(symbol, asgn.dropBeforeAssignBlock)
+			self.dropSymbol(symbol, expr.dropBeforeAssignBlock)
 		elif not info.uninit or info.maybeUninit:
 			for (lastUse, loopExpr) in info.lastUses.items():
-				if type(lastUse) == asgnmod.Asgn and type(lastUse.lvalue) == valueref.ValueRef:
+				if lastUse.write and not lastUse.isFieldAccess and not lastUse.deref:
 					self.dropSymbol(symbol, lastUse.dropBlock)
 		
 		if typeModifiers:
@@ -454,9 +428,9 @@ class Scope:
 		info.maybeUninit = False
 		info.moved = False
 		info.maybeMoved = False
-		info.borrows = asgn.rvalue.borrows
+		info.borrows = expr.rvalue.borrows
 		
-		if fieldAccess:
+		if field:
 			assert 0
 			info.fieldInfo[field].uninit = False
 		elif isIndex:
@@ -467,29 +441,27 @@ class Scope:
 	def dropSymbol(self, symbol, block, prepend=True):
 		valueWasMoved = False
 		exprs = []
+		
 		if symbol.dropFn:
-			fnRef = valueref.ValueRef(None, None, name=symbol.dropFn.name)
+			fnRef = access.SymbolRead(block.span)
 			fnRef.symbol = symbol.dropFn
-			fnRef.name = symbol.dropFn.name
 			fnRef.type = symbol.dropFn.type
+			fnRef.ref = True
 			args = []
 			if len(symbol.dropFn.params) > 0:
 				t = symbol.dropFn.params[0].type
-				ref = valueref.ValueRef(None, None, name=symbol.name)
+				ref = access.SymbolRead(block.span)
 				ref.symbol = symbol
-				ref.name = symbol.name
 				ref.type = symbol.type
 				if t.isPtrType and typesMatch(t.baseType, symbol.type):
-					ref = Address(ref, None)
-					ref.type = t
-				else:
+					ref.addr = True
+				else:	
+					ref.ref = True
 					valueWasMoved = True
 				args.append(ref)
-			fnCall = FnCall(fnRef, args, None)
+			fnCall = FnCall(fnRef, args, block.span)
 			fnCall.isDrop = True
 			fnCall.type = fnRef.type.returnType
-			if not valueWasMoved:
-				ref.copy = True
 			exprs.append(fnCall)
 		
 		if not valueWasMoved:

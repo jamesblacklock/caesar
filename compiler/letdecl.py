@@ -1,7 +1,5 @@
 from .ast    import AST, ValueSymbol
-from .       import valueref
-from .       import asgn as asgnmod
-from .       import block
+from .       import access, block
 from .types  import getValidAssignType, typesMatch, PtrType
 from .log    import logError
 
@@ -79,23 +77,10 @@ class LetDecl(ValueSymbol):
 		else:
 			state.scope.declSymbol(letExpr)
 		
-		letExpr.block = block.Block([letExpr], letExpr.span)
-		
 		if letExpr.expr:
-			rvalue = letExpr.expr
-			letExpr.expr = None
-			
-			lvalue = valueref.ValueRef([letExpr.nameTok], letExpr.nameTok.span)
-			asgn = asgnmod.Asgn(lvalue, rvalue, letExpr.span)
-			asgn.lowered = True
-			asgn.dropBlock = block.Block([], asgn.span)
-			asgn.dropBlock.lowered = True
-			asgn = state.analyzeNode(asgn)
-			
-			letExpr.block.exprs.append(asgn)
-			letExpr.block.exprs.append(asgn.dropBlock)
-			
-			state.scope.dropBlock = asgn.dropBlock
+			letExpr.block = access.SymbolAccess.analyzeSymbolAccess(state, letExpr, letExpr.type)
+		else:
+			letExpr.block = block.Block([letExpr], letExpr.span)
 		
 		if letExpr.type:
 			letExpr.checkDropFn(state)
@@ -113,10 +98,3 @@ class LetDecl(ValueSymbol):
 		if self.expr:
 			output.write(' = ')
 			self.expr.pretty(output)
-
-def createTempTriple(expr):
-	symbol = LetDecl.createTemp(expr.span)
-	symbol.type = expr.type
-	asgn = asgnmod.Asgn.createTemp(symbol, expr)
-	ref = valueref.ValueRef.createTemp(symbol)
-	return (symbol, asgn, ref)

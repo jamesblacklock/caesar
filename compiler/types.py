@@ -106,7 +106,7 @@ class ArrayFields:
 	def __getitem__(self, index):
 		if index >= self.count:
 			raise IndexError()
-		return FieldInfo(None, self.elementType, index * getAlignedSize(self.elementType))
+		return FieldInfo(str(index), self.elementType, index * getAlignedSize(self.elementType))
 	
 	def __len__(self):
 		return self.count

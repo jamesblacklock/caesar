@@ -115,9 +115,13 @@ class AnalyzerState:
 			return state.lookupSymbol(typeRef, True)
 		elif type(typeRef) == PtrTypeRef:
 			baseType = state.resolveTypeRef(typeRef.baseType)
+			if baseType == None:
+				return None
 			return PtrType(baseType, typeRef.indLevel)
 		elif type(typeRef) == ArrayTypeRef:
 			baseType = state.resolveTypeRef(typeRef.baseType)
+			if baseType == None:
+				return None
 			return ArrayType(baseType, typeRef.count)
 		elif type(typeRef) == TupleTypeRef:
 			return analyzeTupleTypeRef(state, typeRef)
@@ -156,7 +160,7 @@ class AnalyzerState:
 		offset = 0
 		
 		if fieldNames == None:
-			fieldNames = (i for i in range(0, len(types)))
+			fieldNames = (str(i) for i in range(0, len(types)))
 		
 		for (t, n) in zip(types, fieldNames):
 			if t.isVoidType:

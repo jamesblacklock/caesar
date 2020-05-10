@@ -906,7 +906,7 @@ def parseValueExpr(state, precedence=0, noSkipSpace=False, allowSimpleFnCall=Fal
 def parseValueExprImpl(state, precedence, noSkipSpace, allowSimpleFnCall):
 	if state.tok.type == TokenType.NEWLINE:
 		block = parseBlock(state, parseFnBodyExpr)
-		if len(block.list) == 1 and isinstance(block.list[0], ValueExpr):
+		if len(block.list) == 1 and block.list[0].hasValue:
 			expr = block.list[0]
 		else:
 			expr = Block.fromInfo(block, ScopeType.BLOCK)

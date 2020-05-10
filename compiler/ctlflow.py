@@ -1,7 +1,7 @@
 from .ast   import AST
-from .types import getValidAssignType, Void
+from .types import typesMatch, Void
 from .block import Block
-from .      import valueref, letdecl, asgn
+from .      import valueref, access
 from .scope import ScopeType
 from .ir    import Ret, Br, Raise
 from .log   import logError
@@ -57,41 +57,38 @@ class Return(AST):
 		self.expr = expr
 		self.block = None
 	
-	def lower(ret, state):
-		if ret.block:
-			return ret
-		
-		if ret.expr and type(ret.expr) != valueref.ValueRef:
-			(tempSymbol, tempAsgn, tempRef) = letdecl.createTempTriple(ret.expr)
-			tempAsgn.rvalueImplicitType = state.scope.fnDecl.returnType
-			ret.expr = tempRef
-			ret.block = Block([tempSymbol, tempAsgn, ret], ret.span)
-		else:
-			ret.block = Block([ret], ret.span)
-		
-		ret.block.type = Void
-		ret.block.lowered = True
-		return ret.block
-	
 	def analyze(ret, state, implicitType):
 		returnType = Void
+		ret.block = Block([], ret.span, noLower=True)
 		if ret.expr:
-			assert type(ret.expr) == valueref.ValueRef
-			# if ret.expr.type == None:
+			if type(ret.expr) != valueref.ValueRef:
+				(tempSymbol, tempWrite, tempRead) = access.createTempTriple(ret.expr)
+				tempWrite.rvalueImplicitType = state.scope.fnDecl.returnType
+				ret.expr = tempRead
+				ret.block.exprs.extend([
+					state.analyzeNode(tempSymbol), 
+					state.analyzeNode(tempWrite), 
+					ret])
+			
 			ret.expr = state.analyzeNode(ret.expr)
 			returnType = ret.expr.symbol.type
 		
-		assignType = getValidAssignType(state.scope.fnDecl.returnType, returnType)
-		if assignType:
-			if ret.expr:
-				ret.expr.type = assignType
-		else:
+		ret.block.exprs.append(ret)
+		
+		# assignType = getValidAssignType(state.scope.fnDecl.returnType, returnType)
+		# if assignType:
+		# 	if ret.expr:
+		# 		# ret.expr.type = assignType
+		# else:
+		if not typesMatch(state.scope.fnDecl.returnType, returnType):
 			foundType = ret.expr.type if ret.expr else Void
 			span = ret.expr.span if ret.expr else ret.span
 			logError(state, span, 'invalid return type (expected {}, found {})'
 				.format(state.scope.fnDecl.returnType, foundType))
 		
 		state.scope.doReturn(ret.expr.symbol if ret.expr else None, ret)
+		
+		return ret.block
 	
 	def writeIR(ast, state):
 		if ast.expr != None:

@@ -2,9 +2,9 @@ from .ast    import ValueExpr
 from .types  import Void
 from .       import ctlflow
 from .       import letdecl
-from .       import valueref
 from .       import asgn
 from .       import ifexpr
+from .access import createTempTriple
 from .scope  import ScopeType
 from .log    import logError
 from .span   import Span
@@ -16,7 +16,7 @@ class BlockInfo:
 		self.trailingSeparator = trailingSeparator
 
 class Block(ValueExpr):
-	def __init__(self, exprs, span, scopeType=None):
+	def __init__(self, exprs, span, scopeType=None, noLower=False):
 		super().__init__(span)
 		self.exprs = exprs
 		self.scopeType = scopeType
@@ -25,33 +25,11 @@ class Block(ValueExpr):
 		self.fnDecl = None
 		self.ifExpr = None
 		self.loopExpr = None
-		self.lowered = False
+		self.lowered = noLower
 	
 	@staticmethod
 	def fromInfo(blockInfo, scopeType=None):
 		return Block(blockInfo.list, blockInfo.span, scopeType)
-	
-	def lower(block, state):
-		if True:#block.lowered:
-			return block
-		
-		newExprs = []
-		for (i, expr) in enumerate(block.exprs):
-			lastExpr = i+1 == len(block.exprs)
-			if isinstance(expr, ValueExpr) and type(expr) not in (Block, ifexpr.If):
-				(tempSymbol, tempAsgn, tempRef) = letdecl.createTempTriple(expr)
-				
-				newExprs.extend([tempSymbol, tempAsgn])
-				if lastExpr:
-					newExprs.append(tempRef)
-				else:
-					newExprs.append(tempAsgn.dropBlock)
-			else:
-				newExprs.append(expr)
-		
-		block.exprs = newExprs
-		block.lowered = True
-		return block
 	
 	def analyze(block, state, implicitType):
 		if block.scopeType != None:
@@ -75,27 +53,20 @@ class Block(ValueExpr):
 			
 			lastExpr = i+1 == len(block.exprs)
 			
-			if not block.lowered and isinstance(expr, ValueExpr) and type(expr) not in (Block, ifexpr.If):
-				(tempSymbol, tempAsgn, tempRef) = letdecl.createTempTriple(expr)
-				valueExprLowered = [tempSymbol, tempAsgn, tempAsgn.dropBlock]
+			if not block.lowered and expr.hasValue and type(expr) not in (Block, ifexpr.If):
+				(tempSymbol, tempWrite, tempRead) = createTempTriple(expr)
+				valueExprLowered = [tempSymbol, tempWrite]
 				
 				if lastExpr and implicitType != Void:
-					tempAsgn.rvalueImplicitType = implicitType
-					valueExprLowered.append(tempRef)
+					tempWrite.rvalueImplicitType = implicitType
+					valueExprLowered.append(tempRead)
 				
 				if block.scopeType != None:
-					state.scope.dropBlock = tempAsgn.dropBlock
+					state.scope.dropBlock = tempWrite.dropBlock
 				
-				expr = Block(valueExprLowered, expr.span)
-				expr.lowered = True
-			elif type(expr) == asgn.Asgn and block.scopeType != None:
-				if not expr.lowered:
-					assert not expr.dropBlock
-					expr.dropBlock = Block([], None)
-					expr.dropBlock.lowered = True
-				state.scope.dropBlock = expr.dropBlock
+				expr = Block(valueExprLowered, expr.span, noLower=True)
 			
-			if lastExpr and isinstance(expr, ValueExpr) and \
+			if lastExpr and expr.hasValue and \
 				block.scopeType == ScopeType.FN and implicitType != Void:
 				retVal = expr
 			else:
@@ -113,27 +84,22 @@ class Block(ValueExpr):
 			block.type = Void
 			
 			if retVal:
-				(tempSymbol, tempAsgn, tempRef) = letdecl.createTempTriple(retVal)
-				tempAsgn.rvalueImplicitType = state.scope.fnDecl.returnType
+				(tempSymbol, tempWrite, tempRead) = createTempTriple(retVal)
+				tempWrite.rvalueImplicitType = state.scope.fnDecl.returnType
 				
 				if block.scopeType != None:
-					state.scope.dropBlock = tempAsgn.dropBlock
+					state.scope.dropBlock = tempWrite.dropBlock
 				
-				tempSymbol = state.analyzeNode(tempSymbol)
-				tempAsgn = state.analyzeNode(tempAsgn)
-				
-				block.exprs.append(tempSymbol)
-				block.exprs.append(tempAsgn)
-				block.exprs.append(tempAsgn.dropBlock)
+				block.exprs.append(state.analyzeNode(tempSymbol))
+				block.exprs.append(state.analyzeNode(tempWrite))
+				# block.exprs.append(tempWrite.dropBlock)
 				
 				if not state.scope.didReturn:
-					ret = ctlflow.Return(tempRef, retVal.span)
-					ret = state.analyzeNode(ret)
-					block.exprs.append(ret)
+					ret = ctlflow.Return(tempRead, retVal.span)
+					block.exprs.append(state.analyzeNode(ret))
 			elif not state.scope.didReturn:
 				ret = ctlflow.Return(retVal, retVal.span if retVal else block.span)
-				ret = state.analyzeNode(ret)
-				block.exprs.append(ret)
+				block.exprs.append(state.analyzeNode(ret))
 			
 			block.doesReturn = state.scope.didReturn
 			assert block.doesReturn
@@ -143,8 +109,8 @@ class Block(ValueExpr):
 			block.type = implicitType if implicitType else Void
 		else:
 			lastExpr = block.exprs[-1]
-			if isinstance(lastExpr, ValueExpr):
-				block.type = lastExpr.type
+			if lastExpr.hasValue:
+				block.type = lastExpr.type if lastExpr.type else Void
 				block.borrows = lastExpr.borrows
 			else:
 				block.type = Void

@@ -1,5 +1,5 @@
 from .ast       import AST
-from .          import valueref, letdecl, block, deref
+from .          import valueref, letdecl, block, deref, access
 from .structlit import StructLit
 from .field     import Index, Field
 from .ifexpr    import If
@@ -11,227 +11,24 @@ from .log       import logError
 class Asgn(AST):
 	def __init__(self, lvalue, rvalue, span, temp=False):
 		super().__init__(span)
-		lvalue.write = True
 		self.lvalue = lvalue
 		self.rvalue = rvalue
-		self.block = None
-		self.dropBlock = None
-		self.dropBeforeAssignBlock = None
-		self.lowered = temp
-		self.temp = temp
-		self.hasRValueTempSymbol = False
-		self.rvalueImplicitType = None
 	
-	@staticmethod
-	def createTemp(tempSymbol, rvalue):
-		lvalue = valueref.ValueRef(None, tempSymbol.span, tempSymbol=tempSymbol)
-		asgn = Asgn(lvalue, rvalue, tempSymbol.span, temp=True)
-		asgn.dropBlock = block.Block([], tempSymbol.span)
-		asgn.dropBlock.lowered = True
-		asgn.lowered = True
-		return asgn
-	
-	def lowerLValue(asgn, state):
-		assert asgn.dropBlock
-		# asgn.dropBlock = block.Block([], asgn.span)
-		# asgn.dropBlock.lowered = True
-		
-		if type(asgn.lvalue) == valueref.ValueRef:
-			asgn.block = block.Block([asgn], asgn.span)
-			asgn.block.lowered = True
-		elif type(asgn.lvalue) in (deref.Deref, Index):
-			asgn.block = asgn.lvalue.lower(state)
-			asgn.lvalue = asgn.block.exprs[-1]
-			asgn.block.exprs[-1] = asgn
-		else:
-			assert 0
-		
-		asgn.block.exprs.append(asgn.dropBlock)
-		return
+	# def lower(asgn, state):
+	# 	return asgn
 		
 		
 		
-		
-		
-		
-		tempRValue = None
-		if type(asgn.lvalue) == deref.Deref:
-			if asgn.lvalue.count > 1:
-				asgn.lvalue.count -= 1
-				tempRValue = asgn.lvalue
-			elif type(asgn.lvalue.expr) != valueref.ValueRef:
-				tempRValue = asgn.lvalue.expr
-		elif type(asgn.lvalue) in (Field, Index):
-			baseParent = asgn.lvalue
-			while type(baseParent.expr) in (Field, Index):
-				baseParent = baseParent.expr
-			if type(baseParent.expr) not in (valueref.ValueRef, deref.Deref):
-				tempRValue = baseParent.expr
-			elif type(baseParent.expr) == deref.Deref:
-				if baseParent.expr.count > 1:
-					baseParent.expr.count -= 1
-					tempRValue = baseParent.expr
-				elif type(baseParent.expr.expr) != valueref.ValueRef:
-					tempRValue = baseParent.expr.expr
-		else:
-			assert 0
-		
-		if tempRValue:
-			assert 0
-	
-	def lowerRValue(asgn, state):
-		(tempSymbol, tempAsgn, tempRef) = letdecl.createTempTriple(asgn.rvalue)
-		
-		asgn.dropBeforeAssignBlock = block.Block([], asgn.span)
-		asgn.dropBeforeAssignBlock.lowered = True
-		
-		exprs = [
-			tempSymbol, 
-			tempAsgn, 
-			asgn.dropBeforeAssignBlock, 
-			tempRef
-		]
-		
-		asgn.rvalue = block.Block(exprs, asgn.rvalue.span, ScopeType.BLOCK)
-		asgn.rvalue.lowered = True
-	
-	def lower(asgn, state):
-		if asgn.lowered:
-			return asgn
-		else:
-			asgn.lowered = True
-			asgn.hasRValueTempSymbol = True
-		
-		asgn.lowerRValue(state)
-		asgn.lowerLValue(state)
-		
-		return asgn.block
+	# 		asgn.hasRValueTempSymbol = True
 	
 	def analyze(asgn, state, ignoredImplicitType):
-		asgn.lvalue = state.analyzeNode(asgn.lvalue)
-		if asgn.hasRValueTempSymbol:
-			asgn.rvalue.exprs[0].type = asgn.lvalue.type
-		
-		implicitType = asgn.lvalue.type
-		if asgn.rvalueImplicitType:
-			implicitType = asgn.rvalueImplicitType
-		asgn.rvalue = state.analyzeNode(asgn.rvalue, implicitType)
-		
-		if asgn.lvalue.deref:
-			state.scope.readSymbol(asgn.lvalue)
-		elif type(asgn.lvalue) == Field and type(asgn.lvalue.expr) == valueref.ValueRef:
-			assert 0
-			state.scope.writeSymbol(asgn, asgn.lvalue.field)
-		elif type(asgn.lvalue) in (Field, deref.Deref):
-			assert 0
-		elif type(asgn.lvalue) == Index:
-			state.scope.writeSymbol(asgn)
-		elif type(asgn.lvalue) == valueref.ValueRef:
-			if asgn.lvalue.symbol.type == None:
-				asgn.lvalue.type = asgn.rvalue.type
-				asgn.lvalue.symbol.type = asgn.rvalue.type
-				asgn.lvalue.symbol.checkDropFn(state)
-			state.scope.writeSymbol(asgn)
-		else:
-			assert 0
-		
-		if not typesMatch(asgn.lvalue.type, asgn.rvalue.type):
-			logError(state, asgn.rvalue.span, 
-				'expected type {}, found {}'.format(asgn.lvalue.type, asgn.rvalue.type))
-		
-		return asgn
-	
-	def writeIR(expr, state):
-		if expr.lvalue.type.isVoidType:
-			expr.rvalue.writeIR(state)
-			if not expr.rvalue.type.isVoidType:
-				state.appendInstr(Pop(expr))
-			return
-		
-		if expr.lvalue.deref:
-			expr.lvalue.writeIR(state)
-			expr.rvalue.writeIR(state)
-			state.appendInstr(DerefW(expr))
-		elif type(expr.lvalue) == valueref.ValueRef:
-			expr.rvalue.writeIR(state)
-			if expr.lvalue.symbol in state.operandsBySymbol:
-				stackOffset = state.localOffset(expr.lvalue.symbol)
-				if stackOffset > 0:
-					state.appendInstr(Swap(expr, stackOffset))
-			else:
-				if expr.lvalue.symbol.fixed:
-					state.appendInstr(Fix(expr))
-				state.nameTopOperand(expr.lvalue.symbol)
-			
-			if state.loopInfo:
-				state.loopInfo.droppedSymbols.discard(expr.lvalue.symbol)
-		elif type(expr.lvalue) == Index:
-			assert type(expr.lvalue.expr) == valueref.ValueRef
-			expr.rvalue.writeIR(state)
-			expr.lvalue.index.writeIR(state)
-			stackOffset = state.localOffset(expr.lvalue.expr.symbol)
-			if expr.lvalue.deref:
-				state.appendInstr(DerefFieldW(expr, stackOffset))
-			else:
-				state.appendInstr(FieldW(expr, stackOffset))
-		else:
-			assert 0
-		
-		# if type(expr) != ValueRef:
-		# 	swap = True
-		# 	ast.lvalue.writeIR(state)
-		
-		# ast.rvalue.writeIR(state)
-		
-		# if type(ast.lvalue) == FieldAccess:
-		# 	state.appendInstr(Imm(ast, IPTR, ast.lvalue.fieldOffset))
-		# else:
-		# 	ast.lvalue.index.writeIR(state)
-		
-		
-		# else:
-		# 	stackOffset = 2
+		return access.SymbolAccess.analyzeSymbolAccess(state, asgn)
 		
 		
 		
-		
-		# if type(ast.lvalue) == Deref:
-		# 	ast.lvalue.writeIR(state)
-		# 	for _ in range(0, ast.lvalue.derefCount-1):
-		# 		state.appendInstr(Deref(ast.lvalue, IPTR))
-		# 	ast.rvalue.writeIR(state)
-		# 	state.appendInstr(DerefW(ast))
-		# elif type(ast.lvalue) in (FieldAccess, IndexOp):
-		# 	swap = False
-		# 	deref = False
-		# 	expr = ast.lvalue
-		# 	if type(expr) == Deref:
-		# 		deref = True
-		# 		expr = expr.expr
-			
-		# 	if type(expr) != ValueRef:
-		# 		swap = True
-		# 		ast.lvalue.writeIR(state)
-			
-		# 	ast.rvalue.writeIR(state)
-			
-		# 	if type(ast.lvalue) == FieldAccess:
-		# 		state.appendInstr(Imm(ast, IPTR, ast.lvalue.fieldOffset))
-		# 	else:
-		# 		ast.lvalue.index.writeIR(state)
-			
-		# 	if type(expr) == ValueRef:
-		# 		stackOffset = state.localOffset(expr.symbol)
-		# 	else:
-		# 		stackOffset = 2
-			
-		# 	if deref:
-		# 		state.appendInstr(DerefFieldW(ast, stackOffset))
-		# 	else:
-		# 		state.appendInstr(FieldW(ast, stackOffset))
-			
-		# 	if swap:
-		# 		state.appendInstr(Swap(ast, stackOffset))
+		# asgn.lvalue = state.analyzeNode(asgn.lvalue)
+		# if asgn.hasRValueTempSymbol:
+		# 	asgn.rvalue.exprs[0].type = asgn.lvalue.type
 	
 	def pretty(self, output, indent=0):
 		self.lvalue.pretty(output, indent)

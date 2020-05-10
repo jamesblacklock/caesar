@@ -67,9 +67,7 @@ class AST:
 		self.attrs = None
 		self.attrsInvoked = False
 		self.span = span
-	
-	def lower(self, state):
-		return self
+		self.hasValue = False
 	
 	def analyze(self, state, implicitType):
 		assert 0
@@ -108,6 +106,7 @@ class ValueExpr(AST):
 		self.type = None
 		self.typeModifiers = None
 		self.borrows = None
+		self.hasValue = True
 	
 	def staticEval(self, state):
 		return None
