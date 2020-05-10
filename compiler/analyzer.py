@@ -106,7 +106,6 @@ class AnalyzerState:
 	
 	def analyzeNode(state, ast, implicitType=None):
 		invokeAttrs(state, ast)
-		ast = ast.lower(state)
 		newAST = ast.analyze(state, implicitType)
 		return newAST if newAST else ast
 	
