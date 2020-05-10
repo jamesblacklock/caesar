@@ -1,6 +1,6 @@
 import ctypes
 from .typeref    import NamedTypeRef, PtrTypeRef, ArrayTypeRef, TupleTypeRef
-from .types      import Type, FieldInfo, PtrType, ArrayType, TupleType, Void, Bool, Byte, Char, Int8, \
+from .types      import Type, UnknownType, FieldInfo, PtrType, ArrayType, TupleType, Void, Bool, Byte, Char, Int8, \
                         UInt8, Int16, UInt16, Int32, UInt32, Int64, UInt64, ISize, USize, Float32, Float64
 from .log        import logError, logExplain
 from .ast        import ASTPrinter, TypeSymbol
@@ -90,8 +90,8 @@ def analyze(ast):
 	
 	state.popScope()
 	
-	# p = ASTPrinter()
-	# ast.pretty(p)
+	p = ASTPrinter()
+	ast.pretty(p)
 	
 	if state.failed:
 		exit(1)
@@ -111,16 +111,13 @@ class AnalyzerState:
 	
 	def resolveTypeRef(state, typeRef):
 		if type(typeRef) == NamedTypeRef:
-			return state.lookupSymbol(typeRef, True)
+			result = state.lookupSymbol(typeRef, True)
+			return result if result else UnknownType
 		elif type(typeRef) == PtrTypeRef:
 			baseType = state.resolveTypeRef(typeRef.baseType)
-			if baseType == None:
-				return None
 			return PtrType(baseType, typeRef.indLevel)
 		elif type(typeRef) == ArrayTypeRef:
 			baseType = state.resolveTypeRef(typeRef.baseType)
-			if baseType == None:
-				return None
 			return ArrayType(baseType, typeRef.count)
 		elif type(typeRef) == TupleTypeRef:
 			return analyzeTupleTypeRef(state, typeRef)

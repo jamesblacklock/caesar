@@ -9,10 +9,11 @@ class Type:
 		isFnType=False, isPtrType=False, isStructType=False, 
 		isIntType=False, isIntLikeType=False, isFloatType=False, isOptionType=False, 
 		isPrimitiveType=False, isSigned=False, isArrayType=False,
-		isTupleType=False, isCompositeType=False):
+		isTupleType=False, isCompositeType=False, isResolved=True):
 		self.name = name
 		self.byteSize = byteSize
 		self.align = align
+		self.isResolved = isResolved
 		self.isPrimitiveType = isPrimitiveType
 		self.isCopyable = isFnType or isPrimitiveType
 		self.isVoidType = byteSize == 0
@@ -127,6 +128,8 @@ class TupleType(Type):
 		self.fields = fields
 
 SZ = PLATFORM_WORD_SIZE
+
+UnknownType = Type('<unknown>', 0, 0, isResolved=False)
 
 Void    = PrimitiveType('void',    0)
 Bool    = PrimitiveType('bool',    1)

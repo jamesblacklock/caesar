@@ -92,7 +92,6 @@ class Block(ValueExpr):
 				
 				block.exprs.append(state.analyzeNode(tempSymbol))
 				block.exprs.append(state.analyzeNode(tempWrite))
-				# block.exprs.append(tempWrite.dropBlock)
 				
 				if not state.scope.didReturn:
 					ret = ctlflow.Return(tempRead, retVal.span)

@@ -99,10 +99,10 @@ class SymbolAccess(ValueExpr):
 			output.addPrefix('$copy(')
 			closeParen = True
 		output.write(self.symbol.name, indent)
-		if self.deref:
-			output.write('^' * self.deref)
 		if closeParen:
 			output.write(')')
+		if self.deref:
+			output.write('^' * self.deref)
 		if self.field:
 			output.write('.' + self.field.name)
 		if self.staticOffset or self.dynOffsets:
