@@ -145,7 +145,7 @@ Int16   = PrimitiveType('int16',   2,   isIntType=True, isSigned=True)
 Int32   = PrimitiveType('int',     4,   isIntType=True, isSigned=True)
 Int64   = PrimitiveType('int64',   8,   isIntType=True, isSigned=True)
 ISize   = PrimitiveType('isize',  SZ,   isIntType=True, isSigned=True)
-Float32 = PrimitiveType('float32', 4, isFloatType=True, isSigned=True)
+Float32 = PrimitiveType('float',   4, isFloatType=True, isSigned=True)
 Float64 = PrimitiveType('float64', 8, isFloatType=True, isSigned=True)
 
 I8_MAX  = 127

@@ -712,6 +712,7 @@ class FnIR:
 		self.staticDefs = state.staticDefs
 		self.blockDefs = state.blockDefs
 		self.paramTypes = state.paramTypes
+		self.cVarArgs = state.cVarArgs
 		self.retType = state.retType
 	
 	def __str__(self):

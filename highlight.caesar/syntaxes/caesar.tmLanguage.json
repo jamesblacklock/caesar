@@ -41,7 +41,7 @@
 				},
 				{
 					"name": "storage.type.built-in.primitive.caesar",
-					"match": "\\b(void|bool|byte|int8|uint8|int16|uint16|int|uint|char|int64|uint64|isize|usize)\\b"
+					"match": "\\b(void|bool|byte|int8|uint8|int16|uint16|int|uint|char|int64|uint64|isize|usize|float|float64)\\b"
 				}
 			]
 		},

@@ -308,13 +308,18 @@ class GeneratorState:
 		return targets
 	
 	def setupStackFrame(self):
+		assert not self.fnIR.cVarArgs
+		
 		intRegs = list(reversed(self.intArgRegs))
-		floatRegs = []
+		floatRegs = list(reversed(self.floatArgRegs))
 		stackArgTypes = []
 		
 		for (i, fType) in enumerate(self.fnIR.paramTypes):
 			if fType.isFloatType and len(floatRegs) > 0:
-				assert 0
+				reg = floatRegs.pop()
+				reg.type = fType
+				self.pushOperand(reg)
+				continue
 			elif len(intRegs) > 0:
 				reg = intRegs.pop()
 				reg.type = fType
