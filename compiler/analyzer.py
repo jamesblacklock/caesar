@@ -41,14 +41,6 @@ def analyzeTupleTypeRef(state, tupleTypeRef):
 	layout = state.generateFieldLayout(resolvedTypes)
 	tupleTypeRef.type = TupleType(layout.align, layout.byteSize, layout.fields)
 
-def analyzeStaticDeclSig(state, decl):
-	if decl.typeRef:
-		decl.type = state.resolveTypeRef(decl.typeRef)
-
-def analyzeStaticDeclBody(state, decl):
-	analyzeConstDeclBody(state, decl)
-	decl.mangledName = mangleName(state, decl)
-
 def buildSymbolTable(state, mod):
 	symbolTable = {}
 	for decl in mod.decls:
@@ -90,8 +82,8 @@ def analyze(ast):
 	
 	state.popScope()
 	
-	p = ASTPrinter()
-	ast.pretty(p)
+	# p = ASTPrinter()
+	# ast.pretty(p)
 	
 	if state.failed:
 		exit(1)

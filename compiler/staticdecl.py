@@ -11,11 +11,16 @@ class StaticDecl(ValueSymbol):
 		self.expr = expr
 		self.staticValue = None
 		
-	def analyzeSig(decl, state):
+	def analyzeSig(decl, state, isConst=False):
 		attrs.invokeAttrs(state, decl)
 		
 		if decl.typeRef:
 			decl.type = state.resolveTypeRef(decl.typeRef)
+		
+		if decl.name == '_':
+			logError(state, decl.expr.span, '`_` is not a valid mod-level binding')
+		elif not isConst:
+			decl.mangledName = state.mangleName(decl)
 	
 	def analyze(decl, state, implicitType):
 		implicitType = None
@@ -41,12 +46,11 @@ class StaticDecl(ValueSymbol):
 		else:
 			decl.type = decl.expr.type
 		
-		if decl.name == '_':
-			logError(state, decl.expr.span, '`_` is not a valid mod-level binding')
-		
 		decl.staticValue = decl.expr.staticEval(state)
 		if decl.staticValue == None:
 			logError(state, decl.expr.span, 'expression cannot be statically evaluated')
+		else:
+			decl.staticValue.label = decl.mangledName
 	
 	def __pretty(self, output, indent, s):
 		output.write('{} {}'.format(s, self.name), indent)
@@ -62,6 +66,9 @@ class StaticDecl(ValueSymbol):
 class ConstDecl(StaticDecl):
 	def __init__(self, nameTok, typeRef, doccomment, expr, span):
 		super().__init__(nameTok, typeRef, doccomment, False, False, expr, span)
+		
+	def analyzeSig(decl, state):
+		super().analyzeSig(state, isConst=True)
 	
 	def pretty(self, output, indent=0):
 		self._StaticDecl__pretty(output, indent, 'const')

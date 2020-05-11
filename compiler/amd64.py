@@ -1,19 +1,18 @@
 import ctypes
-from io                                import StringIO
-from enum                              import Enum
-from .ir                               import Dup, Global, Imm, Static, Deref, DerefW, Add, Sub, Mul, \
-                                              Div, Eq, NEq, Less, LessEq, Greater, GreaterEq, Call, \
-                                              Extend, IExtend, Truncate, FExtend, FTruncate, IToF, \
-                                              UToF, FToI, FToU, Ret, BrIf, Br, Swap, Pop, Raise, Neg, \
-                                              Struct, Field, FieldW, DerefField, DerefFieldW, Fix, \
-                                              BlockMarker, Addr, I8, I16, I32, I64, IPTR, F32, F64, \
-                                              FundamentalType
-from .types                            import U32_RNG, I32_RNG
+from io     import StringIO
+from enum   import Enum
+from .ast   import StaticData, StaticDataType
+from .ir    import Dup, Global, Imm, Static, Deref, DerefW, Add, Sub, Mul, Div, Eq, NEq, Less, LessEq, \
+                   Greater, GreaterEq, Call, Extend, IExtend, Truncate, FExtend, FTruncate, IToF, UToF, \
+                   FToI, FToU, Ret, BrIf, Br, Swap, Pop, Raise, Neg, Struct, Field, FieldW, DerefField, \
+                   DerefFieldW, Fix, BlockMarker, Addr, I8, I16, I32, I64, IPTR, F32, F64, FundamentalType
+from .types import U32_RNG, I32_RNG
 
 class Storage(Enum):
 	IMM = 'IMM'
 	GLOBAL = 'GLOBAL'
 	REG = 'REG'
+	XMM = 'XMM'
 	STACK = 'STACK'
 	NONE = 'NONE'
 
@@ -80,6 +79,7 @@ class GlobalTarget(Target):
 		self.label = label
 	
 	def render(self, usage, fType, ind, sp):
+		assert self.label
 		assert ind == None
 		
 		if usage in (Usage.SRC, Usage.DEST):
@@ -159,6 +159,16 @@ class RegTarget(Target):
 		else:
 			assert 0
 
+class XmmTarget(Target):
+	def __init__(self, index):
+		super().__init__(None, Storage.XMM)
+		self.index = index
+		self.name = 'xmm{}'.format(index)
+	
+	def render(self, usage, fType, ind, sp):
+		assert usage in (Usage.SRC, Usage.DEST) and ind == None
+		return self.name
+
 class Operand:
 	def __init__(self, target, usage, fType=None, ind=None):
 		self.target = target
@@ -202,6 +212,7 @@ class GeneratorState:
 		self.blockInputs = [None for _ in fnIR.blockDefs]
 		self.instr = []
 		self.operandStack = []
+		self.calleeSave = set()
 		
 		self.rax = RegTarget(False, 'rax',  'eax',   'ax',   'al', 'ah')
 		self.rbx = RegTarget( True, 'rbx',  'ebx',   'bx',   'bl', 'bh')
@@ -222,11 +233,30 @@ class GeneratorState:
 		self.intRegs = [
 			self.r11, self.r10, self.rdi, self.rsi, self.rdx, 
 			self.rcx,  self.r8, self.rbx, self.rbp, self.r12, 
-			self.r13, self.r14, self.r15,  self.r9, self.rax
+			self.r13, self.r14, self.r15,  self.r9, self.rax,
+			self.rbx, self.r12, self.r13, self.r14, self.r15
 		]
 		self.intArgRegs = [
 			self.rdi, self.rsi, self.rdx, self.rcx, self.r8, 
 			self.r9
+		]
+		self.xmm0  = XmmTarget(0);  self.xmm1  = XmmTarget(1)
+		self.xmm2  = XmmTarget(2);  self.xmm3  = XmmTarget(3)
+		self.xmm4  = XmmTarget(4);  self.xmm5  = XmmTarget(5)
+		self.xmm6  = XmmTarget(6);  self.xmm7  = XmmTarget(7)
+		self.xmm8  = XmmTarget(8);  self.xmm9  = XmmTarget(9)
+		self.xmm10 = XmmTarget(10); self.xmm11 = XmmTarget(11)
+		self.xmm12 = XmmTarget(12); self.xmm13 = XmmTarget(13)
+		self.xmm14 = XmmTarget(14); self.xmm15 = XmmTarget(15)
+		self.xmmRegs = [
+			self.xmm0,   self.xmm1,  self.xmm2,  self.xmm3,
+			self.xmm4,   self.xmm5,  self.xmm6,  self.xmm7,
+			self.xmm8,   self.xmm9, self.xmm10, self.xmm11,
+			self.xmm12, self.xmm13, self.xmm14, self.xmm15,
+		]
+		self.floatArgRegs = [
+			self.xmm0,   self.xmm1,  self.xmm2,  self.xmm3,
+			self.xmm4,   self.xmm5,  self.xmm6,  self.xmm7,
 		]
 		self.sp = 0
 		self.callStack = []
@@ -317,13 +347,24 @@ class GeneratorState:
 	def appendInstr(self, opcode, *operands, isLabel=False, isComment=False):
 		instr = Instr(opcode, operands, isLabel, isComment)
 		self.instr.append(instr)
-		# print(instr)
+		print(instr)
 	
 	def findReg(self, type=None, exclude=[]):
 		for reg in self.intRegs:
 			if reg.active or reg.calleeSaved or reg in exclude:
 				continue
-			if type: reg.type = type
+			if reg.calleeSaved:
+				self.calleeSave.add(reg)
+			if type:
+				reg.type = type
+			return reg
+	
+	def findXmmReg(self, type=None, exclude=[]):
+		for reg in self.xmmRegs:
+			if reg.active or reg in exclude:
+				continue
+			if type:
+				reg.type = type
 			return reg
 	
 	def findTarget(self, type, alwaysUseStack=False, exclude=[]):
@@ -463,6 +504,8 @@ def irToAsm(state, ir, nextIR):
 		extend(state, ir)
 	elif type(ir) == IExtend:
 		iextend(state, ir)
+	elif type(ir) == FExtend:
+		fextend(state, ir)
 	elif type(ir) == Truncate:
 		truncate(state, ir)
 	elif type(ir) == Neg:
@@ -623,7 +666,7 @@ def moveData(state, src, dest,
 				Operand(dest, Usage.DEREF, type, ind=destOffset), 
 				Operand(src, Usage.SRC, type))
 	else:
-		state.appendInstr('mov', 
+		state.appendInstr('movq' if Storage.XMM in (src.storage, dest.storage) else 'mov', 
 			Operand(dest, Usage.DEST, type, ind=destOffset), 
 			Operand(src, Usage.SRC, type, ind=srcOffset))
 	
@@ -689,8 +732,27 @@ def moveStruct(state, src, dest, srcDeref, destDeref, srcOffset, destOffset, typ
 	
 	dest.type = IPTR if destDeref else type
 
+FLOAT_COUNTER = 0
+
 def imm(state, ir):
-	if not ir.type.isFloatType and ir.value not in U32_RNG and ir.value not in I32_RNG:
+	if ir.type.isFloatType:
+		global FLOAT_COUNTER
+		label = '{}_float{}'.format(state.fnIR.name, FLOAT_COUNTER)
+		FLOAT_COUNTER += 1
+		
+		staticValue = StaticData(ir.value, StaticDataType.FLOAT, ir.type, label)
+		state.fnIR.staticDefs.append(staticValue)
+		
+		reg = state.findXmmReg(ir.type)
+		assert reg
+		
+		state.appendInstr('movs{}'.format('d' if ir.type.byteSize == 8 else 's'), 
+			Operand(reg, Usage.DEST),
+			Operand(GlobalTarget(ir.type, label), Usage.ADDR))
+		
+		state.pushOperand(reg)
+		
+	elif ir.value not in U32_RNG and ir.value not in I32_RNG:
 		# 64-bit immediates must be moved through a register
 		reg = state.findReg()
 		if reg == None:
@@ -832,6 +894,22 @@ def extend(state, ir, signed=False):
 
 def iextend(state, ir):
 	extend(state, ir, True)
+
+def fextend(state, ir):
+	src = state.getOperand(0)
+	dest = src
+	
+	assert ir.type == F64 and src.type == F32
+	assert src.storage == Storage.XMM and dest.storage == Storage.XMM
+	
+	state.appendInstr('cvtss2sd', 
+		Operand(dest, Usage.DEST), 
+		Operand(src, Usage.SRC))
+	
+	dest.type = ir.type
+	
+	state.popOperand()
+	state.pushOperand(dest)
 
 def truncate(state, ir):
 	state.getOperand(0).type = ir.type
@@ -1019,13 +1097,24 @@ def call(state, ir):
 	funcAddr = state.getOperand(0)
 	
 	intArgRegs = list(reversed(state.intArgRegs))
-	floatRegs = []
+	floatArgRegs = list(reversed(state.floatArgRegs))
 	stackArgs = []
+	xmmCount = 0
 	
 	for i in reversed(range(1, ir.argCt + 1)):
 		src = state.getOperand(i)
-		if src.type.isFloatType and len(floatRegs) > 0:
-			assert 0
+		if src.type.isFloatType:
+			if len(floatArgRegs) > 0:
+				xmmCount += 1
+				reg = floatArgRegs.pop()
+				# if reg.active:
+				# 	stack = saveReg(state, reg)
+				# 	state.moveOperand(reg, stack)
+				reg.type = src.type
+				state.appendInstr('movq', 
+					Operand(reg, Usage.DEST), 
+					Operand(src, Usage.SRC))
+				continue
 		elif len(intArgRegs) > 0:
 			reg = intArgRegs.pop()
 			if reg.active:
@@ -1037,7 +1126,7 @@ def call(state, ir):
 				Operand(src, Usage.SRC))
 			continue
 		
-		assert not src.type.isFloatType
+		# assert not src.type.isFloatType
 		stackArgs.append(src)
 	
 	if len(stackArgs) > 0:
@@ -1054,9 +1143,9 @@ def call(state, ir):
 			moveData(state, src, StackTarget(src.type, i * 8, fromTop=True))
 	
 	if ir.cVarArgs:
-		state.appendInstr('xor', 
+		state.appendInstr('mov', 
 				Operand(state.rax, Usage.DEST, I8), 
-				Operand(state.rax, Usage.DEST, I8))
+				Operand(ImmTarget(I8, xmmCount), Usage.SRC, I8))
 	
 	state.appendInstr('call', Operand(funcAddr, Usage.SRC))
 	
@@ -1205,15 +1294,15 @@ def defineStatics(mod, output):
 			continue
 		
 		for staticDef in decl.ir.staticDefs:
-			bytes = ','.join(str(b) for b in staticDef.bytes)
+			bytes = ','.join(str(b) for b in staticDef.toBytes())
 			output.write('\t{}: db {}\n'.format(staticDef.label, bytes))
 	
 	for decl in mod.statics:
 		if decl.extern:
-			assert 0
+			continue
 		
 		bytes = ','.join(str(b) for b in decl.staticValue.toBytes())
-		output.write('\t{}: db {}\n'.format(decl.mangledName, bytes))
+		output.write('\t{}: db {}\n'.format(decl.staticValue.label, bytes))
 
 def defineFns(mod, output):
 	for decl in mod.mods:
@@ -1234,7 +1323,7 @@ class OutputWriter:
 		self.output = StringIO()
 	
 	def write(self, s):
-		# sys.stdout.write(s)
+		sys.stdout.write(s)
 		self.output.write(s)
 	
 	def getvalue(self):
@@ -1250,9 +1339,6 @@ def generateAsm(mod):
 	
 	declareFns(mod, output)
 	
-	output.write('\nsection .data\n')
-	defineStatics(mod, output)
-	
 	output.write('\nsection .text\n')
 	
 	if mod.mainFn:
@@ -1264,6 +1350,9 @@ def generateAsm(mod):
 		output.write('\t\tsyscall\n')
 	
 	defineFns(mod, output)
+	
+	output.write('\nsection .data\n')
+	defineStatics(mod, output)
 	
 	return output.getvalue()
 

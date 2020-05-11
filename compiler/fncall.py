@@ -1,6 +1,6 @@
 from .ast   import ValueExpr
 from .types import getValidAssignType
-from .ir    import FundamentalType, Call, IExtend, Extend, IPTR
+from .ir    import FundamentalType, Call, IExtend, Extend, FExtend, IPTR, F64
 from .log   import logError
 
 class FnCall(ValueExpr):
@@ -64,8 +64,9 @@ class FnCall(ValueExpr):
 				continue
 			
 			fType = FundamentalType.fromResolvedType(expr.type)
-			if fType.isFloatType:
-				assert 0
+			if fType.isFloatType and fType.byteSize != 8:
+				assert fType.byteSize == 4
+				state.appendInstr(FExtend(ast, F64))
 			elif fType.byteSize < 4:
 				if expr.type.isSigned:
 					state.appendInstr(IExtend(ast, IPTR))

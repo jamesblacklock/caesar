@@ -8,7 +8,8 @@ class StaticDataType(Enum):
 	BYTES = 'BYTES'
 
 class StaticData:
-	def __init__(self, data, dataType, fType):
+	def __init__(self, data, dataType, fType, label=None):
+		self.label = label
 		self.data = data
 		self.dataType = dataType
 		self.fType = fType
@@ -26,11 +27,22 @@ class StaticData:
 			assert 0
 		return [b for b in bytes(t(self.data))]
 	
+	def __floatToBytes(self):
+		if self.fType.byteSize == 4:
+			t = ctypes.c_float
+		elif self.fType.byteSize == 8:
+			t = ctypes.c_double
+		else:
+			assert 0
+		return [b for b in bytes(t(self.data))]
+	
 	def toBytes(self):
 		if self.dataType == StaticDataType.BYTES:
 			return self.data
 		elif self.dataType == StaticDataType.INT:
 			return self._StaticData__intToBytes()
+		elif self.dataType == StaticDataType.FLOAT:
+			return self._StaticData__floatToBytes()
 		else:
 			assert 0
 

@@ -34,8 +34,6 @@ class LetDecl(ValueSymbol):
 		self.dropFn = None
 		self.mut = mut
 		self.expr = expr
-		self.noBinding = False
-		self.block = None
 		self.temp = temp
 		self.fixed = False
 	
@@ -73,19 +71,18 @@ class LetDecl(ValueSymbol):
 			letExpr.type = state.resolveTypeRef(letExpr.typeRef)
 		
 		if letExpr.name == '_':
-			letExpr.noBinding = True
-		else:
-			state.scope.declSymbol(letExpr)
+			letExpr.name == '$_'
 		
+		state.scope.declSymbol(letExpr)
+		
+		result = letExpr
 		if letExpr.expr:
-			letExpr.block = access.SymbolAccess.analyzeSymbolAccess(state, letExpr, letExpr.type)
-		else:
-			letExpr.block = block.Block([letExpr], letExpr.span)
+			result = access.SymbolAccess.analyzeSymbolAccess(state, letExpr, letExpr.type)
 		
 		if letExpr.type:
 			letExpr.checkDropFn(state)
 		
-		return letExpr.block
+		return result
 	
 	def writeIR(ast, state):
 		pass

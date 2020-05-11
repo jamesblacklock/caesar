@@ -49,19 +49,25 @@ def strBytes(s):
 	b.append(0)
 	return b
 
+STR_COUNTER = 0
+
 class StrLit(ValueExpr):
 	def __init__(self, value, span):
 		super().__init__(span)
 		self.value = strEsc(value)
-		self.constBytes = strBytes(self.value)
+		self.staticValue = None
 	
 	def analyze(lit, state, implicitType):
+		global STR_COUNTER
+		label = '{}_str{}'.format(state.scope.fnDecl.mangledName, STR_COUNTER)
+		STR_COUNTER += 1
+		
+		lit.staticValue = StaticData(strBytes(lit.value), StaticDataType.BYTES, ir.IPTR, label)
 		lit.type = types.PtrType(types.Byte, 1)
 	
 	def writeIR(ast, state):
-		label = '{}_str{}'.format(state.name, len(state.staticDefs))
-		state.staticDefs.append(ir.StaticDef(label, ast.constBytes))
-		state.appendInstr(ir.Static(ast, ir.IPTR, label))
+		state.staticDefs.append(ast.staticValue)
+		state.appendInstr(ir.Static(ast, ir.IPTR, ast.staticValue.label))
 	
 	def pretty(self, output, indent=0):
 		output.write('"{}"'.format(strUnesc(self.value)), indent)
@@ -192,15 +198,23 @@ class FloatLit(ValueExpr):
 	
 	def analyze(lit, state, implicitType):
 		if lit.suffix == 'f32':
-			lit.type = Float32
+			lit.type = types.Float32
 		elif lit.suffix == 'f64':
-			lit.type = Float64
+			lit.type = types.Float64
 		elif implicitType and implicitType.isFloatType:
 			lit.type = implicitType
-		else:# elif canAccommodate(Float32, lit.value):
-			lit.type = Float32
+		else:# elif canAccommodate(types.Float32, lit.value):
+			lit.type = types.Float32
 		# else:
-		# 	lit.type = Float64
+		# 	lit.type = types.Float64
 		
 		# if not canAccommodate(lit.type, lit.value):
 		# 	logError(state, lit.span, 'floating point value out of range for type {}'.format(lit.type))
+	
+	def writeIR(ast, state):
+		fType = ir.FundamentalType.fromResolvedType(ast.type)
+		state.appendInstr(ir.Imm(ast, fType, ast.value))
+	
+	def pretty(self, output, indent=0):
+		suffix = self.suffix if self.suffix else ''
+		output.write(str(self.value) + suffix, indent)
