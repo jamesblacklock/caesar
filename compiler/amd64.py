@@ -1198,8 +1198,61 @@ def faddSubDivMul(state, ir, op, isCommutative):
 	state.pushOperand(dest)
 
 def fcmp(state, ir):
-	assert 0
+	if state.rcx.active:
+		stack = saveReg(state, state.rcx)
+		state.moveOperand(state.rcx, stack)
+	state.rcx.type = I8
+	
+	r = state.getOperand(0)
+	l = state.getOperand(1)
+	
+	if type(ir) == FEq:
+		opcode = 'sete'
+	elif type(ir) == FNEq:
+		opcode = 'setne'
+	elif type(ir) == FLess:
+		opcode = 'setl'
+	elif type(ir) == FLessEq:
+		opcode = 'setle'
+	elif type(ir) == FGreater:
+		opcode = 'setg'
+	elif type(ir) == FGreaterEq:
+		opcode = 'setge'
+	else:
+		assert 0
+	
+	if l.storage != Storage.XMM:
+		reg = state.findXmmReg(l.type)
+		if reg == None:
+			reg = state.xmm8
+			stack = saveReg(state, reg)
+			state.moveOperand(reg, stack)
+			reg.type = l.type
+		moveData(state, l, reg)
+		l = reg
+	
+	if r.storage == Storage.REG:
+		reg = state.findXmmReg(dest.type)
+		if reg == None:
+			reg = state.xmm9
+			stack = saveReg(state, reg)
+			state.moveOperand(reg, stack)
+			reg.type = r.type
+		moveData(state, r, reg)
+		r = reg
+	
+	state.appendInstr('xor', 
+		Operand(state.rcx, Usage.DEST, I64), 
+		Operand(state.rcx, Usage.DEST, I64))
+	state.appendInstr('comis{}'.format('d' if l.type == F64 else 's'), 
+		Operand(l, Usage.DEST), 
+		Operand(r, Usage.SRC))
+	state.appendInstr(opcode, 
+		Operand(state.rcx, Usage.DEST))
 
+	state.popOperand()
+	state.popOperand()
+	state.pushOperand(state.rcx)
 
 def call(state, ir):
 	for reg in state.intRegs:
