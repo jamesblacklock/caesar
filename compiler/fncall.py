@@ -21,6 +21,9 @@ class FnCall(ValueExpr):
 		
 		fnCall.type = fnType.returnType
 		
+		if fnType.unsafe and not state.scope.allowUnsafe:
+			logError(state, fnCall.expr.span, 'unsafe function called in a safe context')
+		
 		if len(fnCall.args) < len(fnType.params) or \
 			not fnType.cVarArgs and len(fnCall.args) > len(fnType.params):
 			logError(state, fnCall.span, 

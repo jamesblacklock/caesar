@@ -9,7 +9,7 @@ class CConv(Enum):
 	C = 'C'
 
 class FnDecl(ValueSymbol):
-	def __init__(self, nameTok, doccomment, extern, 
+	def __init__(self, nameTok, doccomment, extern, unsafe, 
 		params, cVarArgs, returnType, body, span, cVarArgsSpan):
 		super().__init__(nameTok, None, span, doccomment, extern)
 		self.params = params
@@ -20,6 +20,7 @@ class FnDecl(ValueSymbol):
 		self.returnTypeModifiers = TypeModifiers()
 		self.body = body
 		self.cconv = CConv.CAESAR
+		self.unsafe = unsafe
 	
 	def analyzeSig(decl, state):
 		attrs.invokeAttrs(state, decl)
@@ -37,10 +38,14 @@ class FnDecl(ValueSymbol):
 			else:
 				symbolNames.add(param.name)
 		
-		decl.type = FnType(decl.params, decl.returnType, decl.cVarArgs, decl.cconv)
+		decl.type = FnType(decl.unsafe, decl.params, decl.returnType, decl.cVarArgs, decl.cconv)
 		
-		if decl.cVarArgs and decl.cconv != CConv.C:
-			logError(state, decl.cVarArgsSpan, 'may not use C variadic parameter without the C calling convention')
+		if decl.cVarArgs:
+			if decl.cconv != CConv.C:
+				logError(state, decl.cVarArgsSpan, 'may not use C variadic parameter without the C calling convention')
+			if not decl.unsafe:
+				logError(state, decl.cVarArgsSpan, 
+					'C variadic parameter is not type safe; `{}` must be labelled `unsafe`'.format(decl.name))
 		
 		decl.mangledName = state.mangleName(decl)
 	

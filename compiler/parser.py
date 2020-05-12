@@ -914,11 +914,25 @@ def isStructLitStart(state):
 	state.rollback(offset)
 	return result
 
+def parseUnsafeBlock(state):
+	span = state.tok.span
+	state.advance()
+	state.skipSpace()
+	expr = parseExpr(state, ExprClass.FN, allowSimpleFnCall=True)
+	if type(expr) != Block:
+		expr = Block([expr], expr.span)
+	
+	expr.span = Span.merge(span, expr.span)
+	expr.unsafe = True
+	return expr
+
 def parseValueExpr(state, precedence=0, noSkipSpace=False, allowSimpleFnCall=False):
 	return parseExpr(state, ExprClass.VALUE_EXPR, precedence, noSkipSpace, allowSimpleFnCall)
 
 def parseValueExprImpl(state, precedence, noSkipSpace, allowSimpleFnCall):
-	if state.tok.type == TokenType.NEWLINE:
+	if state.tok.type == TokenType.UNSAFE:
+		expr = parseUnsafeBlock(state)
+	elif state.tok.type == TokenType.NEWLINE:
 		block = parseBlock(state, parseFnBodyExpr)
 		if len(block.list) == 1 and block.list[0].hasValue:
 			expr = block.list[0]
@@ -1124,6 +1138,14 @@ def parseFnDecl(state, doccomment, extern):
 	startLine = state.tok.span.startLine
 	onOneLine = True
 	
+	unsafe = False
+	if state.tok.type == TokenType.UNSAFE:
+		unsafe = True
+		state.advance()
+		state.skipSpace()
+		if expectType(state, TokenType.FN) == False:
+			return None
+		
 	state.advance()
 	state.skipSpace()
 	
@@ -1158,7 +1180,7 @@ def parseFnDecl(state, doccomment, extern):
 		body = Block.fromInfo(blockInfo, ScopeType.FN)
 		span = Span.merge(span, body.span)
 	
-	return FnDecl(nameTok, doccomment, extern, params, cVarArgs, returnType, body, span, cVarArgsSpan)
+	return FnDecl(nameTok, doccomment, extern, unsafe, params, cVarArgs, returnType, body, span, cVarArgsSpan)
 
 def parseModLevelDecl(state):
 	return parseExpr(state, ExprClass.MOD)
@@ -1175,6 +1197,7 @@ class ExprClass(Enum):
 MOD_EXPR_TOKS = (
 	TokenType.MOD, 
 	TokenType.FN, 
+	TokenType.UNSAFE, 
 	TokenType.STATIC, 
 	TokenType.STRUCT, 
 	TokenType.CONST
@@ -1197,7 +1220,8 @@ VALUE_EXPR_TOKS = (
 	TokenType.FALSE,
 	TokenType.TRUE,
 	TokenType.IF,
-	TokenType.VOID
+	TokenType.VOID,
+	TokenType.UNSAFE
 )
 
 FN_EXPR_TOKS = (
@@ -1208,6 +1232,8 @@ FN_EXPR_TOKS = (
 	TokenType.WHILE,
 	# TokenType.FOR,
 	# TokenType.FN, 
+	# TokenType.UNSAFE, 
+	# TokenType.CONST, 
 	TokenType.CONTINUE,
 	TokenType.BREAK
 )
@@ -1234,7 +1260,7 @@ def parseExpr(state, exprClass, precedence=0, noSkipSpace=False, allowSimpleFnCa
 		extern = True
 		state.advance()
 		permitLineBreak(state)
-		if expectType(state, TokenType.FN, TokenType.STATIC) == False:
+		if expectType(state, TokenType.FN, TokenType.STATIC, TokenType.UNSAFE) == False:
 			return None
 	
 	if startToken == None: startToken = state.tok
@@ -1261,7 +1287,7 @@ def parseExpr(state, exprClass, precedence=0, noSkipSpace=False, allowSimpleFnCa
 	decl = None
 	if state.tok.type == TokenType.MOD:
 		decl = parseModule(state, doccomment)
-	elif state.tok.type == TokenType.FN:
+	elif state.tok.type == TokenType.FN or state.tok.type == TokenType.UNSAFE and exprClass == ExprClass.MOD:
 		decl = parseFnDecl(state, doccomment, extern)
 	elif state.tok.type == TokenType.STATIC:
 		decl = parseStaticDecl(state, doccomment, extern)

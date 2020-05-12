@@ -22,18 +22,27 @@ class Block(ValueExpr):
 		self.ifExpr = None
 		self.loopExpr = None
 		self.lowered = noLower
+		self.unsafe = False
 	
 	@staticmethod
 	def fromInfo(blockInfo, scopeType=None):
 		return Block(blockInfo.list, blockInfo.span, scopeType)
 	
 	def analyze(block, state, implicitType):
+		if block.fnDecl:
+			block.unsafe = block.fnDecl.unsafe
+		
+		resetScopeSafety = False
 		if block.scopeType != None:
 			state.pushScope(
 				block.scopeType, 
 				ifExpr=block.ifExpr, 
 				loopExpr=block.loopExpr,
-				fnDecl=block.fnDecl)
+				fnDecl=block.fnDecl, 
+				allowUnsafe=block.unsafe)
+		elif block.unsafe and not state.scope.allowUnsafe:
+			state.scope.allowUnsafe = True
+			resetScopeSafety = True
 		
 		if block.fnDecl:
 			for (i, param) in enumerate(block.fnDecl.params):
@@ -115,6 +124,8 @@ class Block(ValueExpr):
 		
 		if block.scopeType != None:
 			state.popScope()
+		elif resetScopeSafety:
+			state.scope.allowUnsafe = False
 	
 	def writeIR(block, state):
 		for expr in block.exprs:

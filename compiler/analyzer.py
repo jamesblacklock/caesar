@@ -164,16 +164,17 @@ class AnalyzerState:
 		
 		return FieldLayout(maxAlign, offset, fields)
 	
-	def pushScope(self, scopeType, name=None, fnDecl=None, ifExpr=None, loopExpr=None):
+	def pushScope(self, scopeType, name=None, fnDecl=None, ifExpr=None, loopExpr=None, allowUnsafe=False):
 		self.scope = Scope(
 			self, 
 			self.scope, 
 			scopeType, 
 			name=name, 
-			fnDecl=fnDecl,
-			loopExpr=loopExpr,
-			ifExpr=ifExpr,
-			ifBranchOuterSymbolInfo=self.lastIfBranchOuterSymbolInfo)
+			fnDecl=fnDecl, 
+			loopExpr=loopExpr, 
+			ifExpr=ifExpr, 
+			ifBranchOuterSymbolInfo=self.lastIfBranchOuterSymbolInfo, 
+			allowUnsafe=allowUnsafe)
 		
 		self.lastIfBranchOuterSymbolInfo = None
 	

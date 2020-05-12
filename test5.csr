@@ -1,11 +1,14 @@
 @ffi("C")
-extern fn printf(fmt: &byte, ...) -> int
+extern unsafe fn printf(fmt: &byte, ...) -> int
 
 @ffi("C")
-extern fn scanf(fmt: &byte, ...) -> int
+extern unsafe fn scanf(fmt: &byte, ...) -> int
 
 fn dropFloatStruct(self: &mut FloatStruct)
-    printf("destructor: %f\n", self^.f * self^.g)
+    unsafe printf("destructor: %f\n", self^.f * self^.g)
+
+unsafe fn testUnsafeFn()
+    printf("")
 
 @drop(dropFloatStruct)
 struct FloatStruct
@@ -14,30 +17,31 @@ struct FloatStruct
 
 fn main()
     let x = 10003.1141131313
-    takesFloats(x, 10003.1141131313)
+    unsafe takesFloats(x, 10003.1141131313)
     
     let _: int64 = 1i32 # auto promotion
     
-    printf("%.3f, %.2f\n", 50.0/3.0, 1 as float + 3.5 * 2 as float / 0.5)
+    unsafe
+        printf("%.3f, %.2f\n", 50.0/3.0, 1 as float + 3.5 * 2 as float / 0.5)
+        
+        printf("5.1   >  5.08:  %s\n", 5.1,   5.08,  if 5.1   >  5.08  {"true"} else {"false"})
+        printf("7.106 == 7.107: %s\n", 7.106, 7.107, if 7.106 == 7.107 {"true"} else {"false"})
+        printf("7.108 == 7.108: %s\n", 7.108, 7.108, if 7.108 == 7.108 {"true"} else {"false"})
     
-    printf("5.1   >  5.08:  %s\n", 5.1,   5.08,  if 5.1   >  5.08  {"true"} else {"false"})
-    printf("7.106 == 7.107: %s\n", 7.106, 7.107, if 7.106 == 7.107 {"true"} else {"false"})
-    printf("7.108 == 7.108: %s\n", 7.108, 7.108, if 7.108 == 7.108 {"true"} else {"false"})
     
-    
-    printf("provide a float: ")
+    unsafe printf("provide a float: ")
     let mut input = 0.0
 
-    scanf("%f", &mut input)
-    printf("you provided: %f\n", input)
+    unsafe scanf("%f", &mut input)
+    unsafe printf("you provided: %f\n", input)
     
     let mut x = 1
     let y = &mut x
     y^ = 3
     
-    printf("I cheated the system! Look: %d %d\n", x, 10 % 3)
+    unsafe printf("I cheated the system! Look: %d %d\n", x, 10 % 3)
     
     let asdf = FloatStruct { f: 5.2, g: 11.8/5.2 }
 
-fn takesFloats(f: float64, d: float64)
+unsafe fn takesFloats(f: float64, d: float64)
     printf("float:  %f\ndouble: %f\n", f, d)

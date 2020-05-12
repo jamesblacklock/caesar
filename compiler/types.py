@@ -49,14 +49,16 @@ class OptionType(Type):
 		self.types = types
 
 class FnType(Type):
-	def __init__(self, params, returnType, cVarArgs, cconv):
-		name = 'fn({}{}{}) -> {}'.format(
+	def __init__(self, unsafe, params, returnType, cVarArgs, cconv):
+		name = '{}fn({}{}{}) -> {}'.format(
+			'unsafe ' if unsafe else '',
 			', '.join([t.type.name for t in params]), 
 			', ' if cVarArgs and len(params) > 0 else '',
 			'...' if cVarArgs else '',
 			returnType.name)
 		super().__init__(name, PLATFORM_WORD_SIZE, PLATFORM_WORD_SIZE, 
 			isFnType=True, isPtrType=True)
+		self.unsafe = unsafe
 		self.returnType = returnType
 		self.returnTypeModifiers = TypeModifiers(False)
 		self.params = params

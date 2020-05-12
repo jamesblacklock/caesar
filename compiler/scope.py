@@ -91,7 +91,7 @@ class SymbolInfo:
 
 class Scope:
 	def __init__(self, state, parent, scopeType, 
-		name=None, fnDecl=None, loopExpr=None, ifExpr=None, ifBranchOuterSymbolInfo=None):
+		name=None, fnDecl=None, loopExpr=None, ifExpr=None, ifBranchOuterSymbolInfo=None, allowUnsafe=False):
 		self.state = state
 		self.parent = parent
 		self.type = scopeType
@@ -106,11 +106,16 @@ class Scope:
 		self.loopExpr = loopExpr
 		self.ifBranchOuterSymbolInfo = ifBranchOuterSymbolInfo
 		self.dropBlock = None
+		self.allowUnsafe = allowUnsafe
 		
 		if parent:
 			self.loopDepth = parent.loopDepth
-			if not self.fnDecl: self.fnDecl = parent.fnDecl
-			if not self.loopExpr: self.loopExpr = parent.loopExpr
+			if not self.fnDecl:
+				self.fnDecl = parent.fnDecl
+			if parent.allowUnsafe:
+				self.allowUnsafe = True
+			if not self.loopExpr:
+				self.loopExpr = parent.loopExpr
 		
 		if self.loopDepth > 0 or scopeType == ScopeType.LOOP:
 			self.loopDepth += 1
