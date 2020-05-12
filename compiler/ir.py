@@ -539,6 +539,112 @@ class Div(Instr):
 	def __str__(self):
 		return 'div'
 
+class FEq(Instr):
+	def __init__(self, ast):
+		super().__init__(ast)
+		
+	def affectStack(self, state):
+		state.popOperand()
+		state.replaceTopOperand(I8)
+		
+	def __str__(self):
+		return 'feq'
+
+class FNEq(Instr):
+	def __init__(self, ast):
+		super().__init__(ast)
+		
+	def affectStack(self, state):
+		state.popOperand()
+		state.replaceTopOperand(I8)
+	
+	def __str__(self):
+		return 'fneq'
+
+class FLess(Instr):
+	def __init__(self, ast):
+		super().__init__(ast)
+		
+	def affectStack(self, state):
+		state.popOperand()
+		state.replaceTopOperand(I8)
+	
+	def __str__(self):
+		return 'fless'
+
+class FLessEq(Instr):
+	def __init__(self, ast):
+		super().__init__(ast)
+		
+	def affectStack(self, state):
+		state.popOperand()
+		state.replaceTopOperand(I8)
+	
+	def __str__(self):
+		return 'flesseq'
+
+class FGreater(Instr):
+	def __init__(self, ast):
+		super().__init__(ast)
+		
+	def affectStack(self, state):
+		state.popOperand()
+		state.replaceTopOperand(I8)
+	
+	def __str__(self):
+		return 'fgreater'
+
+class FGreaterEq(Instr):
+	def __init__(self, ast):
+		super().__init__(ast)
+		
+	def affectStack(self, state):
+		state.popOperand()
+		state.replaceTopOperand(I8)
+	
+	def __str__(self):
+		return 'fgreatereq'
+
+class FAdd(Instr):
+	def __init__(self, ast):
+		super().__init__(ast)
+		
+	def affectStack(self, state):
+		state.popOperand()
+	
+	def __str__(self):
+		return 'fadd'
+
+class FSub(Instr):
+	def __init__(self, ast):
+		super().__init__(ast)
+		
+	def affectStack(self, state):
+		state.popOperand()
+	
+	def __str__(self):
+		return 'fsub'
+
+class FMul(Instr):
+	def __init__(self, ast):
+		super().__init__(ast)
+		
+	def affectStack(self, state):
+		state.popOperand()
+	
+	def __str__(self):
+		return 'fmul'
+
+class FDiv(Instr):
+	def __init__(self, ast):
+		super().__init__(ast)
+		
+	def affectStack(self, state):
+		state.popOperand()
+	
+	def __str__(self):
+		return 'fdiv'
+
 class BlockDef:
 	def __init__(self, index, label, inputs, hasBackwardsCallers):
 		self.index = index

@@ -3,9 +3,10 @@ from io     import StringIO
 from enum   import Enum
 from .ast   import StaticData, StaticDataType
 from .ir    import Dup, Global, Imm, Static, Deref, DerefW, Add, Sub, Mul, Div, Eq, NEq, Less, LessEq, \
-                   Greater, GreaterEq, Call, Extend, IExtend, Truncate, FExtend, FTruncate, IToF, UToF, \
-                   FToI, FToU, Ret, BrIf, Br, Swap, Pop, Raise, Neg, Struct, Field, FieldW, DerefField, \
-                   DerefFieldW, Fix, BlockMarker, Addr, I8, I16, I32, I64, IPTR, F32, F64, FundamentalType
+                   Greater, GreaterEq, FAdd, FSub, FMul, FDiv, FEq, FNEq, FLess, FLessEq, FGreater, FGreaterEq, \
+                   Call, Extend, IExtend, Truncate, FExtend, FTruncate, IToF, UToF, FToI, FToU, Ret, BrIf, \
+                   Br, Swap, Pop, Raise, Neg, Struct, Field, FieldW, DerefField, DerefFieldW, Fix, Addr, \
+                   I8, I16, I32, I64, IPTR, F32, F64, FundamentalType, BlockMarker
 from .types import U32_RNG, I32_RNG
 
 class Storage(Enum):
@@ -280,11 +281,17 @@ class GeneratorState:
 				ir = nextIR
 			irToAsm(self, ir, None)
 		
+		calleeSaveList = list(self.calleeSave)
+		
 		if True:#self.settings.omitFramePointer:
+			self.sp += len(self.calleeSave) * 8
 			if self.sp % 16 == 0:
 				self.sp += 8
 			if self.sp > 0:
 				output.write('\t\tsub rsp, {}\n'.format(self.sp))
+			
+			for (i, reg) in enumerate(calleeSaveList):
+				output.write('\t\tmov [rsp + {}], {}\n'.format(self.sp - i*8, reg.q))
 		
 		for instr in self.instr:
 			output.write(instr.render(self.sp))
@@ -293,6 +300,9 @@ class GeneratorState:
 		output.write('\t{}__ret:\n'.format(self.fnIR.name))
 		
 		if self.sp > 0:
+			for (i, reg) in reversed(list(enumerate(calleeSaveList))):
+				output.write('\t\tmov {}, [rsp + {}]\n'.format(reg.q, self.sp - i*8))
+			
 			output.write('\t\tadd rsp, {}\n'.format(self.sp))
 		
 		output.write('\t\tret\n')
@@ -356,7 +366,7 @@ class GeneratorState:
 	
 	def findReg(self, type=None, exclude=[]):
 		for reg in self.intRegs:
-			if reg.active or reg.calleeSaved or reg in exclude:
+			if reg.active or reg in exclude:
 				continue
 			if reg.calleeSaved:
 				self.calleeSave.add(reg)
@@ -513,6 +523,10 @@ def irToAsm(state, ir, nextIR):
 		fextend(state, ir)
 	elif type(ir) == Truncate:
 		truncate(state, ir)
+	elif type(ir) == IToF:
+		itof(state, ir)
+	elif type(ir) == FToI:
+		ftoi(state, ir)
 	elif type(ir) == Neg:
 		neg(state, ir)
 	elif type(ir) == Add:
@@ -525,6 +539,16 @@ def irToAsm(state, ir, nextIR):
 		div(state, ir)
 	elif type(ir) in (Eq, NEq, Less, LessEq, Greater, GreaterEq):
 		cmp(state, ir)
+	elif type(ir) == FAdd:
+		fadd(state, ir)
+	elif type(ir) == FSub:
+		fsub(state, ir)
+	elif type(ir) == FMul:
+		fmul(state, ir)
+	elif type(ir) == FDiv:
+		fdiv(state, ir)
+	elif type(ir) in (FEq, FNEq, FLess, FLessEq, FGreater, FGreaterEq):
+		fcmp(state, ir)
 	elif type(ir) == Call:
 		call(state, ir)
 	elif type(ir) == BlockMarker:
@@ -749,14 +773,16 @@ def imm(state, ir):
 		state.fnIR.staticDefs.append(staticValue)
 		
 		reg = state.findXmmReg(ir.type)
-		assert reg
+		if reg == None:
+			stack = saveReg(state.xmm8)
+			state.moveOperand(state.xmm8, stack)
+			reg = state.xmm8
 		
 		state.appendInstr('movs{}'.format('d' if ir.type.byteSize == 8 else 's'), 
 			Operand(reg, Usage.DEST),
 			Operand(GlobalTarget(ir.type, label), Usage.ADDR))
 		
 		state.pushOperand(reg)
-		
 	elif ir.value not in U32_RNG and ir.value not in I32_RNG:
 		# 64-bit immediates must be moved through a register
 		reg = state.findReg()
@@ -918,6 +944,40 @@ def fextend(state, ir):
 
 def truncate(state, ir):
 	state.getOperand(0).type = ir.type
+
+def itof(state, ir):
+	src = state.getOperand(0)
+	
+	dest = src
+	if dest.storage != Storage.XMM:
+		dest = state.findXmmReg(dest.type)
+		if dest == None:
+			reg = state.xmm8
+			stack = saveReg(state, reg)
+			state.moveOperand(reg, stack)
+			reg.type = dest.type
+			dest = reg
+	
+	if src.storage == Storage.IMM:
+		reg = state.findReg(src.type)
+		if src == None:
+			reg = state.rax
+			stack = saveReg(state, reg)
+			state.moveOperand(reg, stack)
+			reg.type = src.type
+		moveData(state, src, reg)
+		src = reg
+	
+	state.appendInstr('cvtsi2sd' if ir.type == F64 else 'cvtsi2ss',
+			Operand(dest, Usage.DEST, ir.type), 
+			Operand(src, Usage.SRC))
+	
+	dest.type = ir.type
+	state.popOperand()
+	state.pushOperand(dest)
+
+def ftoi(state, ir):
+	assert 0
 
 def neg(state, ir):
 	target = state.getOperand(0)
@@ -1091,10 +1151,93 @@ def cmp(state, ir):
 	state.popOperand()
 	state.pushOperand(state.rcx)
 
+def fadd(state, ir):
+	faddOrSub(state, ir, True)
+
+def fsub(state, ir):
+	faddOrSub(state, ir, False)
+
+def faddOrSub(state, ir, isAdd):
+	src = state.getOperand(0)
+	dest = state.getOperand(1)
+	
+	if isAdd and dest.storage != Storage.XMM and src.storage == Storage.XMM:
+		src, dest = dest, src
+	elif dest.storage != Storage.XMM:
+		reg = state.findXmmReg(dest.type)
+		if reg == None:
+			reg = state.xmm8
+			stack = saveReg(state, reg)
+			state.moveOperand(reg, stack)
+			reg.type = dest.type
+		moveData(state, dest, reg)
+		dest = reg
+	
+	if src.storage == Storage.REG:
+		reg = state.findXmmReg(dest.type)
+		if reg == None:
+			reg = state.xmm9
+			stack = saveReg(state, reg)
+			state.moveOperand(reg, stack)
+			reg.type = src.type
+		moveData(state, src, reg)
+		src = reg
+	
+	state.appendInstr('{}{}'.format('add' if isAdd else 'sub', 'sd' if dest.type == F64 else 'ss'),
+			Operand(dest, Usage.DEST), 
+			Operand(src, Usage.SRC))
+	
+	state.popOperand()
+	state.popOperand()
+	state.pushOperand(dest)
+
+def fsub(state, ir):
+	assert 0
+
+def fmul(state, ir):
+	assert 0
+
+def fdiv(state, ir):
+	r = state.getOperand(0)
+	l = state.getOperand(1)
+	
+	if l.storage != Storage.XMM:
+		reg = state.findXmmReg(l.type)
+		if reg == None:
+			reg = state.xmm8
+			reg.type = l.type
+			stack = saveReg(state, reg)
+			state.moveOperand(reg, stack)
+		moveData(state, l, reg)
+		l = reg
+	
+	if r.storage == Storage.REG:
+		stack = saveReg(state, reg)
+		state.moveOperand(r, stack)
+		r = reg
+	
+	opcode = 'divs{}'.format('d' if l.type == F64 else 's')
+	state.appendInstr(opcode, 
+		Operand(l, Usage.SRC), 
+		Operand(r, Usage.SRC))#, 
+		# Operand(l, Usage.DEST))#dest, Usage.DEST))
+	
+	state.popOperand()
+	state.popOperand()
+	state.pushOperand(l)#dest)
+
+def fcmp(state, ir):
+	assert 0
+
+
 def call(state, ir):
 	for reg in state.intRegs:
 		if reg.calleeSaved:
 			continue
+		if reg.active:
+			stack = saveReg(state, reg)
+			state.moveOperand(reg, stack)
+	for reg in state.xmmRegs:
 		if reg.active:
 			stack = saveReg(state, reg)
 			state.moveOperand(reg, stack)
@@ -1122,9 +1265,9 @@ def call(state, ir):
 				continue
 		elif len(intArgRegs) > 0:
 			reg = intArgRegs.pop()
-			if reg.active:
-				stack = saveReg(state, reg)
-				state.moveOperand(reg, stack)
+			# if reg.active:
+			# 	stack = saveReg(state, reg)
+			# 	state.moveOperand(reg, stack)
 			reg.type = src.type
 			state.appendInstr('mov', 
 				Operand(reg, Usage.DEST), 
@@ -1262,7 +1405,7 @@ def saveReg(state, reg, exclude=[]):
 	assert reg.active
 	
 	stack = state.findTarget(reg.type, True, exclude=exclude)
-	state.appendInstr('mov', 
+	state.appendInstr('movq' if reg.storage == Storage.XMM else 'mov', 
 		Operand(stack, Usage.DEST), 
 		Operand(reg, Usage.SRC))
 	

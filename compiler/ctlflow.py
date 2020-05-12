@@ -1,7 +1,6 @@
 from .ast   import AST
 from .types import typesMatch, Void
-from .block import Block
-from .      import valueref, access
+from .      import valueref, access, block
 from .scope import ScopeType
 from .ir    import Ret, Br, Raise
 from .log   import logError
@@ -12,7 +11,7 @@ class LoopCtlFlow(AST):
 		self.block = None
 	
 	def analyze(expr, state, implicitType, isContinue=False):
-		expr.block = Block([expr], expr.span)
+		expr.block = block.Block([expr], expr.span)
 		expr.block.type = Void
 		
 		if state.scope.loopDepth == 0:
@@ -59,7 +58,7 @@ class Return(AST):
 	
 	def analyze(ret, state, implicitType):
 		returnType = Void
-		ret.block = Block([], ret.span, noLower=True)
+		ret.block = block.Block([], ret.span, noLower=True)
 		if ret.expr:
 			if type(ret.expr) != valueref.ValueRef:
 				(tempSymbol, tempWrite, tempRead) = access.createTempTriple(ret.expr)

@@ -140,8 +140,7 @@ class SymbolRead(SymbolAccess):
 		access.ref = not access.addr and not access.isFieldAccess
 		
 		if canPromote(access.type, implicitType):
-			expr = coercion.Coercion(access, None, access.span)
-			expr.type = implicitType
+			expr = coercion.Coercion(access, None, access.span, resolvedType=implicitType)
 		else:
 			expr = access
 		

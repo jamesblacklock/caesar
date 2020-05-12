@@ -4,10 +4,11 @@ from .types import canCoerce, typesMatch
 from .ir    import FundamentalType, IExtend, Extend, Truncate, FExtend, FTruncate, IToF, UToF, FToI, FToU
 
 class Coercion(ValueExpr):
-	def __init__(self, expr, typeRef, span):
+	def __init__(self, expr, typeRef, span, resolvedType=None):
 		super().__init__(span)
 		self.expr = expr
 		self.typeRef = typeRef
+		self.type = resolvedType
 	
 	def analyze(asExpr, state, implicitType):
 		asExpr.type = state.resolveTypeRef(asExpr.typeRef)

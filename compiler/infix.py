@@ -2,8 +2,11 @@ from enum       import Enum
 from .token     import TokenType
 from .ast       import ValueExpr
 from .primitive import IntLit
-from .types     import canAccommodate, hasDefiniteType, Int32, Int64, UInt64, ISize, USize, Bool, Byte, Char
-from .ir        import Imm, Add, Sub, Mul, Div, Eq, NEq, Greater, Less, GreaterEq, LessEq, IPTR
+from .coercion  import Coercion
+from .types     import canPromote, typesMatch, canAccommodate, hasDefiniteType, \
+                       Int32, Int64, UInt64, ISize, USize, Bool, Byte, Char
+from .ir        import FAdd, FSub, FMul, FDiv, FEq, FNEq, FGreater, FLess, FGreaterEq, FLessEq, \
+                       Add, Sub, Mul, Div, Eq, NEq, Greater, Less, GreaterEq, LessEq, Imm, IPTR
 from .log       import logError
 
 class InfixOps(Enum):
@@ -197,6 +200,11 @@ class InfixOp(ValueExpr):
 		if not infixOp.l.type or not infixOp.r.type:
 			return
 		
+		if canPromote(infixOp.l.type, infixOp.r.type):
+			infixOp.l = Coercion(access, None, access.span, resolvedType=infixOp.r.type)
+		elif canPromote(infixOp.r.type, infixOp.l.type):
+			infixOp.r = Coercion(access, None, access.span, resolvedType=infixOp.l.type)
+		
 		if infixOp.l.type == Bool and infixOp.r.type == Bool:
 			if infixOp.op == InfixOps.EQ:
 				infixOp.type = Bool
@@ -204,6 +212,9 @@ class InfixOp(ValueExpr):
 		elif infixOp.l.type == Byte and infixOp.r.type == Byte:
 			if infixOp.op == InfixOps.EQ:
 				infixOp.type = Bool
+				return
+			if infixOp.op in BITWISE_OPS:
+				infixOp.type = Byte
 				return
 		elif infixOp.l.type == Char and infixOp.r.type == Char:
 			if infixOp.op == InfixOps.EQ:
@@ -221,20 +232,15 @@ class InfixOp(ValueExpr):
 			if infixOp.op in PTR_PTR_OPS and getValidAssignType(infixOp.l.type, infixOp.r.type):
 				infixOp.type = infixOp.l.type
 				return
-		elif infixOp.l.type.isIntType and infixOp.r.type.isIntType:
-			lType = infixOp.l.type
-			rType = infixOp.r.type
-			
-			if lType.byteSize == rType.byteSize and lType.isSigned == rType.isSigned:
-				if infixOp.op in ARITHMETIC_OPS or infixOp.op in BITWISE_OPS:
-					infixOp.type = lType
-					return
-				elif infixOp.op in CMP_OPS:
-					infixOp.type = Bool
-					return
-			
-			if infixOp.op in BITSHIFT_OPS:
-				infixOp.type = lType
+		elif typesMatch(infixOp.l.type, infixOp.r.type) and infixOp.l.type.isIntType or infixOp.l.type.isFloatType:
+			if infixOp.op in ARITHMETIC_OPS:
+				infixOp.type = infixOp.l.type
+				return
+			elif (infixOp.op in BITWISE_OPS or infixOp.op in BITSHIFT_OPS) and infixOp.l.type.isIntType:
+				infixOp.type = infixOp.l.type
+				return
+			elif infixOp.op in CMP_OPS:
+				infixOp.type = Bool
 				return
 		
 		opErr()
@@ -274,6 +280,9 @@ class InfixOp(ValueExpr):
 			state.appendInstr(Mul(ast))
 			ast.r.writeIR(state)
 			state.appendInstr(Add(ast))
+		elif ast.l.type.isFloatType:
+			ast.r.writeIR(state)
+			state.appendInstr(FAdd(ast))
 		else:
 			ast.r.writeIR(state)
 			state.appendInstr(Add(ast))
@@ -290,36 +299,63 @@ class InfixOp(ValueExpr):
 			state.appendInstr(Imm(ast, IPTR, mul))
 			state.appendInstr(Mul(ast))
 			state.appendInstr(Sub(ast))
+		elif ast.l.type.isFloatType:
+			ast.r.writeIR(state)
+			state.appendInstr(FSub(ast))
 		else:
 			ast.r.writeIR(state)
 			state.appendInstr(Sub(ast))
-
+	
 	def writeMulIR(ast, state):
 		ast.l.writeIR(state)
 		ast.r.writeIR(state)
-		state.appendInstr(Mul(ast))
-
+		if ast.l.type.isFloatType:
+			state.appendInstr(FMul(ast))
+		else:
+			state.appendInstr(Mul(ast))
+	
 	def writeDivIR(ast, state):
 		ast.l.writeIR(state)
 		ast.r.writeIR(state)
-		state.appendInstr(Div(ast))
-
+		if ast.l.type.isFloatType:
+			state.appendInstr(FDiv(ast))
+		else:
+			state.appendInstr(Div(ast))
+	
 	def writeCmpIR(ast, state):
 		ast.l.writeIR(state)
 		ast.r.writeIR(state)
 		
 		if ast.op == InfixOps.EQ:
-			instr = Eq(ast)
+			if ast.l.type.isFloatType:
+				instr = FEq(ast)
+			else:
+				instr = Eq(ast)
 		elif ast.op == InfixOps.NEQ:
-			instr = NEq(ast)
+			if ast.l.type.isFloatType:
+				instr = FNEq(ast)
+			else:
+				instr = NEq(ast)
 		elif ast.op == InfixOps.GREATER:
-			instr = Greater(ast)
+			if ast.l.type.isFloatType:
+				instr = FGreater(ast)
+			else:
+				instr = Greater(ast)
 		elif ast.op == InfixOps.LESS:
-			instr = Less(ast)
+			if ast.l.type.isFloatType:
+				instr = FLess(ast)
+			else:
+				instr = Less(ast)
 		elif ast.op == InfixOps.GREATEREQ:
-			instr = GreaterEq(ast)
+			if ast.l.type.isFloatType:
+				instr = FGreaterEq(ast)
+			else:
+				instr = GreaterEq(ast)
 		elif ast.op == InfixOps.LESSEQ:
-			instr = LessEq(ast)
+			if ast.l.type.isFloatType:
+				instr = FLessEq(ast)
+			else:
+				instr = LessEq(ast)
 		else:
 			assert 0
 		

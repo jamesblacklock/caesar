@@ -1,10 +1,6 @@
 from .ast    import ValueExpr
 from .types  import Void
-from .       import ctlflow
-from .       import letdecl
-from .       import asgn
-from .       import ifexpr
-from .access import createTempTriple
+from .       import ctlflow, letdecl, asgn, ifexpr, access
 from .scope  import ScopeType
 from .log    import logError
 from .span   import Span
@@ -54,7 +50,7 @@ class Block(ValueExpr):
 			lastExpr = i+1 == len(block.exprs)
 			
 			if not block.lowered and expr.hasValue and type(expr) not in (Block, ifexpr.If):
-				(tempSymbol, tempWrite, tempRead) = createTempTriple(expr)
+				(tempSymbol, tempWrite, tempRead) = access.createTempTriple(expr)
 				valueExprLowered = [tempSymbol, tempWrite]
 				
 				if lastExpr and implicitType != Void:
@@ -84,7 +80,7 @@ class Block(ValueExpr):
 			block.type = Void
 			
 			if retVal:
-				(tempSymbol, tempWrite, tempRead) = createTempTriple(retVal)
+				(tempSymbol, tempWrite, tempRead) = access.createTempTriple(retVal)
 				tempWrite.rvalueImplicitType = state.scope.fnDecl.returnType
 				
 				if block.scopeType != None:

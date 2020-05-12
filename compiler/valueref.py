@@ -1,9 +1,6 @@
 from .ast      import ValueExpr
-from .         import fndecl, letdecl, staticdecl, block, asgn
 from .access   import SymbolAccess
-from .coercion import Coercion
-from .types    import canPromote
-from .ir       import IPTR, Dup, Raise, Global, Deref
+from .         import letdecl, staticdecl
 
 class ValueRef(ValueExpr):
 	def __init__(self, path, span):

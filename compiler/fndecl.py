@@ -1,12 +1,8 @@
 from enum     import Enum
 from .ast     import ValueSymbol, TypeModifiers
-from .types   import FnType
-from .ctlflow import Return
 from .log     import logError
-from .types   import getValidAssignType, Void
-from .        import scope
+from .types   import FnType, Void
 from .        import attrs
-from .block   import Block
 
 class CConv(Enum):
 	CAESAR = 'CAESAR'
