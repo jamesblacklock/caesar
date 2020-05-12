@@ -1,10 +1,10 @@
 #! /usr/local/bin/python3 ./caesar.py --run
 
 @ffi("C")
-extern fn printf(format: &byte, ...) -> int
+extern unsafe fn printf(format: &byte, ...) -> int
 
 @ffi("C")
-extern fn scanf(format: &byte, ...) -> int
+extern unsafe fn scanf(format: &byte, ...) -> int
 
 @ffi("C")
 extern fn time(ret: &int64) -> int64
@@ -14,8 +14,8 @@ extern fn getchar() -> int
 
 const NULL = 0 as &int64
 
-fn drop(q: int) { printf("dropping value: %d\n", q) }
-fn doTheThing(n: int16) -> int16 #=hello=#
+unsafe fn drop(q: int) { printf("dropping value: %d\n", q) }
+unsafe fn doTheThing(n: int16) -> int16 #=hello=#
 	printf("Normal function-call syntax%s\n", ".")
 	"Here is a number: %d\n" -> printf(n)
 	
@@ -24,7 +24,7 @@ fn doTheThing(n: int16) -> int16 #=hello=#
 fn theMeaningOfLifeTheUniverseAndEverything() -> int16 { if true {-42} else {return 42} }
 
 mod testMod
-	fn otherFn() -> int { printf("enter a char: "), getchar() }
+	unsafe fn otherFn() -> int { printf("enter a char: "), getchar() }
 
 static myStatic = 17
 
@@ -44,7 +44,7 @@ const CONST_STRUCT =
 	This is the documentation for the `main` function, 
 	which is the entry point for the application
 ========================================================#
-fn main()
+unsafe fn main()
 	# sizeof TestStruct::g
 	# offsetof TestStruct::a
 	
@@ -99,7 +99,7 @@ fn main()
 			103, 111, 111, 100,
 			98, 121, 101)
 
-fn moreThanSixArgs(
+unsafe fn moreThanSixArgs(
 	a: int8, b: int, c: int, d: int
 	e: int, f: int, g: int, h: int
 	i: int)

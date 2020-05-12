@@ -1,7 +1,7 @@
 from enum    import Enum
 from .drop   import DropSymbol
 from .log    import logError, logWarning, logExplain
-from .       import fndecl, staticdecl, letdecl, access
+from .       import fndecl, staticdecl, letdecl, access as accessmod
 from .fncall import FnCall
 from .types  import typesMatch, PtrType
 
@@ -362,7 +362,7 @@ class Scope:
 			return
 		
 		fieldInfo = None
-		if field and not access.deref:
+		if field and not expr.deref:
 			if field not in info.fieldInfo:
 				uninit = False#info.typeModifiers.uninit or field in info.typeModifiers.uninitFields
 				fieldInfo = FieldInfo(field, uninit)
@@ -474,18 +474,18 @@ class Scope:
 		exprs = []
 		
 		if symbol.dropFn:
-			fnRef = access.SymbolRead(block.span)
+			fnRef = accessmod.SymbolRead(block.span)
 			fnRef.symbol = symbol.dropFn
 			fnRef.type = symbol.dropFn.type
 			fnRef.ref = True
 			args = []
 			if len(symbol.dropFn.params) > 0:
 				t = symbol.dropFn.params[0].type
-				ref = access.SymbolRead(block.span)
+				ref = accessmod.SymbolRead(block.span)
 				ref.symbol = symbol
 				ref.type = symbol.type
 				if t.isPtrType and typesMatch(t.baseType, symbol.type):
-					(ptrSymbol, ptrWrite, ptrRead) = access.createTempTriple(ref)
+					(ptrSymbol, ptrWrite, ptrRead) = accessmod.createTempTriple(ref)
 					ptrSymbol.type = symbol.type
 					ptrSymbol.fixed = True
 					ptrWrite.symbol = ptrSymbol

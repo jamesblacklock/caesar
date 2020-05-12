@@ -44,13 +44,13 @@ class LetDecl(ValueSymbol):
 		return LetDecl(None, None, False, None, span, temp=True)
 	
 	def checkDropFn(letExpr, state):
-		if letExpr.dropFn and letExpr.type.dropFn:
+		if letExpr.dropFn == None:
+			letExpr.dropFn = letExpr.type.dropFn
+		elif letExpr.type.dropFn:
 			logError(state, letExpr.nameTok.span, 
 				'cannot use @drop on a type that already has a drop function')
-			letExpr.dropFn = None
-			return
+			letExpr.dropFn = letExpr.type.dropFn
 		
-		letExpr.dropFn = letExpr.type.dropFn
 		if letExpr.dropFn == None:
 			return
 		
