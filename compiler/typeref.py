@@ -15,12 +15,13 @@ class NamedTypeRef(TypeRef):
 		super().__init__(self.nameTok.content, span)
 
 class PtrTypeRef(TypeRef):
-	def __init__(self, baseType, indLevel, span):
-		name = ('&' * indLevel) + baseType.name
+	def __init__(self, baseType, indLevel, mut, span):
+		name = '{}{}{}'.format('&' * indLevel, 'mut ' if mut else '', baseType.name)
 		super().__init__(name, span)
 		assert indLevel > 0
 		self.baseType = baseType
 		self.indLevel = indLevel
+		self.mut = mut
 
 class TupleTypeRef(TypeRef):
 	def __init__(self, types, span):

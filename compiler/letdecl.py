@@ -59,7 +59,7 @@ class LetDecl(ValueSymbol):
 		if len(letExpr.dropFn.params) == 1:
 			t = letExpr.dropFn.params[0].type
 			if not typesMatch(t, letExpr.type) and \
-				not typesMatch(t, PtrType(letExpr.type, 1)):
+				not typesMatch(t, PtrType(letExpr.type, 1, False)):
 				logError(state, letExpr.nameTok.span, 
 					'drop function receives the wrong type of argument (expected {}, found {})'.format(
 						t, letExpr.type))

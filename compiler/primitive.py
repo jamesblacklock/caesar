@@ -63,7 +63,7 @@ class StrLit(ValueExpr):
 		STR_COUNTER += 1
 		
 		lit.staticValue = StaticData(strBytes(lit.value), StaticDataType.BYTES, ir.IPTR, label)
-		lit.type = types.PtrType(types.Byte, 1)
+		lit.type = types.PtrType(types.Byte, 1, False)
 	
 	def writeIR(ast, state):
 		state.staticDefs.append(ast.staticValue)

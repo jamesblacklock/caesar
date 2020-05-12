@@ -49,11 +49,11 @@ class SymbolAccess(ValueExpr):
 		
 		if type(expr) == letdecl.LetDecl:
 			exprs.append(expr)
-			access = SymbolWrite(expr.expr, expr.span)
+			access = SymbolWrite(expr.expr, expr.span, expr.nameTok.span)
 			access.rvalueImplicitType = rvalueImplicitType
 			expr.expr = None
 		elif type(expr) == asgn.Asgn:
-			access = SymbolWrite(expr.rvalue, expr.span)
+			access = SymbolWrite(expr.rvalue, expr.span, expr.lvalue.span)
 			access.rvalueImplicitType = rvalueImplicitType
 			expr = expr.lvalue
 		else:
@@ -240,8 +240,9 @@ class SymbolRead(SymbolAccess):
 				state.appendInstr(Deref(expr, fType))
 	
 class SymbolWrite(SymbolAccess):
-	def __init__(self, rvalue, span):
+	def __init__(self, rvalue, span, lvalueSpan=None):
 		super().__init__(span)
+		self.lvalueSpan = lvalueSpan if lvalueSpan else span
 		self.write = True
 		self.rvalue = rvalue
 		self.dropBlock = block.Block([], span, noLower=True)
@@ -344,7 +345,7 @@ def _SymbolAccess__analyzeSymbolAccess(state, expr, access, exprs, implicitType=
 		access.symbol = state.lookupSymbol(expr)
 		if access.symbol:
 			access.type = access.symbol.type
-	elif type(expr) == address.Address:
+	elif type(expr) == address.Address and not access.write:
 		if implicitType and implicitType.isPtrType:
 			implicitType = implicitType.typeAfterDeref()
 		_SymbolAccess__analyzeSymbolAccess(state, expr.expr, access, exprs, implicitType)
@@ -358,12 +359,12 @@ def _SymbolAccess__analyzeSymbolAccess(state, expr, access, exprs, implicitType=
 		
 		if access.type:
 			if access.type.isPtrType:
-				access.type = PtrType(access.type.baseType, access.type.indLevel + 1)
+				access.type = PtrType(access.type.baseType, access.type.indLevel + 1, expr.mut)
 			else:
-				access.type = PtrType(access.type, 1)
+				access.type = PtrType(access.type, 1, expr.mut)
 	elif type(expr) == deref.Deref:
 		if implicitType:
-			implicitType = PtrType(implicitType, expr.count)
+			implicitType = PtrType(implicitType, expr.count, False)
 		_SymbolAccess__analyzeSymbolAccess(state, expr.expr, access, exprs, implicitType)
 		
 		if access.write:

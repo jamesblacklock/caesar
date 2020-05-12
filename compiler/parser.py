@@ -499,11 +499,17 @@ def parsePtrTypeRef(state):
 		state.advance()
 		state.skipSpace()
 	
+	mut = False
+	if state.tok.type == TokenType.MUT:
+		mut = True
+		state.advance()
+		state.skipSpace()
+	
 	baseType = parseTypeRef(state)
 	if baseType == None:
 		return None
 	
-	return PtrTypeRef(baseType, indLevel, Span.merge(span, baseType.span))
+	return PtrTypeRef(baseType, indLevel, mut, Span.merge(span, baseType.span))
 
 def parseTupleTypeRef(state):
 	block = parseBlock(state, parseTypeRef, blockMarkers=BlockMarkers.PAREN, requireBlockMarkers=True)
@@ -683,6 +689,14 @@ def parseDeref(state, expr):
 def parseAddress(state):
 	span = state.tok.span
 	state.advance()
+	state.skipSpace()
+	
+	mut = False
+	if state.tok.type == TokenType.MUT:
+		mut = True
+		state.advance()
+		state.skipSpace()
+	
 	expr = parseValueExpr(state, UNARY_PRECEDENCE)
 	if expr == None:
 		return None
@@ -691,7 +705,7 @@ def parseAddress(state):
 		logError(state, span, 'cannot take the address of an address')
 	
 	span = Span.merge(span, expr.span)
-	return Address(expr, span)
+	return Address(expr, mut, span)
 
 def parseIndex(state, expr):
 	state.advance()

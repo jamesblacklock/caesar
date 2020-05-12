@@ -82,8 +82,8 @@ def analyze(ast):
 	
 	state.popScope()
 	
-	# p = ASTPrinter()
-	# ast.pretty(p)
+	p = ASTPrinter()
+	ast.pretty(p)
 	
 	if state.failed:
 		exit(1)
@@ -107,7 +107,7 @@ class AnalyzerState:
 			return result if result else UnknownType
 		elif type(typeRef) == PtrTypeRef:
 			baseType = state.resolveTypeRef(typeRef.baseType)
-			return PtrType(baseType, typeRef.indLevel)
+			return PtrType(baseType, typeRef.indLevel, typeRef.mut)
 		elif type(typeRef) == ArrayTypeRef:
 			baseType = state.resolveTypeRef(typeRef.baseType)
 			return ArrayType(baseType, typeRef.count)

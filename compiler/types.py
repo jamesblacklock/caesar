@@ -82,12 +82,13 @@ class StructType(Type):
 				self.fieldDict[field.name] = field
 
 class PtrType(Type):
-	def __init__(self, baseType, indLevel):
-		name = ('&' * indLevel) + baseType.name
+	def __init__(self, baseType, indLevel, mut):
+		name = '{}{}{}'.format('&' * indLevel, 'mut ' if mut else '', baseType.name)
 		super().__init__(name, PLATFORM_WORD_SIZE, PLATFORM_WORD_SIZE, 
 			isIntLikeType=True, isPtrType=True, isPrimitiveType=True)
 		self.baseType = baseType
 		self.indLevel = indLevel
+		self.mut = mut
 		self.MIN = 0
 		self.MAX = USZ_MAX
 		self.RNG = USZ_RNG
@@ -97,7 +98,7 @@ class PtrType(Type):
 		if count == self.indLevel:
 			return self.baseType
 		else:
-			return PtrType(self.baseType, self.indLevel - count)
+			return PtrType(self.baseType, self.indLevel - count, self.mut)
 
 class ArrayFields:
 	def __init__(self, elementType, count):

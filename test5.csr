@@ -19,8 +19,15 @@ fn main()
     
     printf("provide a float: ")
     let mut input = 0.0
-    scanf("%f", &input)
+
+    scanf("%f", &mut input)
     printf("you provided: %f\n", input)
+    
+    let mut x = 1
+    let y = &mut x
+    y^ = 3
+    
+    printf("I cheated the system! Look: %d\n", x)
 
 fn takesFloats(f: float64, d: float64)
     printf("float:  %f\ndouble: %f\n", f, d)

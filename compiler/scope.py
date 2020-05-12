@@ -313,7 +313,9 @@ class Scope:
 		access.symbol.unused = False
 		if not access.write and access.addr:
 			self.addrSymbol(access)
-		elif access.write and not access.deref:
+		elif access.write:
+			if access.deref:
+				self.readSymbol(access)
 			self.writeSymbol(access)
 		else:
 			self.readSymbol(access)
@@ -323,6 +325,9 @@ class Scope:
 		field = expr.field
 		fieldSpan = expr.fieldSpan
 		isIndex = len(expr.dynOffsets) > 0
+		
+		if expr.type.mut and not expr.symbol.mut:
+			logError(self.state, expr.span, 'mutable borrow of immutable symbol')
 		
 		symbol.fixed = True
 		info = self.symbolInfo[symbol]
@@ -398,19 +403,40 @@ class Scope:
 		isIndex = len(expr.dynOffsets) > 0
 		
 		info = self.symbolInfo[symbol]
+		
+		if expr.deref:
+			if not symbol.type.mut:
+				logError(self.state, expr.lvalueSpan, 'assignment target is not mutable')
+			return
+		
+		info.borrows = expr.rvalue.borrows
+		
+		if info.borrows:
+			expr.borrows = info.borrows
+			scopeErrCount = 0
+			for borrow in info.borrows:
+				if borrow.symbol not in self.symbolInfo:
+					if scopeErrCount == 0:
+						logError(self.state, expr.lvalueSpan, 'borrowed value has gone out of scope')
+					scopeErrCount += 1
+					countStr = '' if scopeErrCount < 2 else '({}) '.format(scopeErrCount)
+					logExplain(self.state, borrow.span, 'borrow {}originally occurred here'.format(countStr))
+				else:
+					self.setLastUse(self.symbolInfo[borrow.symbol], expr, isRead=False)
+		
 		if not symbol.mut and not info.uninit:
-			logError(self.state, expr.span, 'assignment target is not mutable')
+			logError(self.state, expr.lvalueSpan, 'assignment target is not mutable')
 			return
 		elif isIndex or field:
 			if info.moved:
 				if not info.symbol.type.isCopyable:
 					maybeText = 'may have' if info.maybeMoved else 'has'
-					logError(self.state, expr.span, 'the value in `{}` {} been moved'.format(symbol.name, maybeText))
+					logError(self.state, expr.lvalueSpan, 'the value in `{}` {} been moved'.format(symbol.name, maybeText))
 					logExplain(self.state, list(info.lastUses)[0].span, '`{}` was moved here'.format(symbol.name))
 					return
 			elif info.uninit:
 				maybeText = 'may not have' if info.maybeUninit else 'has not'
-				logError(self.state, expr.span, '`{}` {} been initialized'.format(symbol.name, maybeText))
+				logError(self.state, expr.lvalueSpan, '`{}` {} been initialized'.format(symbol.name, maybeText))
 				return
 		
 		self.setLastUse(info, expr, isRead=False)
@@ -428,7 +454,6 @@ class Scope:
 		info.maybeUninit = False
 		info.moved = False
 		info.maybeMoved = False
-		info.borrows = expr.rvalue.borrows
 		
 		if field:
 			assert 0
