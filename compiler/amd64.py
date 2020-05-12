@@ -2,7 +2,7 @@ import ctypes
 from io     import StringIO
 from enum   import Enum
 from .ast   import StaticData, StaticDataType
-from .ir    import Dup, Global, Imm, Static, Deref, DerefW, Add, Sub, Mul, Div, Eq, NEq, Less, LessEq, \
+from .ir    import Dup, Global, Imm, Static, Deref, DerefW, Add, Sub, Mul, Div, Mod, Eq, NEq, Less, LessEq, \
                    Greater, GreaterEq, FAdd, FSub, FMul, FDiv, FEq, FNEq, FLess, FLessEq, FGreater, FGreaterEq, \
                    Call, Extend, IExtend, Truncate, FExtend, FTruncate, IToF, UToF, FToI, FToU, Ret, BrIf, \
                    Br, Swap, Pop, Raise, Neg, Struct, Field, FieldW, DerefField, DerefFieldW, Fix, Addr, \
@@ -537,6 +537,8 @@ def irToAsm(state, ir, nextIR):
 		mul(state, ir)
 	elif type(ir) == Div:
 		div(state, ir)
+	elif type(ir) == Mod:
+		mod(state, ir)
 	elif type(ir) in (Eq, NEq, Less, LessEq, Greater, GreaterEq):
 		cmp(state, ir)
 	elif type(ir) == FAdd:
@@ -1054,13 +1056,18 @@ def add(state, ir):
 def sub(state, ir):
 	addOrSub(state, ir, False)
 
-def mulOrDiv(state, ir, isMul):
+def mulDivMod(state, ir, isMul, isMod):
 	src = state.getOperand(0)
 	dest = state.getOperand(1)
 	
 	if src.storage == Storage.IMM and dest.storage == Storage.IMM:
 		state.popOperand()
-		dest.value = (dest.value * src.value) if isMul else (dest.value // src.value)
+		if isMul:
+			dest.value = dest.value * src.value
+		elif isMod:
+			dest.value = dest.value % src.value
+		else:
+			dest.value = dest.value // src.value
 		return
 	
 	if isMul and src == state.rax:
@@ -1093,13 +1100,16 @@ def mulOrDiv(state, ir, isMul):
 	
 	state.popOperand()
 	state.popOperand()
-	state.pushOperand(dest)
+	state.pushOperand(state.rdx if isMod else dest)
 
 def mul(state, ir):
-	mulOrDiv(state, ir, True)
+	mulDivMod(state, ir, True, False)
 
 def div(state, ir):
-	mulOrDiv(state, ir, False)
+	mulDivMod(state, ir, False, False)
+
+def mod(state, ir):
+	mulDivMod(state, ir, False, True)
 
 def cmp(state, ir):
 	if state.rcx.active:

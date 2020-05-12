@@ -35,7 +35,7 @@ fn main()
     let y = &mut x
     y^ = 3
     
-    printf("I cheated the system! Look: %d\n", x)
+    printf("I cheated the system! Look: %d %d\n", x, 10 % 3)
     
     let asdf = FloatStruct { f: 5.2, g: 11.8/5.2 }
 

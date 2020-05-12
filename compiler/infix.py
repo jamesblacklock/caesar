@@ -6,7 +6,7 @@ from .coercion  import Coercion
 from .types     import canPromote, typesMatch, canAccommodate, hasDefiniteType, \
                        Int32, Int64, UInt64, ISize, USize, Bool, Byte, Char
 from .ir        import FAdd, FSub, FMul, FDiv, FEq, FNEq, FGreater, FLess, FGreaterEq, FLessEq, \
-                       Add, Sub, Mul, Div, Eq, NEq, Greater, Less, GreaterEq, LessEq, Imm, IPTR
+                       Add, Sub, Mul, Div, Mod, Eq, NEq, Greater, Less, GreaterEq, LessEq, Imm, IPTR
 from .log       import logError
 
 class InfixOps(Enum):
@@ -233,7 +233,11 @@ class InfixOp(ValueExpr):
 				infixOp.type = infixOp.l.type
 				return
 		elif typesMatch(infixOp.l.type, infixOp.r.type) and (infixOp.l.type.isIntType or infixOp.l.type.isFloatType):
-			if infixOp.op in ARITHMETIC_OPS:
+			if infixOp.op == InfixOps.MODULO:
+				if infixOp.l.type.isIntType:
+					infixOp.type = infixOp.l.type
+					return
+			elif infixOp.op in ARITHMETIC_OPS:
 				infixOp.type = infixOp.l.type
 				return
 			elif (infixOp.op in BITWISE_OPS or infixOp.op in BITSHIFT_OPS) and infixOp.l.type.isIntType:
@@ -254,6 +258,8 @@ class InfixOp(ValueExpr):
 			ast.writeMulIR(state)
 		elif ast.op == InfixOps.DIV:
 			ast.writeDivIR(state)
+		elif ast.op == InfixOps.MODULO:
+			ast.writeModuloIR(state)
 		elif ast.op in CMP_OPS:
 			ast.writeCmpIR(state)
 		else:
@@ -321,6 +327,11 @@ class InfixOp(ValueExpr):
 			state.appendInstr(FDiv(ast))
 		else:
 			state.appendInstr(Div(ast))
+	
+	def writeModuloIR(ast, state):
+		ast.l.writeIR(state)
+		ast.r.writeIR(state)
+		state.appendInstr(Mod(ast))
 	
 	def writeCmpIR(ast, state):
 		ast.l.writeIR(state)

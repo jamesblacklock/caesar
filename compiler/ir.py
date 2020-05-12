@@ -539,6 +539,16 @@ class Div(Instr):
 	def __str__(self):
 		return 'div'
 
+class Mod(Instr):
+	def __init__(self, ast):
+		super().__init__(ast)
+		
+	def affectStack(self, state):
+		state.popOperand()
+	
+	def __str__(self):
+		return 'mod'
+
 class FEq(Instr):
 	def __init__(self, ast):
 		super().__init__(ast)
