@@ -4,6 +4,14 @@ extern fn printf(fmt: &byte, ...) -> int
 @ffi("C")
 extern fn scanf(fmt: &byte, ...) -> int
 
+fn dropFloatStruct(self: &FloatStruct)
+    printf("destructor: %f\n", self^.f * self^.g)
+
+@drop(dropFloatStruct)
+struct FloatStruct
+    f: float
+    g: float64
+
 fn main()
     let x = 10003.1141131313
     takesFloats(x, 10003.1141131313)
@@ -28,6 +36,8 @@ fn main()
     y^ = 3
     
     printf("I cheated the system! Look: %d\n", x)
+    
+    let asdf = FloatStruct { f: 5.2, g: 11.8/5.2 }
 
 fn takesFloats(f: float64, d: float64)
     printf("float:  %f\ndouble: %f\n", f, d)

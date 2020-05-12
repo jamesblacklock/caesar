@@ -7,6 +7,9 @@ class StructDecl(TypeSymbol):
 		self.fields = fields
 	
 	def analyzeSig(decl, state):
+		from . import attrs
+		attrs.invokeAttrs(state, decl)
+		
 		fieldNames = []
 		types = []
 		for field in decl.fields:
@@ -19,7 +22,7 @@ class StructDecl(TypeSymbol):
 			types.append(fieldType)
 		
 		layout = state.generateFieldLayout(types, fieldNames)
-		decl.type = StructType(decl.name, layout.align, layout.byteSize, layout.fields)
+		decl.type = StructType(decl.name, decl.dropFn, layout.align, layout.byteSize, layout.fields)
 	
 	def pretty(self, output, indent=0):
 		output.write('struct ', indent)

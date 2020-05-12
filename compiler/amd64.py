@@ -607,10 +607,10 @@ def moveData(state, src, dest,
 		elif destDeref:
 			type = src.type
 		else:
-			type = src.type if src.type.byteSize < dest.type.byteSize else dest.type
+			type = src.type if not dest.type or src.type.byteSize < dest.type.byteSize else dest.type
 	
 	assert type != None
-	assert dest.storage in (Storage.REG, Storage.STACK) or destDeref
+	assert dest.storage in (Storage.REG, Storage.XMM, Storage.STACK) or destDeref
 	
 	if type.byteSize not in (1, 2, 4, 8):
 		moveStruct(state, src, dest, srcDeref, destDeref, srcOffset, destOffset, type)

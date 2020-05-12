@@ -14,7 +14,7 @@ def createTempSymbol(expr):
 	write.symbol = symbol
 	return (symbol, write)
 
-def createTempTriple(expr, exprWasAnalyzed=False):
+def createTempTriple(expr):
 	(symbol, write) = createTempSymbol(expr)
 	read = SymbolRead(expr.span)
 	read.symbol = symbol
@@ -76,6 +76,9 @@ class SymbolAccess(ValueExpr):
 				ScopeType.BLOCK, 
 				noLower=True)
 		
+		if access.symbol == None:
+			return access
+		
 		result = state.analyzeNode(access, implicitType)
 		exprBlock = None
 		if type(result) == block.Block:
@@ -98,7 +101,7 @@ class SymbolAccess(ValueExpr):
 		elif self.copy:
 			output.addPrefix('$copy(')
 			closeParen = True
-		output.write(self.symbol.name, indent)
+		output.write(self.symbol.name if self.symbol else '???', indent)
 		if closeParen:
 			output.write(')')
 		if self.deref:
@@ -421,7 +424,7 @@ def _SymbolAccess__analyzeSymbolAccess(state, expr, access, exprs, implicitType=
 				
 				fieldInfo = t.fields[fieldIndex]
 			else:
-				logError(state, op.span, 'type `{}` has no fields'.format(t.name))
+				logError(state, access.span, 'type `{}` has no fields'.format(t.name))
 				access.type = None
 				return
 			

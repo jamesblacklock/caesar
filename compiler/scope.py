@@ -1,9 +1,9 @@
-from enum        import Enum
-from .drop       import DropSymbol
-from .log        import logError, logWarning, logExplain
-from .           import fndecl, staticdecl, letdecl, address, block as blockmod, access
-from .fncall     import FnCall
-from .structdecl import StructDecl
+from enum    import Enum
+from .drop   import DropSymbol
+from .log    import logError, logWarning, logExplain
+from .       import fndecl, staticdecl, letdecl, access
+from .fncall import FnCall
+from .types  import typesMatch, PtrType
 
 class ScopeType(Enum):
 	MOD = "MOD"
@@ -479,7 +479,17 @@ class Scope:
 				ref.symbol = symbol
 				ref.type = symbol.type
 				if t.isPtrType and typesMatch(t.baseType, symbol.type):
-					ref.addr = True
+					(ptrSymbol, ptrWrite, ptrRead) = access.createTempTriple(ref)
+					ptrSymbol.type = symbol.type
+					ptrSymbol.fixed = True
+					ptrWrite.symbol = ptrSymbol
+					ptrWrite.type = ptrSymbol.type
+					ptrRead.addr = True
+					ptrRead.type = PtrType(symbol.type, 1, False)
+					exprs.append(ptrSymbol)
+					exprs.append(ptrWrite)
+					symbol = ptrSymbol
+					ref = ptrRead
 				else:	
 					ref.ref = True
 					valueWasMoved = True
@@ -493,9 +503,9 @@ class Scope:
 			exprs.append(DropSymbol(symbol))
 		
 		if prepend:
-			block.exprs.insert(0, *exprs)
+			block.exprs[:0] = exprs
 		else:
-			block.exprs.append(*exprs)
+			block.exprs.extend(exprs)
 	
 	def lookupSymbol(self, name):
 		scope = self

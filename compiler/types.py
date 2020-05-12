@@ -70,10 +70,11 @@ class FieldInfo:
 		self.offset = offset
 
 class StructType(Type):
-	def __init__(self, name, align, byteSize, fields):
+	def __init__(self, name, dropFn, align, byteSize, fields):
 		super().__init__(name, byteSize, align, 
 			isStructType=True, isCompositeType=True)
 		
+		self.dropFn = dropFn
 		self.fields = fields
 		self.fieldDict = {}
 		
