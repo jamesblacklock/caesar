@@ -1,0 +1,59 @@
+@ffi("C") extern fn printf(fmt: &byte, ...) -> int
+@ffi("C") extern fn atoi(str: &byte) -> int
+@ffi("C") extern fn exit(code: int)
+@ffi("C") extern fn malloc(size: usize) -> &byte
+@ffi("C") extern fn getchar() -> int
+
+struct T
+	x: int64
+	y: int8
+	@align(8) z: int8
+
+struct S
+	a: int
+	b: int
+	c: T
+
+#=
+multi-line comment
+	#= nesting =#
+=#
+
+fn main(argc: usize, argv: &&byte)
+	if argc != 3
+		printf("Usage: %s <number> <number>\n", argv^)
+		exit(1)
+	
+	printf("raw args:\n")
+	let o=0usz
+	while o < argc
+		printf("   %s\n", (argv+o)^)
+		o = o+1
+	
+	let s = S
+		a: atoi((argv as &[&byte * 2])^[1])
+		b: atoi((argv+2)^)
+		c: T { x: 1000, y: 2, z: 3 }
+	
+	let mut t = S
+		b: 813
+	
+	printf("%d, %d, %ld, %d\n", s.a+1, s.b+1, s.c.x, t.b)
+	
+	let tup: (char, int64, int) = ('x', 12, -2)
+	let arr: [int * 10] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+	# let arr: [int * 10] = [_, 2, 3, 4, _, _, 7, 8, 9, 10]
+	# let arr: [int * 10] = [1, _ * 5, 7, 8, 9, 10]
+	
+	let dynarr: &[byte * 6] = malloc(6) as &[byte * 6]
+	# dynarr^ = ['a' as byte, 's' as byte, 'd' as byte, 'f' as byte, 0 as byte, '!' as byte]
+	dynarr^[0] = 'a' as byte
+	dynarr^[1] = 's' as byte
+	dynarr^[2] = 'd' as byte
+	dynarr^[3] = 'f' as byte
+	dynarr^[4] =  0  as byte
+	printf("Please enter '5': ")
+	let n = if getchar() - '0' as int == 5 { 5 } else { printf("You did it wrong!\n"), return }
+	dynarr^[n as usize] = '!' as byte
+	
+	printf("%d%c %s%c\n", arr[9], tup.0, dynarr, dynarr^[5])

@@ -1,0 +1,55 @@
+@ffi("C")
+extern fn printf(fmt: &byte, ...) -> int
+
+@ffi("C")
+extern fn getchar() -> int
+
+@ffi("C")
+extern fn malloc(size: usize) -> &byte
+
+@ffi("C")
+extern fn free(buf: &byte) -> &byte
+
+fn fib(n: int) -> int
+	if n <= 1
+		return n
+	else
+		return fib(n - 1) + fib(n - 2)
+
+fn main(argc: int, argv: &&byte) -> int
+	printf("What is your name? ")
+	
+	let size: usize = 128
+	let buf = malloc(size)
+	let mut pt = buf
+	
+	let mut i = 1usz, while {let j=i, i=i+1, j} <= size # for _ in 1...size
+		let c = getchar() as char
+		if c == '\n'
+			pt^ = 0x0
+			break
+		else if c == 'a'
+			continue
+		pt^ = c as byte
+		pt = pt + 1 # pt += 1
+		# printf("%d <= %d: %d\n", i, size, if i <= size {true} else {false})
+		# printf("a\n")
+		# void
+	
+	"%s, %s\n" -> printf("Hello"; buf)
+	
+	let mut asdf = 4
+	loop {
+		printf("%d\n", asdf);
+		asdf = asdf-1;
+		if asdf == 0 { break; }
+	}
+	
+	printf("%d %d %d %d %d %d %d %d %d %d\n"
+		fib(1), fib(2), fib(3), fib(4), fib(5)
+		fib(6), fib(7), fib(8), fib(9), fib(10))
+	
+	printf("\n");
+	free(buf)
+	
+	return 0

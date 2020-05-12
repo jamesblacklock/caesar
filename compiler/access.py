@@ -259,9 +259,13 @@ class SymbolWrite(SymbolAccess):
 		if access.symbol.type == None:
 			access.symbol.type = access.rvalue.type
 			access.type = access.rvalue.type
-		elif access.rvalue.type and not typesMatch(access.type, access.rvalue.type):
-			logError(state, access.rvalue.span, 
-				'expected type {}, found {}'.format(access.type, access.rvalue.type))
+		elif access.rvalue.type:
+			if canPromote(access.rvalue.type, access.type):
+				access.rvalue = coercion.Coercion(access.rvalue, None, access.span, resolvedType=access.type)
+			
+			if not typesMatch(access.type, access.rvalue.type):
+				logError(state, access.rvalue.span, 
+					'expected type {}, found {}'.format(access.type, access.rvalue.type))
 		
 		if type(access.symbol) == staticdecl.StaticDecl:
 			access.deref += 1
