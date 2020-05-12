@@ -197,17 +197,22 @@ class AnalyzerState:
 		symbolTok = ref.path[0]
 		path = ref.path[1:]
 		
-		if symbolTok.content in BUILTIN_TYPES:
+		if symbolTok.content == '_':
+			logError(self, symbolTok.span, '`_` is not a valid symbol name')
+			return None
+		elif symbolTok.content in BUILTIN_TYPES:
 			symbol = BUILTIN_TYPES[symbolTok.content]
 		else:
 			symbol = self.scope.lookupSymbol(symbolTok.content)
 		
 		if symbol != None:
 			for tok in path:
+				if tok.content == '_':
+					logError(self, tok.span, '`_` is not a valid symbol name')
+					return None
 				# if type(symbol) == StructDecl:
 				# 	symbol = symbol.resolvedSymbolType.fieldDict[tok.content]
-				# el
-				if type(symbol) == Mod:
+				elif type(symbol) == Mod:
 					symbolTok = tok
 					if tok.content not in symbol.symbolTable:
 						symbol = None

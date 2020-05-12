@@ -18,7 +18,7 @@ class StaticDecl(ValueSymbol):
 			decl.type = state.resolveTypeRef(decl.typeRef)
 		
 		if decl.name == '_':
-			logError(state, decl.expr.span, '`_` is not a valid mod-level binding')
+			logError(state, decl.expr.span, '`_` is not a valid symbol name')
 		elif not isConst:
 			decl.mangledName = state.mangleName(decl)
 	

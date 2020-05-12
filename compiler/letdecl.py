@@ -27,6 +27,8 @@ class FnParam(ValueSymbol):
 class LetDecl(ValueSymbol):
 	def __init__(self, nameTok, typeRef, mut, expr, span, temp=False):
 		super().__init__(nameTok, typeRef, span)
+		if self.name == '_':
+			temp = True
 		if temp:
 			global TEMP_COUNTER
 			self.name = '$temp{}'.format(TEMP_COUNTER)
@@ -70,9 +72,6 @@ class LetDecl(ValueSymbol):
 	def analyze(letExpr, state, implicitType):
 		if letExpr.typeRef:
 			letExpr.type = state.resolveTypeRef(letExpr.typeRef)
-		
-		if letExpr.name == '_':
-			letExpr.name == '$_'
 		
 		state.scope.declSymbol(letExpr)
 		
