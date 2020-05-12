@@ -201,9 +201,9 @@ class InfixOp(ValueExpr):
 			return
 		
 		if canPromote(infixOp.l.type, infixOp.r.type):
-			infixOp.l = Coercion(access, None, access.span, resolvedType=infixOp.r.type)
+			infixOp.l = Coercion(infixOp.l, None, access.span, resolvedType=infixOp.r.type)
 		elif canPromote(infixOp.r.type, infixOp.l.type):
-			infixOp.r = Coercion(access, None, access.span, resolvedType=infixOp.l.type)
+			infixOp.r = Coercion(infixOp.r, None, access.span, resolvedType=infixOp.l.type)
 		
 		if infixOp.l.type == Bool and infixOp.r.type == Bool:
 			if infixOp.op == InfixOps.EQ:
@@ -232,7 +232,7 @@ class InfixOp(ValueExpr):
 			if infixOp.op in PTR_PTR_OPS and getValidAssignType(infixOp.l.type, infixOp.r.type):
 				infixOp.type = infixOp.l.type
 				return
-		elif typesMatch(infixOp.l.type, infixOp.r.type) and infixOp.l.type.isIntType or infixOp.l.type.isFloatType:
+		elif typesMatch(infixOp.l.type, infixOp.r.type) and (infixOp.l.type.isIntType or infixOp.l.type.isFloatType):
 			if infixOp.op in ARITHMETIC_OPS:
 				infixOp.type = infixOp.l.type
 				return

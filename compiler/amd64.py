@@ -1152,16 +1152,22 @@ def cmp(state, ir):
 	state.pushOperand(state.rcx)
 
 def fadd(state, ir):
-	faddOrSub(state, ir, True)
+	faddSubDivMul(state, ir, 'add', True)
 
 def fsub(state, ir):
-	faddOrSub(state, ir, False)
+	faddSubDivMul(state, ir, 'sub', False)
 
-def faddOrSub(state, ir, isAdd):
+def fmul(state, ir):
+	faddSubDivMul(state, ir, 'mul', True)
+
+def fdiv(state, ir):
+	faddSubDivMul(state, ir, 'div', False)
+
+def faddSubDivMul(state, ir, op, isCommutative):
 	src = state.getOperand(0)
 	dest = state.getOperand(1)
 	
-	if isAdd and dest.storage != Storage.XMM and src.storage == Storage.XMM:
+	if isCommutative and dest.storage != Storage.XMM and src.storage == Storage.XMM:
 		src, dest = dest, src
 	elif dest.storage != Storage.XMM:
 		reg = state.findXmmReg(dest.type)
@@ -1183,48 +1189,13 @@ def faddOrSub(state, ir, isAdd):
 		moveData(state, src, reg)
 		src = reg
 	
-	state.appendInstr('{}{}'.format('add' if isAdd else 'sub', 'sd' if dest.type == F64 else 'ss'),
+	state.appendInstr('{}{}'.format(op, 'sd' if dest.type == F64 else 'ss'),
 			Operand(dest, Usage.DEST), 
 			Operand(src, Usage.SRC))
 	
 	state.popOperand()
 	state.popOperand()
 	state.pushOperand(dest)
-
-def fsub(state, ir):
-	assert 0
-
-def fmul(state, ir):
-	assert 0
-
-def fdiv(state, ir):
-	r = state.getOperand(0)
-	l = state.getOperand(1)
-	
-	if l.storage != Storage.XMM:
-		reg = state.findXmmReg(l.type)
-		if reg == None:
-			reg = state.xmm8
-			reg.type = l.type
-			stack = saveReg(state, reg)
-			state.moveOperand(reg, stack)
-		moveData(state, l, reg)
-		l = reg
-	
-	if r.storage == Storage.REG:
-		stack = saveReg(state, reg)
-		state.moveOperand(r, stack)
-		r = reg
-	
-	opcode = 'divs{}'.format('d' if l.type == F64 else 's')
-	state.appendInstr(opcode, 
-		Operand(l, Usage.SRC), 
-		Operand(r, Usage.SRC))#, 
-		# Operand(l, Usage.DEST))#dest, Usage.DEST))
-	
-	state.popOperand()
-	state.popOperand()
-	state.pushOperand(l)#dest)
 
 def fcmp(state, ir):
 	assert 0
