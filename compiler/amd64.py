@@ -695,7 +695,10 @@ def moveData(state, src, dest,
 				Operand(dest, Usage.DEREF, type, ind=destOffset), 
 				Operand(src, Usage.SRC, type))
 	else:
-		state.appendInstr('movq' if Storage.XMM in (src.storage, dest.storage) else 'mov', 
+		opcode = 'mov'
+		if Storage.XMM in (src.storage, dest.storage):
+			opcode += 'q' if src.type.byteSize == 8 else 'd'
+		state.appendInstr(opcode, 
 			Operand(dest, Usage.DEST, type, ind=destOffset), 
 			Operand(src, Usage.SRC, type, ind=srcOffset))
 	
@@ -930,8 +933,20 @@ def fextend(state, ir):
 	src = state.getOperand(0)
 	dest = src
 	
+	if dest.storage != Storage.XMM:
+		reg = state.findXmmReg()
+		if reg == None:
+			reg = state.xmm8
+			stack = saveReg(state, reg)
+			state.moveOperand(reg, stack)
+		dest = reg
+	
+	if src.storage == Storage.REG:
+		moveData(state, src, dest)
+		dest.type = src.type
+		src = dest
+	
 	assert ir.type == F64 and src.type == F32
-	assert src.storage == Storage.XMM and dest.storage == Storage.XMM
 	
 	state.appendInstr('cvtss2sd', 
 		Operand(dest, Usage.DEST), 
