@@ -624,6 +624,10 @@ def moveData(state, src, dest,
 	srcIsStk = src.storage == Storage.STACK
 	destIsStk = dest.storage == Storage.STACK
 	
+	opcode = 'mov'
+	if Storage.XMM in (src.storage, dest.storage):
+		opcode += 'q' if src.type.byteSize == 8 else 'd'
+	
 	# setup source offset
 	if srcOffset:
 		if srcOffset.storage in (Storage.STACK, Storage.GLOBAL):
@@ -687,17 +691,14 @@ def moveData(state, src, dest,
 					Operand(src, Usage.DEST, type), 
 					Operand(src, Usage.DEREF, type, ind=srcOffset))
 			else:
-				state.appendInstr('mov', 
+				state.appendInstr(opcode, 
 					Operand(dest, Usage.DEST, type), 
 					Operand(src, Usage.DEREF, type, ind=srcOffset))
 		if destDeref:
-			state.appendInstr('mov', 
+			state.appendInstr(opcode, 
 				Operand(dest, Usage.DEREF, type, ind=destOffset), 
 				Operand(src, Usage.SRC, type))
 	else:
-		opcode = 'mov'
-		if Storage.XMM in (src.storage, dest.storage):
-			opcode += 'q' if src.type.byteSize == 8 else 'd'
 		state.appendInstr(opcode, 
 			Operand(dest, Usage.DEST, type, ind=destOffset), 
 			Operand(src, Usage.SRC, type, ind=srcOffset))

@@ -311,12 +311,12 @@ class Scope:
 	
 	def accessSymbol(self, access):
 		access.symbol.unused = False
-		if not access.write and access.addr:
-			self.addrSymbol(access)
-		elif access.write:
+		if access.write:
 			if access.deref:
 				self.readSymbol(access)
 			self.writeSymbol(access)
+		elif access.addr:
+			self.addrSymbol(access)
 		else:
 			self.readSymbol(access)
 	
@@ -356,7 +356,8 @@ class Scope:
 			logError(self.state, expr.span, '`{}` {} been initialized'.format(symbol.name, maybeText))
 			return
 		
-		if field:
+		fieldInfo = None
+		if field and not access.deref:
 			if field not in info.fieldInfo:
 				uninit = False#info.typeModifiers.uninit or field in info.typeModifiers.uninitFields
 				fieldInfo = FieldInfo(field, uninit)
@@ -388,7 +389,7 @@ class Scope:
 				else:
 					self.setLastUse(self.symbolInfo[borrow.symbol], expr, isRead=True)
 		
-		if field:
+		if fieldInfo:
 			fieldInfo.moved = True#not fieldAccess.field.type.isCopyable
 		elif isIndex:
 			pass

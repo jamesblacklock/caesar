@@ -4,7 +4,7 @@ extern fn printf(fmt: &byte, ...) -> int
 @ffi("C")
 extern fn scanf(fmt: &byte, ...) -> int
 
-fn dropFloatStruct(self: &FloatStruct)
+fn dropFloatStruct(self: &mut FloatStruct)
     printf("destructor: %f\n", self^.f * self^.g)
 
 @drop(dropFloatStruct)
