@@ -140,9 +140,6 @@ class Scope:
 						self.dropSymbol(info.symbol, block)
 					for (lastUse, loopExpr) in info.lastUses.items():
 						if lastUse.ref:
-							# if lastUse.addr:
-								# assert 0
-							# el
 							if lastUse.borrows:
 								for borrow in lastUse.borrows:
 									if borrow.symbol == info.symbol:
@@ -395,7 +392,7 @@ class Scope:
 					self.setLastUse(self.symbolInfo[borrow.symbol], expr, isRead=True)
 		
 		if fieldInfo:
-			fieldInfo.moved = True#not fieldAccess.field.type.isCopyable
+			fieldInfo.moved = not field.type.isCopyable
 		elif isIndex:
 			pass
 		else:
@@ -462,8 +459,8 @@ class Scope:
 		info.maybeMoved = False
 		
 		if field:
-			assert 0
-			info.fieldInfo[field].uninit = False
+			pass
+			# info.fieldInfo[field].uninit = False
 		elif isIndex:
 			pass
 		else:

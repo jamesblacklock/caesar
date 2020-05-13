@@ -284,43 +284,43 @@ def parseFnDeclReturnType(state):
 	
 	return typeRef
 
-def parseStructDecl(state, doccomment, anon):
-	def parseFieldDecl(state):
-		span = state.tok.span
-		
-		fieldAttrs = []
-		if state.tok.type == TokenType.AT:
-			fieldAttrs = parseAttrs(state)
-			permitLineBreak(state)
-		
-		if expectType(state, TokenType.NAME) == False:
-			return None
-		
-		nameTok = state.tok
-		
-		state.advance()
-		state.skipSpace()
-		
-		if expectType(state, TokenType.COLON) == False:
-			return FieldDecl(nameTok, None, span)
-		
-		span = Span.merge(span, state.tok.span)
-		
-		state.advance()
-		onOneLine = permitLineBreakIndent(state) == False
-		state.skipSpace()
-		
-		typeRef = parseTypeRef(state)
-		if typeRef:
-			span = Span.merge(span, typeRef.span)
-		
-		if not onOneLine:
-			state.popIndentLevel()
-		
-		fieldDecl = FieldDecl(nameTok, typeRef, span)
-		fieldDecl.attrs = fieldAttrs
-		return fieldDecl
+def parseFieldDecl(state):
+	span = state.tok.span
 	
+	fieldAttrs = []
+	if state.tok.type == TokenType.AT:
+		fieldAttrs = parseAttrs(state)
+		permitLineBreak(state)
+	
+	if expectType(state, TokenType.NAME) == False:
+		return None
+	
+	nameTok = state.tok
+	
+	state.advance()
+	state.skipSpace()
+	
+	if expectType(state, TokenType.COLON) == False:
+		return FieldDecl(nameTok, None, span)
+	
+	span = Span.merge(span, state.tok.span)
+	
+	state.advance()
+	onOneLine = permitLineBreakIndent(state) == False
+	state.skipSpace()
+	
+	typeRef = parseTypeRef(state)
+	if typeRef:
+		span = Span.merge(span, typeRef.span)
+	
+	if not onOneLine:
+		state.popIndentLevel()
+	
+	fieldDecl = FieldDecl(nameTok, typeRef, span)
+	fieldDecl.attrs = fieldAttrs
+	return fieldDecl
+
+def parseStructOrUnionDecl(state, doccomment, anon, isUnion):
 	span = state.tok.span
 	state.advance()
 	state.skipSpace()
@@ -334,7 +334,14 @@ def parseStructDecl(state, doccomment, anon):
 	
 	block = parseBlock(state, parseFieldDecl)
 	span = Span.merge(span, block.span)
-	return StructDecl(nameTok, doccomment, block.list, span)
+	
+	return StructDecl(nameTok, isUnion, doccomment, block.list, span)
+
+def parseStructDecl(state, doccomment, anon):
+	return parseStructOrUnionDecl(state, doccomment, anon, False)
+
+def parseUnionDecl(state, doccomment, anon):
+	return parseStructOrUnionDecl(state, doccomment, anon, True)
 
 def parseCoercion(state, expr):
 	typeRef = parseTypeRef(state)
@@ -1200,6 +1207,7 @@ MOD_EXPR_TOKS = (
 	TokenType.UNSAFE, 
 	TokenType.STATIC, 
 	TokenType.STRUCT, 
+	TokenType.UNION, 
 	TokenType.CONST
 )
 
@@ -1225,17 +1233,19 @@ VALUE_EXPR_TOKS = (
 )
 
 FN_EXPR_TOKS = (
-	*VALUE_EXPR_TOKS,
-	TokenType.RETURN,
-	TokenType.LET,
-	TokenType.LOOP,
-	TokenType.WHILE,
-	# TokenType.FOR,
+	*VALUE_EXPR_TOKS, 
+	TokenType.LET, 
+	TokenType.LOOP, 
+	TokenType.WHILE, 
+	# TokenType.FOR, 
 	# TokenType.FN, 
 	# TokenType.UNSAFE, 
 	# TokenType.CONST, 
+	# TokenType.STRUCT, 
+	# TokenType.UNION, 
 	TokenType.CONTINUE,
-	TokenType.BREAK
+	TokenType.BREAK, 
+	TokenType.RETURN
 )
 
 def parseExpr(state, exprClass, precedence=0, noSkipSpace=False, allowSimpleFnCall=False):
@@ -1293,6 +1303,8 @@ def parseExpr(state, exprClass, precedence=0, noSkipSpace=False, allowSimpleFnCa
 		decl = parseStaticDecl(state, doccomment, extern)
 	elif state.tok.type == TokenType.STRUCT:
 		decl = parseStructDecl(state, doccomment, False)
+	elif state.tok.type == TokenType.UNION:
+		decl = parseUnionDecl(state, doccomment, False)
 	elif state.tok.type == TokenType.CONST:
 		decl = parseConstDecl(state, doccomment)
 	elif state.tok.type in VALUE_EXPR_TOKS:

@@ -362,7 +362,7 @@ class GeneratorState:
 	def appendInstr(self, opcode, *operands, isLabel=False, isComment=False):
 		instr = Instr(opcode, operands, isLabel, isComment)
 		self.instr.append(instr)
-		# print(instr)
+		print(instr)
 	
 	def findReg(self, type=None, exclude=[]):
 		for reg in self.intRegs:
@@ -966,6 +966,10 @@ def truncate(state, ir):
 def itof(state, ir):
 	src = state.getOperand(0)
 	
+	if src.type.byteSize < 4:
+		iextend(state, IExtend(ir.ast, I32))
+		src = state.getOperand(0)
+	
 	dest = src
 	if dest.storage != Storage.XMM:
 		dest = state.findXmmReg(dest.type)
@@ -1521,7 +1525,7 @@ class OutputWriter:
 		self.output = StringIO()
 	
 	def write(self, s):
-		# sys.stdout.write(s)
+		sys.stdout.write(s)
 		self.output.write(s)
 	
 	def getvalue(self):

@@ -82,8 +82,8 @@ def analyze(ast):
 	
 	state.popScope()
 	
-	p = ASTPrinter()
-	ast.pretty(p)
+	# p = ASTPrinter()
+	# ast.pretty(p)
 	
 	if state.failed:
 		exit(1)
@@ -142,7 +142,7 @@ class AnalyzerState:
 			
 			return mangled
 	
-	def generateFieldLayout(state, types, fieldNames=None):
+	def generateFieldLayout(state, types, fieldNames=None, isUnion=False):
 		fields = []
 		maxAlign = 0
 		offset = 0
@@ -156,7 +156,9 @@ class AnalyzerState:
 			
 			maxAlign = max(maxAlign, t.align)
 			
-			if offset % t.align > 0:
+			if isUnion:
+				offset = 0
+			elif offset % t.align > 0:
 				offset += t.align - offset % t.align
 			
 			fields.append(FieldInfo(n, t, offset))

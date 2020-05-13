@@ -60,7 +60,22 @@ class Coercion(ValueExpr):
 			return
 		
 		instr = None
-		if fromType.isFloatType == False and toType.isFloatType == False:
+		if fromType.isFloatType and toType.isFloatType:
+			if fromType.byteSize < toType.byteSize:
+				instr = FExtend(expr, toType)
+			else:
+				instr = FTruncate(expr, toType)
+		elif fromType.isFloatType:
+			if toSigned:
+				instr = FToI(expr, toType)
+			else:
+				instr = FToU(expr, toType)
+		elif toType.isFloatType:
+			if fromSigned:
+				instr = IToF(expr, toType)
+			else:
+				instr = UToF(expr, toType)
+		else:
 			if fromType.byteSize < toType.byteSize:
 				if toSigned:
 					instr = IExtend(expr, toType)
@@ -68,21 +83,6 @@ class Coercion(ValueExpr):
 					instr = Extend(expr, toType)
 			else:
 				instr = Truncate(expr, toType)
-		elif fromType.isFloatType == True and toType.isFloatType == True:
-			if fromType.byteSize < toType.byteSize:
-				instr = FExtend(expr, toType)
-			else:
-				instr = FTruncate(expr, toType)
-		elif fromType.isFloatType == False:
-			if fromSigned:
-				instr = IToF(expr, toType)
-			else:
-				instr = UToF(expr, toType)
-		else:
-			if toSigned:
-				instr = FToI(expr, toType)
-			else:
-				instr = FToU(expr, toType)
 		
 		state.appendInstr(instr)
 		

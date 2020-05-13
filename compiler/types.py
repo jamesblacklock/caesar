@@ -6,7 +6,7 @@ PLATFORM_WORD_SIZE = 8
 
 class Type:
 	def __init__(self, name, byteSize, align, 
-		isFnType=False, isPtrType=False, isStructType=False, 
+		isFnType=False, isPtrType=False, isStructType=False, isUnionType=False, 
 		isIntType=False, isIntLikeType=False, isFloatType=False, isOptionType=False, 
 		isPrimitiveType=False, isSigned=False, isArrayType=False,
 		isTupleType=False, isCompositeType=False, isResolved=True):
@@ -20,6 +20,7 @@ class Type:
 		self.isFnType = isFnType
 		self.isPtrType = isPtrType
 		self.isStructType = isStructType
+		self.isUnionType = isUnionType
 		self.isIntType = isIntType
 		self.isIntLikeType = isIntType or isIntLikeType
 		self.isFloatType = isFloatType
@@ -72,9 +73,9 @@ class FieldInfo:
 		self.offset = offset
 
 class StructType(Type):
-	def __init__(self, name, dropFn, align, byteSize, fields):
+	def __init__(self, name, isUnion, dropFn, align, byteSize, fields):
 		super().__init__(name, byteSize, align, 
-			isStructType=True, isCompositeType=True)
+			isStructType=True, isCompositeType=True, isUnionType=isUnion)
 		
 		self.dropFn = dropFn
 		self.fields = fields
@@ -349,7 +350,9 @@ def getValidTupleAssignType(expectedType, foundType):
 
 def canPromote(fromType, toType):
 	return (fromType and toType) and \
-		(fromType.isIntType and toType.isIntType or fromType.isFloatType and toType.isFloatType) and \
+		(fromType.isIntType and toType.isIntType and fromType.isSigned == toType.isSigned or 
+		fromType.isFloatType and toType.isFloatType or 
+		fromType.isIntType and toType.isFloatType) and \
 		fromType.byteSize < toType.byteSize
 
 def canCoerce(fromType, toType):
