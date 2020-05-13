@@ -12,7 +12,7 @@ Caesar is:
 
 - an easy-to-use language
 
-	- features a JIT-compiled REPL mode, suitable for use as a shell language
+	- features a JIT-compiled REPL mode, suitable for use as a shell language (planned)
 	- offers a modern and comfortable syntax similar to modern scripting languages
 	- systems-level features are not needed for common application-level use cases
 	- high-level features and structures are built into the language
