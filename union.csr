@@ -1,0 +1,27 @@
+@ffi("C")
+extern unsafe fn printf(fmt: &byte, ...) -> int
+
+union UnionTest
+    i: int
+    f: float
+
+struct StructWithUnions
+    u: UnionTest
+    union
+        asdf: int
+        qwer: byte
+
+unsafe fn main()
+    let mut u = UnionTest {}
+    
+    u.i = 123
+    printf("as int: %d; as float: %f\n", u.i, u.f)
+    
+    u.f = 123.0
+    printf("as int: %d; as float: %f\n", u.i, u.f)
+    
+    let x = { a: 5, b: 3 }
+    
+    let s = StructWithUnions { u: { i: 5 }, asdf: 0x01020304 }
+    printf("%d; %d; %d\n", s.u.i, s.qwer, x.a * x.b)
+    

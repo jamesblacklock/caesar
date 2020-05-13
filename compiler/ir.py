@@ -74,6 +74,7 @@ class Imm(Instr):
 
 class Struct(Instr):
 	def __init__(self, ast, fType):
+		assert fType.byteSize > 0
 		self.ast = ast
 		self.type = fType
 		

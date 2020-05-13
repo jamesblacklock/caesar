@@ -138,11 +138,10 @@ class SymbolRead(SymbolAccess):
 		
 		if access.type == None:
 			access.type = access.symbol.type
-		if access.type:
-			if access.type.isUnionType and not state.scope.allowUnsafe:
-				logError(state, fnCall.expr.span, 'reading union fields is unsafe; context is safe')
+		if access.field and access.field.isUnionField and not state.scope.allowUnsafe:
+			logError(state, fnCall.expr.span, 'reading union fields is unsafe; context is safe')
 			
-			state.scope.accessSymbol(access)
+		state.scope.accessSymbol(access)
 		
 		access.ref = not access.addr and not access.isFieldAccess
 		
@@ -282,11 +281,10 @@ class SymbolWrite(SymbolAccess):
 		
 		if access.type == None:
 			access.type = access.symbol.type
-		if access.type:
-			if access.type.isUnionType and not state.scope.allowUnsafe:
-				logError(state, fnCall.expr.span, 'writing union fields is unsafe; context is safe')
-			
-			state.scope.accessSymbol(access)
+		if access.field and access.field.isUnionField and not state.scope.allowUnsafe:
+			logError(state, fnCall.expr.span, 'writing union fields is unsafe; context is safe')
+		
+		state.scope.accessSymbol(access)
 		
 		return block.Block([access, access.dropBlock], access.span, noLower=True)
 	

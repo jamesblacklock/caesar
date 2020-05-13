@@ -6,7 +6,7 @@ from .span       import Span
 from .log        import logError
 from .ast        import ValueExpr
 from .sign       import Sign
-from .structdecl import FieldDecl, StructDecl
+from .structdecl import FieldDecl, StructDecl, UnionFields
 from .attrs      import Attr
 from .typeref    import PtrTypeRef, NamedTypeRef, ArrayTypeRef, TupleTypeRef
 from .mod        import Mod
@@ -291,6 +291,12 @@ def parseFieldDecl(state):
 	if state.tok.type == TokenType.AT:
 		fieldAttrs = parseAttrs(state)
 		permitLineBreak(state)
+	
+	if state.tok.type == TokenType.UNION:
+		state.advance()
+		state.skipSpace()
+		unionFields = parseBlock(state, parseFieldDecl)
+		return UnionFields(unionFields.list, Span.merge(span, unionFields.span))
 	
 	if expectType(state, TokenType.NAME) == False:
 		return None
@@ -849,10 +855,10 @@ def parseStructLit(state, path):
 		
 		return FieldLit(nameTok, expr, span)
 	
-	span = path.span
+	span = path.span if path else state.tok.span
 	block = parseBlock(state, parseFieldLit)
 	span = Span.merge(span, block.span)
-	return StructLit(path.path, block.list, span)
+	return StructLit(path.path if path else None, block.list, span)
 
 def parseSign(state):
 	negate = state.tok.type == TokenType.MINUS
@@ -933,6 +939,16 @@ def parseUnsafeBlock(state):
 	expr.unsafe = True
 	return expr
 
+def parseBlockOrAnonStructLit(state):
+	if isStructLitStart(state):
+		return parseStructLit(state, None)
+	
+	block = parseBlock(state, parseFnBodyExpr)
+	if len(block.list) == 1 and block.list[0].hasValue:
+		return block.list[0]
+	else:
+		return Block.fromInfo(block, ScopeType.BLOCK)
+
 def parseValueExpr(state, precedence=0, noSkipSpace=False, allowSimpleFnCall=False):
 	return parseExpr(state, ExprClass.VALUE_EXPR, precedence, noSkipSpace, allowSimpleFnCall)
 
@@ -940,17 +956,12 @@ def parseValueExprImpl(state, precedence, noSkipSpace, allowSimpleFnCall):
 	if state.tok.type == TokenType.UNSAFE:
 		expr = parseUnsafeBlock(state)
 	elif state.tok.type == TokenType.NEWLINE:
-		block = parseBlock(state, parseFnBodyExpr)
-		if len(block.list) == 1 and block.list[0].hasValue:
-			expr = block.list[0]
-		else:
-			expr = Block.fromInfo(block, ScopeType.BLOCK)
+		expr = parseBlockOrAnonStructLit(state)
 	elif state.tok.type == TokenType.LBRACK:
 		block = parseBlock(state, parseValueExpr, requireBlockMarkers=True, blockMarkers=BlockMarkers.BRACK)
 		expr = ArrayLit(block.list, block.span)
 	elif state.tok.type == TokenType.LBRACE:
-		block = parseBlock(state, parseFnBodyExpr, requireBlockMarkers=True)
-		expr = Block.fromInfo(block, ScopeType.BLOCK)
+		expr = parseBlockOrAnonStructLit(state)
 	elif state.tok.type == TokenType.LPAREN:
 		block = parseBlock(state, parseValueExpr, BlockMarkers.PAREN, True)
 		if len(block.list) == 1 and not block.trailingSeparator:

@@ -142,27 +142,37 @@ class AnalyzerState:
 			
 			return mangled
 	
-	def generateFieldLayout(state, types, fieldNames=None, isUnion=False):
+	def generateFieldLayout(state, types, fieldNames=None, fieldDecls=None):
 		fields = []
 		maxAlign = 0
 		offset = 0
 		
 		if fieldNames == None:
 			fieldNames = (str(i) for i in range(0, len(types)))
+		if fieldDecls == None:
+			fieldDecls = (None for _ in types)
 		
-		for (t, n) in zip(types, fieldNames):
+		unionSize = 0
+		
+		for (t, n, f) in zip(types, fieldNames, fieldDecls):
 			if t.isVoidType:
 				continue
 			
 			maxAlign = max(maxAlign, t.align)
 			
-			if isUnion:
-				offset = 0
-			elif offset % t.align > 0:
+			if offset % t.align > 0:
 				offset += t.align - offset % t.align
 			
-			fields.append(FieldInfo(n, t, offset))
-			offset += t.byteSize
+			isUnionField = f.unionField if f else False
+			noOffset     =   f.noOffset if f else False
+			
+			fields.append(FieldInfo(n, t, offset, isUnionField))
+			
+			if noOffset:
+				unionSize = max(unionSize, t.byteSize)
+			else:
+				offset += max(unionSize, t.byteSize)
+				unionSize = 0
 		
 		return FieldLayout(maxAlign, offset, fields)
 	

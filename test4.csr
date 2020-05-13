@@ -8,7 +8,7 @@ extern fn fread(buf: &byte, size: usize, count: usize, file: &FILE) -> usize
 extern fn fclose(file: &FILE)
 
 @ffi("C")
-extern fn printf(fmt: &byte, ...)
+extern unsafe fn printf(fmt: &byte, ...)
 
 struct FILE {}
 
@@ -17,17 +17,17 @@ struct T
     b: int
     c: int
 
-fn initStruct(s: &T)
+fn initStruct(s: &mut T)
     s^.a = 125124
     s^.b = 1151
     s^.c = 3333333
 
-fn echo(s: &byte) { printf "%s\n" s }
+fn echo(s: &byte) { unsafe printf "%s\n" s }
 
 fn main()
-    let s = T {a:1,b:2,c:3}
-    initStruct(&s)
-    printf("T { a: %d, b: %d, c: %d }\n", s.a, s.b, s.c)
+    let mut s = T {a:1,b:2,c:3}
+    initStruct(&mut s)
+    unsafe printf("T { a: %d, b: %d, c: %d }\n", s.a, s.b, s.c)
     
     let z
     let x = 15
@@ -38,16 +38,20 @@ fn main()
     else
         z = &y
     
-    printf("%d\n", z^)
+    unsafe printf("%d\n", z^)
     
     let f = fopen("text.txt", "r")
     let mut buf: [byte * 512] = []
     let i = fread(&buf as &byte, 1, 512, f)
     fclose(f)
     buf[i] = 0x0
-    printf "%s\n" &buf
-    printf "%s\n" "Hello"
-    printf "%d\n" -1 as uint
+    
+    unsafe
+    {
+        printf "%s\n" &buf
+        printf "%s\n" "Hello"
+        printf "%d\n" -1 as uint
+    }
     
     echo "Hello!"
     

@@ -6,7 +6,7 @@ PLATFORM_WORD_SIZE = 8
 
 class Type:
 	def __init__(self, name, byteSize, align, 
-		isFnType=False, isPtrType=False, isStructType=False, isUnionType=False, 
+		isFnType=False, isPtrType=False, isStructType=False, 
 		isIntType=False, isIntLikeType=False, isFloatType=False, isOptionType=False, 
 		isPrimitiveType=False, isSigned=False, isArrayType=False,
 		isTupleType=False, isCompositeType=False, isResolved=True):
@@ -20,7 +20,6 @@ class Type:
 		self.isFnType = isFnType
 		self.isPtrType = isPtrType
 		self.isStructType = isStructType
-		self.isUnionType = isUnionType
 		self.isIntType = isIntType
 		self.isIntLikeType = isIntType or isIntLikeType
 		self.isFloatType = isFloatType
@@ -67,15 +66,16 @@ class FnType(Type):
 		self.cconv = cconv
 
 class FieldInfo:
-	def __init__(self, name, symbolType, offset):
+	def __init__(self, name, symbolType, offset, isUnionField=False):
 		self.name = name
 		self.type = symbolType
 		self.offset = offset
+		self.isUnionField = isUnionField
 
 class StructType(Type):
-	def __init__(self, name, isUnion, dropFn, align, byteSize, fields):
+	def __init__(self, name, dropFn, align, byteSize, fields):
 		super().__init__(name, byteSize, align, 
-			isStructType=True, isCompositeType=True, isUnionType=isUnion)
+			isStructType=True, isCompositeType=True)
 		
 		self.dropFn = dropFn
 		self.fields = fields

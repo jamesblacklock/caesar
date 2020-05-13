@@ -1,5 +1,5 @@
 from .ast   import StaticData, StaticDataType, AST, ValueExpr, TypeModifiers
-from .types import getValidAssignType
+from .types import typesMatch, StructType
 from .log   import logError
 from .      import ir
 
@@ -19,66 +19,62 @@ class StructLit(ValueExpr):
 	def __init__(self, path, fields, span):
 		super().__init__(span)
 		self.path = path
-		self.nameTok = path[-1]
-		self.name = self.nameTok.content
+		self.anon = path == None
+		self.nameTok = path[-1] if path else None
+		self.name = self.nameTok.content if path else None
 		self.fields = fields
 		self.typeModifiers = TypeModifiers(False)
 
 	def analyze(expr, state, implicitType):
-		resolvedType = state.lookupSymbol(expr, True)
+		fieldDict =  None
+		uninitFields = set()
+		resolvedType = None
+		if expr.path:
+			resolvedType = state.lookupSymbol(expr, True)
+			if resolvedType == None:
+				resolvedType = Type(expr.name, 0)
+				return
+		elif implicitType:
+			resolvedType = implicitType
 		
-		if resolvedType == None:
-			resolvedType = Type(expr.name, 0)
-			return
+		if resolvedType:
+			if resolvedType.isStructType:
+				fieldDict = resolvedType.fieldDict
+				uninitFields = { f for f in resolvedType.fields }
+			else:
+				logError(state, expr.nameTok.span if expr.nameTok else expr.span, 
+					'type `{}` is not a struct type'.format(resolvedType.name))
+				return
 		
-		if not resolvedType.isStructType:
-			logError(state, expr.nameTok.span, 'type `{}` is not a struct type'.format(expr.name))
-			return
-		
-		fieldDict = resolvedType.fieldDict
-		uninitFields = { f for f in resolvedType.fields }
 		initFields = {}
 		for fieldInit in expr.fields:
-			fieldSymbol = None
 			fieldType = None
-			if fieldInit.name in fieldDict:
-				fieldSymbol = fieldDict[fieldInit.name]
-				fieldType = fieldSymbol.type
-				if fieldSymbol in initFields:
-					logError(state, fieldInit.nameTok.span, 
-						'field `{}` was already initialized'.format(fieldInit.name))
-					logExplain(state, initFields[fieldSymbol].nameTok.span, 
-						'`{}` was initialized here'.format(fieldInit.name))
+			if fieldDict:
+				if fieldInit.name in fieldDict:
+					fieldSymbol = fieldDict[fieldInit.name]
+					fieldType = fieldSymbol.type
+					if fieldSymbol in initFields:
+						logError(state, fieldInit.nameTok.span, 
+							'field `{}` was already initialized'.format(fieldInit.name))
+						logExplain(state, initFields[fieldSymbol].nameTok.span, 
+							'`{}` was initialized here'.format(fieldInit.name))
+					else:
+						initFields[fieldSymbol] = fieldInit
+						uninitFields.remove(fieldSymbol)
 				else:
-					initFields[fieldSymbol] = fieldInit
-					uninitFields.remove(fieldSymbol)
-			else:
-				logError(state, fieldInit.nameTok.span, 
-					'struct `{}` has no field `{}`'.format(resolvedType.name, fieldInit.name))
+					logError(state, fieldInit.nameTok.span, 
+						'type `{}` has no field `{}`'.format(resolvedType.name, fieldInit.name))
 			
 			state.analyzeNode(fieldInit.expr, fieldType)
-			if not getValidAssignType(fieldType, fieldInit.expr.type):
+			if fieldType and not typesMatch(fieldType, fieldInit.expr.type):
 				logError(state, fieldInit.expr.span, 
 					'expected type {}, found {}'.format(fieldType, fieldInit.expr.type))
-				
 		
-		# uninit = [field for field in fieldDict if field not in fieldNames]
-		# if len(uninit) > 0:
-		# 	fieldsStr = None
-		# 	if len(uninit) == 1:
-		# 		fieldsStr = uninit[0]
-		# 	elif len(uninit) == 2:
-		# 		fieldsStr = '{} and {}'.format(*uninit)
-		# 	elif len(uninit) < 5:
-		# 		fieldsStr = '{}, and {}'.format(', '.join(uninit[:-1]), uninit[-1])
-		# 	else:
-		# 		fieldsStr = '{}, and {} other fields'.format(', '.join(uninit[:3]), len(uninit) - 3)
-		# 	message = 'missing {} {} in initializer of `{}`'.format(
-		# 		'field' if len(uninit) == 1 else 'fields',
-		# 		fieldsStr,
-		# 		expr.name
-		# 	)
-		# 	logError(state, expr.nameTok.span, message)
+		if resolvedType == None:
+			fieldTypes = [field.expr.type for field in expr.fields]
+			fieldNames = [field.name for field in expr.fields]
+			layout = state.generateFieldLayout(fieldTypes, fieldNames)
+			resolvedType = StructType(None, None, layout.align, layout.byteSize, layout.fields)
 		
 		expr.type = resolvedType
 	
@@ -103,10 +99,11 @@ class StructLit(ValueExpr):
 		state.initStructFields(ast, 0)
 	
 	def pretty(self, output, indent=0):
-		output.write(self.path[0].content, indent)
-		for p in self.path[1:]:
-			output.write('::')
-			output.write(p.content)
+		if self.path:
+			output.write(self.path[0].content, indent)
+			for p in self.path[1:]:
+				output.write('::')
+				output.write(p.content)
 		output.write('\n')
 		for field in self.fields[:-1]:
 			field.pretty(output, indent + 1)

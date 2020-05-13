@@ -1,4 +1,4 @@
-@ffi("C") extern fn printf(fmt: &byte, ...) -> int
+@ffi("C") extern unsafe fn printf(fmt: &byte, ...) -> int
 @ffi("C") extern fn atoi(str: &byte) -> int
 @ffi("C") extern fn exit(code: int)
 @ffi("C") extern fn malloc(size: usize) -> &byte
@@ -19,7 +19,7 @@ multi-line comment
 	#= nesting =#
 =#
 
-fn main(argc: usize, argv: &&byte)
+unsafe fn main(argc: usize, argv: &&byte)
 	if argc != 3
 		printf("Usage: %s <number> <number>\n", argv^)
 		exit(1)
@@ -45,7 +45,7 @@ fn main(argc: usize, argv: &&byte)
 	# let arr: [int * 10] = [_, 2, 3, 4, _, _, 7, 8, 9, 10]
 	# let arr: [int * 10] = [1, _ * 5, 7, 8, 9, 10]
 	
-	let dynarr: &[byte * 6] = malloc(6) as &[byte * 6]
+	let dynarr: &mut [byte * 6] = malloc(6) as &mut [byte * 6]
 	# dynarr^ = ['a' as byte, 's' as byte, 'd' as byte, 'f' as byte, 0 as byte, '!' as byte]
 	dynarr^[0] = 'a' as byte
 	dynarr^[1] = 's' as byte
