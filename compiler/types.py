@@ -77,6 +77,8 @@ class StructType(Type):
 		super().__init__(name, byteSize, align, 
 			isStructType=True, isCompositeType=True)
 		
+		self.name = name if name else '<anonymous struct>'
+		self.anon = name == None
 		self.dropFn = dropFn
 		self.fields = fields
 		self.fieldDict = {}
@@ -131,6 +133,7 @@ class TupleType(Type):
 		name = '({})'.format(', '.join(f.type.name for f in fields))
 		super().__init__(name, byteSize, align, isTupleType=True, isCompositeType=True)
 		self.fields = fields
+		self.anon = True
 
 SZ = PLATFORM_WORD_SIZE
 
