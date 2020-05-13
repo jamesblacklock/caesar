@@ -340,6 +340,7 @@ class Scope:
 		field = expr.field
 		fieldSpan = expr.fieldSpan
 		isIndex = len(expr.dynOffsets) > 0
+		isField = expr.isFieldAccess
 		
 		if symbol not in self.symbolInfo:
 			assert type(symbol) in (staticdecl.ConstDecl, fndecl.FnDecl)
@@ -391,8 +392,9 @@ class Scope:
 				else:
 					self.setLastUse(self.symbolInfo[borrow.symbol], expr, isRead=True)
 		
-		if fieldInfo:
-			fieldInfo.moved = not field.type.isCopyable
+		if isField:
+			if fieldInfo:
+				fieldInfo.moved = not field.type.isCopyable
 		elif isIndex:
 			pass
 		else:

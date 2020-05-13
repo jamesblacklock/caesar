@@ -415,16 +415,18 @@ def _SymbolAccess__analyzeSymbolAccess(state, expr, access, exprs, implicitType=
 		t = access.type
 		for tok in expr.path:
 			if t.isStructType:
+				name = 'type `{}`'.format(t.name) if not t.anon else 'struct'
 				if tok.content not in t.fieldDict:
-					logError(state, tok.span, 'type `{}` has no field `{}`'.format(t.name, tok.content))
+					logError(state, tok.span, '{} has no field `{}`'.format(name, tok.content))
 					access.type = None
 					return
 				
 				fieldInfo = t.fieldDict[tok.content]
 			elif t.isTupleType:
+				name = 'type `{}`'.format(t.name) if not t.anon else 'tuple'
 				fieldIndex = None if tok.type != TokenType.INTEGER else int(tok.content)
 				if fieldIndex == None or fieldIndex not in range(0, len(t.fields)):
-					logError(state, tok.span, 'type `{}` has no field `{}`'.format(t.name, tok.content))
+					logError(state, tok.span, '{} has no field `{}`'.format(name, tok.content))
 					access.type = None
 					return
 				

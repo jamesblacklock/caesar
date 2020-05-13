@@ -22,6 +22,8 @@ unsafe fn main()
     
     let x = { a: 5, b: 3 }
     
-    let s = StructWithUnions { u: { i: 5 }, asdf: 0x01020304 }
-    printf("%d; %d; %d\n", s.u.i, s.qwer, x.a * x.b)
+    let s: StructWithUnions = { u: { i: 5 }, asdf: 0x01020304 }
+    printf("%d; %d; %d\n", s.u.f, s.qwer, x.a * x.b)
+    
+    
     
