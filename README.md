@@ -30,10 +30,10 @@ macOS and relies upon [NASM](https://www.nasm.us/) as a dependency.
 
 "Hello world" example:
 
-	@ffi("C") extern fn printf(fmt: &byte, ...) -> int
+	@ffi("C") extern unsafe fn printf(fmt: &byte, ...) -> int
 	
 	fn main()
-	    printf("Hello World!\n")
+	    unsafe printf("Hello World!\n") # `printf` is unsafe because it uses C variadic paramaters 
 
 Building a program:
 
