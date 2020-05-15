@@ -631,7 +631,7 @@ def moveData(state, src, dest,
 	
 	opcode = 'mov'
 	if Storage.XMM in (src.storage, dest.storage):
-		opcode += 'q' if src.type.byteSize == 8 else 'd'
+		opcode += 'q' if type.byteSize == 8 else 'd'
 	
 	# setup source offset
 	if srcOffset:

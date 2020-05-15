@@ -1,6 +1,14 @@
 @ffi("C")
 extern unsafe fn printf(fmt: &byte, ...) -> int
 
+@ffi("C")
+extern fn testStruct(a: Test)
+
+struct Test
+    m: float
+    b: float
+    x: float64
+
 union UnionTest
     i: int
     f: float64
@@ -24,6 +32,9 @@ unsafe fn main()
     
     let s: StructWithUnions = { u: { f: 5.0 }, asdf: 0x01020304 }
     rrr(s)#, x)
+    
+    
+    testStruct({ m: 1.5, b: 3.0, x: 4.5 })
 
 
 unsafe fn rrr(q: StructWithUnions)#, p: { a: int64, b: int })
