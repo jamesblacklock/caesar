@@ -3,10 +3,12 @@ from io       import StringIO
 from .        import types
 
 class FundamentalType:
-	def __init__(self, byteSize, isFloatType=False, isCompositeType=False):
+	def __init__(self, byteSize, types=None, isFloatType=False, aligned=True):
 		self.byteSize = byteSize
+		self.types = types
+		self.isCompositeType = types != None
 		self.isFloatType = isFloatType
-		self.isCompositeType = isCompositeType
+		self.aligned = aligned
 	
 	def __str__(self):
 		return '{}{}'.format(
@@ -17,8 +19,35 @@ class FundamentalType:
 		return str(self)
 	
 	@staticmethod
+	def fromCompositeType(resolvedType):
+		types = []
+		# t = None
+		# offset = 0
+		aligned = True
+		for field in resolvedType.fields:
+			if field.offset % field.type.align != 0:
+				aligned = False
+			
+			t = FundamentalType.fromResolvedType(field.type)
+			if t.isCompositeType:
+				for (o, f) in t.types:
+					o += field.offset
+					types.append((o, f))
+			else:
+				types.append((field.offset, field.type))
+		
+		if len(types) == 1:
+			assert types[0].offset == 0
+			return types[0]
+		
+		assert len(types) > 0
+		return FundamentalType(resolvedType.byteSize, types, aligned=aligned)
+	
+	@staticmethod
 	def fromResolvedType(resolvedType):
-		if resolvedType.isFloatType:
+		if resolvedType.isCompositeType:
+			return FundamentalType.fromCompositeType(resolvedType)
+		elif resolvedType.isFloatType:
 			if resolvedType.byteSize == 4:
 				return F32
 			elif resolvedType.byteSize == 8:
@@ -33,7 +62,7 @@ class FundamentalType:
 			elif resolvedType.byteSize == 8:
 				return I64
 		
-		return FundamentalType(resolvedType.byteSize, isCompositeType=True)
+		assert 0
 
 I8   = FundamentalType(1)
 I16  = FundamentalType(2)

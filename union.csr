@@ -3,7 +3,7 @@ extern unsafe fn printf(fmt: &byte, ...) -> int
 
 union UnionTest
     i: int
-    f: float
+    f: float64
 
 struct StructWithUnions
     u: UnionTest
@@ -22,8 +22,60 @@ unsafe fn main()
     
     let x = { a: 5, b: 3 }
     
-    let s: StructWithUnions = { u: { i: 5 }, asdf: 0x01020304 }
-    printf("%d; %d; %d\n", s.u.f, s.qwer, x.a * x.b)
-    
-    
+    let s: StructWithUnions = { u: { f: 5.0 }, asdf: 0x01020304 }
+    rrr(s)#, x)
+
+
+unsafe fn rrr(q: StructWithUnions)#, p: { a: int64, b: int })
+    printf("%f; %d; %d\n", q.u.f, q.qwer, 0)#, p.a * p.b)
+
+
+
+
+
+
+# struct Range
+#     start: isize
+#     end: isize
+
+# struct RangeIter
+#     rng: &Range
+#     pos: isize = 0
+
+# @iter
+# fn newRangeIter(rng: &Range) -> RangeIter as retVal
+#     where rng owns retVal.rng
+#     { rng: &rng }
+
+# @iterNext
+# fn rangeIterNext(&mut iter) -> isize?
+#     if iter^.pos < iter^.rng^.end
+#         let i = iter^.pos
+#         iter^.pos += 1
+#         return i
+
+# @iterDone
+# fn rangeIterDone(&iter) -> bool
+#     return iter^.pos >= iter^.rng^.end
+
+# for i in 1..<10
+#     printf("%d\n", i)
+
+# let $temp0
+# $temp0 = Range { start: 1, end: 10 }
+# let mut $temp1 = newRangeIter(&$temp0)
+# loop
+#     if rangeIterDone(&$temp1)
+#         break
+#     else
+#         let i
+#         i = rangeIterNext(&$temp1)
+#         printf("%d\n", i)
+
+
+
+
+# struct LL(T: type)
+#     next: &owned LL
+#     data: T
     

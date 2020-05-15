@@ -255,13 +255,12 @@ class GeneratorState:
 			self.xmm8,   self.xmm9, self.xmm10, self.xmm11,
 			self.xmm12, self.xmm13, self.xmm14, self.xmm15,
 		]
-		self.floatArgRegs = [
+		self.xmmArgRegs = [
 			self.xmm0,   self.xmm1,  self.xmm2,  self.xmm3,
 			self.xmm4,   self.xmm5,  self.xmm6,  self.xmm7,
 		]
 		self.sp = 0
 		self.callStack = []
-		self.setupStackFrame()
 	
 	def generateAsm(self, output):
 		assert not (self.settings.stream and self.settings.omitFramePointer)
@@ -271,6 +270,8 @@ class GeneratorState:
 		# if not self.settings.omitFramePointer:
 		# 	output.write('\t\tpush rbp\n')
 		# 	output.write('\t\tmov rbp, rsp\n')
+		
+		self.setupStackFrame()
 		
 		irInstrs = self.fnIR.instr
 		if len(irInstrs) > 0:
@@ -320,34 +321,25 @@ class GeneratorState:
 	def setupStackFrame(self):
 		assert not self.fnIR.cVarArgs
 		
-		intRegs = list(reversed(self.intArgRegs))
-		floatRegs = list(reversed(self.floatArgRegs))
-		stackArgTypes = []
-		
-		for (i, fType) in enumerate(self.fnIR.paramTypes):
-			if fType.isFloatType and len(floatRegs) > 0:
-				reg = floatRegs.pop()
-				reg.type = fType
-				self.pushOperand(reg)
-				continue
-			elif len(intRegs) > 0:
-				reg = intRegs.pop()
-				reg.type = fType
-				self.pushOperand(reg)
-				continue
-			
-			stackArgTypes.append(fType)
-		
-		if len(stackArgTypes) > 0:
-			stackArgTargets = []
-			for (i, src) in enumerate(stackArgTypes):
-				assert not fType.isFloatType
-				target = StackTarget(fType, (i - len(stackArgTypes)) * 8)
-				stackArgTargets.append(target)
+		targets = [None for _ in range(0, len(self.fnIR.paramTypes))]
+		assignments = assignArgs(self, self.fnIR.paramTypes)
+		stackTargets = []
+		structParts = {}
+		for (i, (t, regs)) in enumerate(zip(self.fnIR.paramTypes, assignments)):
+			if regs == None:
+				target = StackTarget(t, 0)
+				targets[i] = target
+				stackTargets.append(target)
 				self.callStack.append(target)
-			
-			for target in reversed(stackArgTargets):
-				self.pushOperand(target)
+			elif len(regs) == 1:
+				r = regs[0]
+				r.type = t
+				targets[i] = r
+			else:
+				structParts[i] = (t, regs)
+		
+		for (i, target) in enumerate(reversed(stackTargets)):
+			target.offset = (i - len(stackTargets)) * 8
 		
 		retAddr = StackTarget(I64, -1)
 		retAddr.setActive(True)
@@ -358,6 +350,17 @@ class GeneratorState:
 		self.callStack.append(oldRbp)
 		
 		self.sp = 0
+		
+		for i in structParts:
+			(t, regs) = structParts[i]
+			target = self.findTarget(t, True)
+			targets[i] = target
+			for (j, reg) in enumerate(regs):
+				offset = ImmTarget(I64, j*8)
+				moveData(self, reg, target, destOffset=offset, type=I64)
+		
+		for target in targets:
+			self.pushOperand(target)
 	
 	def appendInstr(self, opcode, *operands, isLabel=False, isComment=False):
 		instr = Instr(opcode, operands, isLabel, isComment)
@@ -609,7 +612,7 @@ def moveData(state, src, dest,
 		elif destDeref:
 			type = src.type
 		else:
-			type = src.type if not dest.type or src.type.byteSize < dest.type.byteSize else dest.type
+			type = src.type if not dest.type or src.type and src.type.byteSize < dest.type.byteSize else dest.type
 	
 	assert type != None
 	assert dest.storage in (Storage.REG, Storage.XMM, Storage.STACK) or destDeref
@@ -639,7 +642,10 @@ def moveData(state, src, dest,
 				src = ImmTarget(IPTR, src.value + srcOffset.value)
 				srcOffset = None
 		else:
-			assert src.storage == Storage.STACK
+			if src.storage != Storage.STACK:
+				stack = state.findTarget(src.type, True)
+				moveData(state, src, stack)
+				src = stack
 			if srcOffset.storage == Storage.IMM:
 				src = StackTarget(src.type, src.offset - srcOffset.value)
 				srcOffset = None
@@ -666,7 +672,8 @@ def moveData(state, src, dest,
 		restoreSrc = saveReg(state, src)
 	
 	# move source to register if necessary
-	if not srcIsReg and srcDeref or srcIsStk and (destIsStk or destDeref):
+	if not srcIsReg and srcDeref or srcIsStk and (destIsStk or destDeref) or \
+		src.storage == Storage.IMM and dest.storage == Storage.XMM:
 		if srcIsStk and srcOffset and not srcDeref:
 			reg = getReg()
 			state.appendInstr('mov', 
@@ -1284,6 +1291,101 @@ def fcmp(state, ir):
 	state.popOperand()
 	state.pushOperand(state.rcx)
 
+class AMD64_CLASS(Enum):
+	INTEGER     = "INTEGER"
+	SSE         = "SSE"
+	# SSEUP       = "SSEUP"
+	# X87         = "X87"
+	# X87UP       = "X87UP"
+	# COMPLEX_X87 = "COMPLEX_X87"
+	MEMORY      = "MEMORY"		
+
+def classifyComposite(t):
+	# larger structs are passed via registers only if using larger SSE regs, which we don't support yet
+	# if t.byteSize > 64 or not t.aligned:
+	if t.byteSize > 16 or not t.aligned:
+		return [AMD64_CLASS.MEMORY]
+	
+	result = []
+	c = None
+	byteCt = 0
+	lastOffset = 0
+	for (offset, f) in t.types:
+		assert not f.isCompositeType
+		if offset > lastOffset:
+			byteCt += f.byteSize
+		else:
+			byteCt = max(byteCt, f.byteSize)
+		lastOffset = offset
+		c2 = classify(f)[0]
+		if c == c2:
+			pass
+		elif AMD64_CLASS.MEMORY in (c, c2):
+			c = AMD64_CLASS.MEMORY
+		elif AMD64_CLASS.INTEGER in (c, c2):
+			c = AMD64_CLASS.INTEGER
+		else:
+			c = AMD64_CLASS.SSE
+		
+		if byteCt >= 8:
+			assert byteCt == 8 # always true if fields are aligned
+			assert c != AMD64_CLASS.MEMORY
+			# if c == AMD64_CLASS.MEMORY:
+				# return [AMD64_CLASS.MEMORY]
+			result.append(c)
+			byteCt = 0
+			c = None
+	
+	if c:
+		result.append(c)
+	
+	return result
+
+def classify(t):
+	if t.isFloatType:
+		assert t.byteSize <= 8
+		return [AMD64_CLASS.SSE]
+	elif t.byteSize <= 8 and not t.isCompositeType:
+		return [AMD64_CLASS.INTEGER]
+	else:
+		assert t.isCompositeType
+		return classifyComposite(t)
+
+def assignArgs(state, types):
+	classifiers = []
+	for t in types:
+		classifiers.append(classify(t))
+	
+	intArgRegs = list(reversed(state.intArgRegs))
+	xmmArgRegs = list(reversed(state.xmmArgRegs))
+	assignments = []
+	for c in classifiers:
+		if c[0] == AMD64_CLASS.MEMORY:
+			assignments.append(None)
+			continue
+		
+		intCt = 0
+		xmmCt = 0
+		for ec in c:
+			if ec == AMD64_CLASS.INTEGER:
+				intCt += 1
+			else:
+				xmmCt += 1
+		
+		if len(xmmArgRegs) < xmmCt or len(intArgRegs) < intCt:
+			assignments.append(None)
+			continue
+		
+		assignment = []
+		for (i, ec) in enumerate(c):
+			if ec == AMD64_CLASS.INTEGER:
+				assignment.append(intArgRegs.pop())
+			else:
+				assignment.append(xmmArgRegs.pop())
+		assignments.append(assignment)
+	
+	return assignments
+
 def call(state, ir):
 	for reg in state.intRegs:
 		if reg.calleeSaved:
@@ -1298,38 +1400,24 @@ def call(state, ir):
 	
 	funcAddr = state.getOperand(0)
 	
-	intArgRegs = list(reversed(state.intArgRegs))
-	floatArgRegs = list(reversed(state.floatArgRegs))
-	stackArgs = []
-	xmmCount = 0
-	
+	args = []
 	for i in reversed(range(1, ir.argCt + 1)):
 		src = state.getOperand(i)
-		if src.type.isFloatType:
-			if len(floatArgRegs) > 0:
-				xmmCount += 1
-				reg = floatArgRegs.pop()
-				# if reg.active:
-				# 	stack = saveReg(state, reg)
-				# 	state.moveOperand(reg, stack)
-				reg.type = src.type
-				state.appendInstr('movq', 
-					Operand(reg, Usage.DEST), 
-					Operand(src, Usage.SRC))
-				continue
-		elif len(intArgRegs) > 0:
-			reg = intArgRegs.pop()
-			# if reg.active:
-			# 	stack = saveReg(state, reg)
-			# 	state.moveOperand(reg, stack)
-			reg.type = src.type
-			state.appendInstr('mov', 
-				Operand(reg, Usage.DEST), 
-				Operand(src, Usage.SRC))
+		args.append(src)
+	
+	xmmCount = 0
+	regAssignments = assignArgs(state, [arg.type for arg in args])
+	stackArgs = []
+	for (arg, regs) in zip(args, regAssignments):
+		if regs == None:
+			stackArgs.append(arg)
 			continue
 		
-		# assert not src.type.isFloatType
-		stackArgs.append(src)
+		for (i, reg) in enumerate(regs):
+			if type(reg) == XmmTarget:
+				xmmCount += 1
+			t = I64 if arg.type.byteSize > 8 else arg.type
+			moveData(state, arg, reg, srcOffset=ImmTarget(I64, i*8) if i else None, type=t)
 	
 	if len(stackArgs) > 0:
 		requiredStackSpace = len(stackArgs)
@@ -1346,15 +1434,17 @@ def call(state, ir):
 	
 	if ir.cVarArgs:
 		state.appendInstr('mov', 
-				Operand(state.rax, Usage.DEST, I8), 
-				Operand(ImmTarget(I8, xmmCount), Usage.SRC, I8))
+			Operand(state.rax, Usage.DEST, I8), 
+			Operand(ImmTarget(I8, xmmCount), Usage.SRC, I8))
 	
 	state.appendInstr('call', Operand(funcAddr, Usage.SRC))
 	
 	for _ in range(0, ir.argCt + 1):
 		state.popOperand()
 	
-	if ir.retType:
+	if ir.retType:	
+		retClass = classify(ir.retType)
+		assert len(retClass) == 1 and retClass[0] == AMD64_CLASS.INTEGER
 		state.rax.type = ir.retType
 		state.pushOperand(state.rax)
 
