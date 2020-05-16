@@ -82,8 +82,8 @@ def analyze(ast):
 	
 	state.popScope()
 	
-	# p = ASTPrinter()
-	# ast.pretty(p)
+	p = ASTPrinter()
+	ast.pretty(p)
 	
 	if state.failed:
 		exit(1)
@@ -113,6 +113,9 @@ class AnalyzerState:
 			return ArrayType(baseType, typeRef.count)
 		elif type(typeRef) == TupleTypeRef:
 			return analyzeTupleTypeRef(state, typeRef)
+		elif type(typeRef) == StructDecl:
+			typeRef.analyzeSig(state)
+			return typeRef.type
 		else:
 			assert 0
 	

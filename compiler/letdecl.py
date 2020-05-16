@@ -1,6 +1,6 @@
 from .ast    import AST, ValueSymbol
 from .       import access, block
-from .types  import getValidAssignType, typesMatch, PtrType
+from .types  import typesMatch, PtrType
 from .log    import logError
 
 TEMP_COUNTER = 0

@@ -229,7 +229,7 @@ class InfixOp(ValueExpr):
 				infixOp.type = infixOp.r.type
 				return
 		elif infixOp.l.type.isPtrType and infixOp.r.type.isPtrType:
-			if infixOp.op in PTR_PTR_OPS and getValidAssignType(infixOp.l.type, infixOp.r.type):
+			if infixOp.op in PTR_PTR_OPS and typesMatch(infixOp.l.type, infixOp.r.type):
 				infixOp.type = infixOp.l.type
 				return
 		elif typesMatch(infixOp.l.type, infixOp.r.type) and (infixOp.l.type.isIntType or infixOp.l.type.isFloatType):

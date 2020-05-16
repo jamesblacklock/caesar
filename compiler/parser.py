@@ -328,8 +328,9 @@ def parseFieldDecl(state):
 
 def parseStructOrUnionDecl(state, doccomment, anon, isUnion):
 	span = state.tok.span
-	state.advance()
-	state.skipSpace()
+	if state.tok.type in (TokenType.STRUCT, TokenType.UNION):
+		state.advance()
+		state.skipSpace()
 	
 	nameTok = None
 	if not anon and expectType(state, TokenType.NAME):
@@ -390,7 +391,7 @@ def parseBlock(state, parseItem, blockMarkers=BlockMarkers.BRACE,
 			state.advance()
 		elif state.skipEmptyLines():
 			if state.tok.type == openMarker or \
-				state.tok.type == TokenType.INDENT and state.nextTok.type == openMarker:
+				state.tok.type == TokenType.INDENT and state.nextTok.type == openMarker and not isIndentIncrease(state):
 				# open marker appears on the next line at the same indent level
 				needsTerm = True
 				expectIndent(state)
@@ -556,10 +557,14 @@ def parseArrayTypeRef(state):
 def parseTypeRef(state):
 	if state.tok.type in (TokenType.AMP, TokenType.AND):
 		return parsePtrTypeRef(state)
-	if state.tok.type == TokenType.LBRACK:
+	elif state.tok.type == TokenType.LBRACK:
 		return parseArrayTypeRef(state)
 	elif state.tok.type == TokenType.LPAREN:
 		return parseTupleTypeRef(state)
+	elif state.tok.type in (TokenType.LBRACE, TokenType.STRUCT):
+		return parseStructDecl(state, None, True)
+	elif state.tok.type == TokenType.UNION:
+		return parseUnionDecl(state, None, True)
 	
 	if expectType(state, TokenType.NAME, TokenType.VOID) == False:
 		return None
