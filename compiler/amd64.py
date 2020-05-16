@@ -321,8 +321,14 @@ class GeneratorState:
 	def setupStackFrame(self):
 		assert not self.fnIR.cVarArgs
 		
+		memStructReturn = False
+		if self.fnIR.retType and assignTargets(self, [self.fnIR.retType], ret=True)[0] == None:
+			memStructReturn = True
+			self.rdi.type = I64
+			self.pushOperand(self.rdi)
+		
 		targets = [None for _ in range(0, len(self.fnIR.paramTypes))]
-		assignments = assignArgs(self, self.fnIR.paramTypes)
+		assignments = assignTargets(self, self.fnIR.paramTypes, memStructReturn=memStructReturn)
 		stackTargets = []
 		structParts = {}
 		for (i, (t, regs)) in enumerate(zip(self.fnIR.paramTypes, assignments)):
@@ -338,10 +344,15 @@ class GeneratorState:
 			else:
 				structParts[i] = (t, regs)
 		
-		for (i, target) in enumerate(reversed(stackTargets)):
-			target.offset = (i - len(stackTargets)) * 8
+		offset = -16
+		for target in stackTargets:
+			offset -= max(8, target.type.byteSize)
 		
-		retAddr = StackTarget(I64, -1)
+		for target in reversed(stackTargets):
+			target.offset = offset
+			offset += max(8, target.type.byteSize)
+		
+		retAddr = StackTarget(I64, -8)
 		retAddr.setActive(True)
 		self.callStack.append(retAddr)
 		
@@ -1351,13 +1362,20 @@ def classify(t):
 		assert t.isCompositeType
 		return classifyComposite(t)
 
-def assignArgs(state, types):
+def assignTargets(state, types, ret=False, memStructReturn=False):
 	classifiers = []
 	for t in types:
 		classifiers.append(classify(t))
 	
-	intArgRegs = list(reversed(state.intArgRegs))
-	xmmArgRegs = list(reversed(state.xmmArgRegs))
+	if ret:
+		intArgRegs = list(reversed([state.rax, state.rdx]))
+		xmmArgRegs = list(reversed([state.xmm0, state.xmm1]))
+	else:
+		intArgRegs = list(reversed(state.intArgRegs))
+		xmmArgRegs = list(reversed(state.xmmArgRegs))
+		if memStructReturn:
+			intArgRegs.pop()
+	
 	assignments = []
 	for c in classifiers:
 		if c[0] == AMD64_CLASS.MEMORY:
@@ -1398,6 +1416,16 @@ def call(state, ir):
 			stack = saveReg(state, reg)
 			state.moveOperand(reg, stack)
 	
+	retRegs = None
+	retStackTarget = None
+	if ir.retType:
+		retRegs = assignTargets(state, [ir.retType], ret=True)[0]
+		if retRegs == None:
+			retStackTarget = state.findTarget(ir.retType, True)
+			state.appendInstr('lea', 
+				Operand(state.rdi, Usage.DEST, I64), 
+				Operand(retStackTarget, Usage.ADDR))
+	
 	funcAddr = state.getOperand(0)
 	
 	args = []
@@ -1406,7 +1434,7 @@ def call(state, ir):
 		args.append(src)
 	
 	xmmCount = 0
-	regAssignments = assignArgs(state, [arg.type for arg in args])
+	regAssignments = assignTargets(state, [arg.type for arg in args], memStructReturn=retStackTarget != None)
 	stackArgs = []
 	for (arg, regs) in zip(args, regAssignments):
 		if regs == None:
@@ -1442,11 +1470,21 @@ def call(state, ir):
 	for _ in range(0, ir.argCt + 1):
 		state.popOperand()
 	
-	if ir.retType:	
-		retClass = classify(ir.retType)
-		assert len(retClass) == 1 and retClass[0] == AMD64_CLASS.INTEGER
-		state.rax.type = ir.retType
-		state.pushOperand(state.rax)
+	if ir.retType:
+		if retStackTarget:
+			state.pushOperand(retStackTarget)
+		elif len(retRegs) == 1:
+			retRegs[0].type = ir.retType
+			state.pushOperand(retRegs[0])
+		elif len(retRegs) == 2:
+			stack = state.findTarget(ir.retType, True)
+			moveData(state, retRegs[0], stack, type=I64)
+			moveData(state, retRegs[1], stack, type=I64, destOffset=ImmTarget(I64, 8))
+			stack.type = ir.retType
+			state.pushOperand(stack)
+		else:
+			assert 0
+			
 
 def brOrBrIf(state, ir, nextIR, isBrIf):
 	offset = 1 if isBrIf else 0
@@ -1532,16 +1570,16 @@ def brIf(state, ir, nextIR):
 	
 def ret(state, ir):
 	if state.fnIR.retType:
+		retTargets = assignTargets(state, [state.fnIR.retType], ret=True)[0]
 		src = state.getOperand(0)
-		if src != state.rax:
-			state.rax.setActive(False)
-			state.rax.operandIndex = None
-			state.rax.type = src.type
-			state.appendInstr('mov', 
-				Operand(state.rax, Usage.DEST), 
-				Operand(src, Usage.SRC))
-			state.popOperand()
-			state.pushOperand(state.rax)
+		if retTargets == None:
+			moveData(state, src, state.operandStack[0], destDeref=True)
+			moveData(state, state.operandStack[0], state.rax)
+		else:
+			moveData(state, src, retTargets[0], type=I64)
+			if len(retTargets) > 1:
+				assert len(retTargets) == 2 and src.storage == Storage.STACK
+				moveData(state, src, retTargets[1], type=I64, srcOffset=ImmTarget(I64, 8))
 	
 	state.appendInstr('jmp {}__ret'.format(state.fnIR.name))
 
