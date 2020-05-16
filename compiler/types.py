@@ -255,17 +255,29 @@ def typesMatch(type1, type2):
 	elif type1.isIntType and type2.isIntType and \
 		type1.byteSize == type2.byteSize and type1.isSigned == type2.isSigned:
 		return True
-	elif type1.isTupleType and type2.isTupleType and \
-		len(type1.fields) == len(type2.fields):
-		for (f1, f2) in zip(type1.fields, type2.fields):
-			if not typesMatch(f1.type, f2.type):
-				return False
-		return True
-	elif type1.isArrayType and type2.isArrayType and type1.count == type2.count and \
-		typesMatch(type1.baseType, type2.baseType):
+	# elif type1.isTupleType and type2.isTupleType and \
+	# 	len(type1.fields) == len(type2.fields):
+	# 	for (f1, f2) in zip(type1.fields, type2.fields):
+	# 		if not typesMatch(f1.type, f2.type):
+	# 			return False
+	# 	return True
+	# elif type1.isArrayType and type2.isArrayType and type1.count == type2.count and \
+	# 	typesMatch(type1.baseType, type2.baseType):
+	# 	return True
+	elif type1.isCompositeType and type2.isCompositeType and shapesMatch(type1, type2):
 		return True
 	
 	return False
+
+def shapesMatch(type1, type2):
+	if type1.byteSize != type2.byteSize or type1.align != type2.align or len(type1.fields) != len(type2.fields):
+		return False
+	
+	for (f1, f2) in zip(type1.fields, type2.fields):
+		if f1.offset != f2.offset or not typesMatch(f1.type, f2.type):
+			return False
+	
+	return True
 
 def getValidAssignType(expectedType, foundType):
 	if expectedType is foundType:

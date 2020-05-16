@@ -43,7 +43,7 @@ class StructDecl(TypeSymbol):
 	
 	def pretty(self, output, indent=0):
 		output.write(self.declType + ' ', indent)
-		output.write(self.name)
+		if self.name: output.write(self.name)
 		output.write('\n')
 		for field in self.fields[:-1]:
 			field.pretty(output, indent + 1)

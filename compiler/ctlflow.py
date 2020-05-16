@@ -74,11 +74,6 @@ class Return(AST):
 		
 		ret.block.exprs.append(ret)
 		
-		# assignType = getValidAssignType(state.scope.fnDecl.returnType, returnType)
-		# if assignType:
-		# 	if ret.expr:
-		# 		# ret.expr.type = assignType
-		# else:
 		if not typesMatch(state.scope.fnDecl.returnType, returnType):
 			foundType = ret.expr.type if ret.expr else Void
 			span = ret.expr.span if ret.expr else ret.span

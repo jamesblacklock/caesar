@@ -1,5 +1,5 @@
 from .ast import ValueSymbol
-from .types import getValidAssignType
+from .types import typesMatch
 from .log   import logError
 from .      import attrs
 
@@ -37,10 +37,7 @@ class StaticDecl(ValueSymbol):
 			decl.typeModifiers.uninit = False
 		
 		if decl.type:
-			assignType = getValidAssignType(decl.type, decl.expr.type)
-			if assignType:
-				decl.expr.type = assignType
-			else:
+			if not typesMatch(decl.type, decl.expr.type):
 				logError(state, decl.expr.span, 'expected type {}, found {}'
 					.format(decl.type, decl.expr.type))
 		else:

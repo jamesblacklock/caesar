@@ -1,5 +1,5 @@
 from .ast   import ValueExpr
-from .types import getValidAssignType, Void, TupleType, ArrayType
+from .types import typesMatch, Void, TupleType, ArrayType
 from .      import ir
 
 class TupleLit(ValueExpr):
@@ -57,7 +57,7 @@ class ArrayLit(ValueExpr):
 		
 		for expr in arr.values[1:]:
 			state.analyzeNode(expr, resolvedElementType)
-			if getValidAssignType(resolvedElementType, expr.type) == None:
+			if not typesMatch(resolvedElementType, expr.type):
 				logError(state, expr.span, 'expected {}, found {}'.format(resolvedElementType, expr.type))
 		
 		count = max(len(arr.values), count)

@@ -1,5 +1,5 @@
 from .ast   import ValueExpr
-from .types import getValidAssignType
+from .types import typesMatch
 from .ir    import FundamentalType, Call, IExtend, Extend, FExtend, IPTR, F64
 from .log   import logError
 
@@ -32,11 +32,9 @@ class FnCall(ValueExpr):
 			return
 		
 		for (i, (expected, arg)) in enumerate(zip(fnType.params, fnCall.args)):
-			fnCall.args[i] = state.analyzeNode(arg, expected.type)
-			assignType = getValidAssignType(expected.type, arg.type)
-			if assignType:
-				arg.type = assignType
-			else:
+			arg = state.analyzeNode(arg, expected.type)
+			fnCall.args[i] = arg
+			if not typesMatch(expected.type, arg.type):
 				logError(state, arg.span, 
 					'expected type {}, found {}'.format(expected.type, arg.type))
 		
