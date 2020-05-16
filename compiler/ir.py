@@ -34,11 +34,11 @@ class FundamentalType:
 					o += field.offset
 					types.append((o, f))
 			else:
-				types.append((field.offset, field.type))
+				types.append((field.offset, t))
 		
 		if len(types) == 1:
-			assert types[0].offset == 0
-			return types[0]
+			assert types[0][0] == 0
+			return types[0][1]
 		
 		assert len(types) > 0
 		return FundamentalType(resolvedType.byteSize, types, aligned=aligned)

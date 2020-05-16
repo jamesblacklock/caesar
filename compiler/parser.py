@@ -253,7 +253,7 @@ def parseFnDeclParams(state):
 		state.skipSpace()
 		
 		if expectType(state, TokenType.COLON) == False:
-			return FnParam(name, None, span)
+			return FnParam(nameTok, None, span)
 		
 		Span.merge(span, state.tok.span)
 		
