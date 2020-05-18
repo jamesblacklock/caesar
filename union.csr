@@ -1,8 +1,8 @@
 @ffi("C")
 extern unsafe fn printf(fmt: &byte, ...) -> int
 
-@ffi("C")
-extern fn testStruct(a: Test)
+# @ffi("C")
+# extern fn testStruct(a: Test)
 
 struct Test
     m: float
@@ -28,65 +28,23 @@ unsafe fn main()
     u.f = 123.0
     printf("as int: %d; as float: %f\n", u.i, u.f)
     
-    let x = { a: 5, b: 3 }
-    
     let s: StructWithUnions = { u: { f: 5.0 }, asdf: 0x01020304 }
-    rrr(s)#, x)
+    let x = rrr(s, {a: 14, b: 2})
+    printf("returned from rrr: { a: %d, b: %d }\n", x.a, x.b)
     
+    let yy = {x: 2i64, y: 3i64, z: 4i64}
+    let asdf = {a:234,b:567,c:890}
     
-    testStruct({ m: 1.5, b: 3.0, x: 4.5 })
-
-
-unsafe fn rrr(q: StructWithUnions)#, p: { a: int64, b: int })
-    printf("%f; %d; %d\n", q.u.f, q.qwer, 0)#, p.a * p.b)
-
-
-
-
-
-
-# struct Range
-#     start: isize
-#     end: isize
-
-# struct RangeIter
-#     rng: &Range
-#     pos: isize = 0
-
-# @iter
-# fn newRangeIter(rng: &Range) -> RangeIter as retVal
-#     where rng owns retVal.rng
-#     { rng: &rng }
-
-# @iterNext
-# fn rangeIterNext(&mut iter) -> isize?
-#     if iter^.pos < iter^.rng^.end
-#         let i = iter^.pos
-#         iter^.pos += 1
-#         return i
-
-# @iterDone
-# fn rangeIterDone(&iter) -> bool
-#     return iter^.pos >= iter^.rng^.end
-
-# for i in 1..<10
-#     printf("%d\n", i)
-
-# let $temp0
-# $temp0 = Range { start: 1, end: 10 }
-# let mut $temp1 = newRangeIter(&$temp0)
-# loop
-#     if rangeIterDone(&$temp1)
-#         break
-#     else
-#         let i
-#         i = rangeIterNext(&$temp1)
-#         printf("%d\n", i)
-
-
-
-
-# struct LL(T: type)
-#     next: &owned LL
-#     data: T
+    let w = afaf({a: 71, b: (1,78)}.b.0, yy, {x: 17, y: 23, z: 34}, &{ty: 5})
+    printf("returned from afaf: { x: %d, y: %d, z: %d }\n", w.x, w.y, w.z)
     
+    # testStruct({ m: 1.5, b: 3.0, x: 4.5 })
+
+
+unsafe fn rrr(q: StructWithUnions, p: { a: int64, b: int }) -> { a: int64, b: int }
+    printf("%f; %d; %d\n", q.u.f, q.qwer, p.a * p.b)
+    {a: 8148, b: 9832}
+
+unsafe fn afaf(a: int, b: { x: int64, y: int64, z: int64 }, qq: { x: int64, y: int64, z: int64 }, c: &{ty: int}) -> { x: int64, y: int64, z: int64 }
+    printf("received: %d, { x: %d, y: %d, z: %d }, { x: %d, y: %d, z: %d }, %d\n", a, b.x, b.y, b.z, qq.x, qq.y, qq.z, c^.ty)
+    {x:1,y:2,z:3}
