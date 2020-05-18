@@ -82,8 +82,8 @@ def analyze(ast):
 	
 	state.popScope()
 	
-	p = ASTPrinter()
-	ast.pretty(p)
+	# p = ASTPrinter()
+	# ast.pretty(p)
 	
 	if state.failed:
 		exit(1)

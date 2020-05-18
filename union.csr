@@ -45,6 +45,14 @@ unsafe fn rrr(q: StructWithUnions, p: { a: int64, b: int }) -> { a: int64, b: in
     printf("%f; %d; %d\n", q.u.f, q.qwer, p.a * p.b)
     {a: 8148, b: 9832}
 
-unsafe fn afaf(a: int, b: { x: int64, y: int64, z: int64 }, qq: { x: int64, y: int64, z: int64 }, c: &{ty: int}) -> { x: int64, y: int64, z: int64 }
-    printf("received: %d, { x: %d, y: %d, z: %d }, { x: %d, y: %d, z: %d }, %d\n", a, b.x, b.y, b.z, qq.x, qq.y, qq.z, c^.ty)
+unsafe fn afaf(a: int, 
+    b: struct
+        x: int64
+        y: int64
+        z: int64
+    qq: { x: int64
+        y: int64, z: int64 }
+    c: &struct {ty: int}) -> { x: int64, y: int64, z: int64 }
+    printf("received: %d, { x: %d, y: %d, z: %d }, { x: %d, y: %d, z: %d }, %d\n", 
+        a, b.x, b.y, b.z, qq.x, qq.y, qq.z, c^.ty)
     {x:1,y:2,z:3}

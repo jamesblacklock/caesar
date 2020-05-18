@@ -380,7 +380,7 @@ class GeneratorState:
 	def appendInstr(self, opcode, *operands, isLabel=False, isComment=False):
 		instr = Instr(opcode, operands, isLabel, isComment)
 		self.instr.append(instr)
-		print(instr)
+		# print(instr)
 	
 	def findReg(self, type=None, exclude=[]):
 		for reg in self.intRegs:
@@ -1672,7 +1672,7 @@ class OutputWriter:
 		self.output = StringIO()
 	
 	def write(self, s):
-		sys.stdout.write(s)
+		# sys.stdout.write(s)
 		self.output.write(s)
 	
 	def getvalue(self):
