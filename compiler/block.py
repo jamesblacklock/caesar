@@ -80,7 +80,6 @@ class Block(ValueExpr):
 				block.scopeType == ScopeType.FN and implicitType != Void:
 				retVal = expr
 			else:
-				
 				expr = state.analyzeNode(expr, implicitType if lastExpr else Void)
 				if type(expr) in (ctlflow.Break, ctlflow.Continue):
 					expr = expr.block

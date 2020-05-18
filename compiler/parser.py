@@ -938,7 +938,7 @@ def parseUnsafeBlock(state):
 	state.skipSpace()
 	expr = parseExpr(state, ExprClass.FN, allowSimpleFnCall=True)
 	if type(expr) != Block:
-		expr = Block([expr], expr.span)
+		expr = Block([expr], expr.span, ScopeType.BLOCK)
 	
 	expr.span = Span.merge(span, expr.span)
 	expr.unsafe = True
