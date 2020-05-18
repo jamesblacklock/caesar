@@ -3,6 +3,8 @@ from .token     import TokenType
 from .ast       import ValueExpr
 from .primitive import IntLit
 from .coercion  import Coercion
+from .block     import Block
+from .ifexpr    import If
 from .types     import canPromote, typesMatch, canAccommodate, hasDefiniteType, \
                        Int32, Int64, UInt64, ISize, USize, Bool, Byte, Char
 from .ir        import FAdd, FSub, FMul, FDiv, FEq, FNEq, FGreater, FLess, FGreaterEq, FLessEq, \
@@ -167,32 +169,26 @@ class InfixOp(ValueExpr):
 					infixOp.l = state.analyzeNode(infixOp.l, UInt64)
 			else:
 				assert 0
-		elif rIndefinite:
+		elif rIndefinite and type(infixOp.l) not in (Block, If):
 			infixOp.l = state.analyzeNode(infixOp.l, implicitType)
-			if type(infixOp.r) == IntLit:
-				if infixOp.l.type and infixOp.l.type.isPtrType:
-					if infixOp.op in PTR_INT_OPS:
-						infixOp.r = state.analyzeNode(infixOp.r, ISize if infixOp.r.value < 0 else USize)
-					else:
-						opErr()
-						return
+			if type(infixOp.r) == IntLit and infixOp.l.type and infixOp.l.type.isPtrType:
+				if infixOp.op in PTR_INT_OPS:
+					infixOp.r = state.analyzeNode(infixOp.r, ISize if infixOp.r.value < 0 else USize)
 				else:
-					infixOp.r = state.analyzeNode(infixOp.r, infixOp.l.type)
+					opErr()
+					return
 			else:
-				assert 0
-		elif lIndefinite:
+				infixOp.r = state.analyzeNode(infixOp.r, infixOp.l.type)
+		elif lIndefinite or type(infixOp.l) in (Block, If):
 			infixOp.r = state.analyzeNode(infixOp.r, implicitType)
-			if type(infixOp.l) == IntLit:
-				if infixOp.r.type and infixOp.r.type.isPtrType:
-					if infixOp.op in PTR_INT_OPS:
-						infixOp.l = state.analyzeNode(infixOp.l, ISize if infixOp.l.value < 0 else USize)
-					else:
-						opErr()
-						return
+			if type(infixOp.l) == IntLit and infixOp.r.type and infixOp.r.type.isPtrType:
+				if infixOp.op in PTR_INT_OPS:
+					infixOp.l = state.analyzeNode(infixOp.l, ISize if infixOp.l.value < 0 else USize)
 				else:
-					infixOp.l = state.analyzeNode(infixOp.l, infixOp.r.type)
+					opErr()
+					return
 			else:
-				assert 0
+				infixOp.l = state.analyzeNode(infixOp.l, infixOp.r.type)
 		else:
 			infixOp.l = state.analyzeNode(infixOp.l, implicitType)
 			infixOp.r = state.analyzeNode(infixOp.r, implicitType)

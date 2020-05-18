@@ -1,5 +1,5 @@
 from .ast   import ValueExpr
-from .types import getValidAssignType, Void, Bool, OptionType
+from .types import canPromote, typesMatch, Void, Bool, OptionType
 from .ir    import getInputInfo, beginBlock, Br, BrIf, Ret, BlockMarker
 
 class If(ValueExpr):
@@ -31,18 +31,24 @@ class If(ValueExpr):
 		state.scope.didBreak = state.scope.didBreak or ifExpr.doesBreak
 		
 		if ifExpr.doesReturn:
-			resolvedType = Void#implicitType if implicitType else Void
+			resolvedType = implicitType if implicitType else Void
 		elif ifExpr.block.doesReturn:
 			resolvedType = ifExpr.elseBlock.type
 		elif ifExpr.elseBlock.doesReturn:
 			resolvedType = ifExpr.block.type
+		elif typesMatch(resolvedType, elseResolvedType):
+			pass
+		elif canPromote(resolvedType, elseResolvedType):
+			lastExpr = ifExpr.block[-1]
+			ifExpr.block[-1] = coercion.Coercion(lastExpr, lastExpr.span, resolvedType=elseResolvedType)
+			resolvedType = elseResolvedType
+		elif canPromote(elseResolvedType, resolvedType):
+			lastExpr = ifExpr.elseBlock[-1]
+			ifExpr.elseBlock[-1] = coercion.Coercion(lastExpr, lastExpr.span, resolvedType=resolvedType)
 		else:
-			superType = getValidAssignType(resolvedType, elseResolvedType)
-			if not superType:
-				superType = getValidAssignType(elseResolvedType, resolvedType)
-				if not superType:
-					superType = OptionType(resolvedType, elseResolvedType)
-			resolvedType = superType
+			# ifExpr.block[-1] = ??
+			# ifExpr.elseBlock[-1] = ??
+			resolvedType = OptionType(resolvedType, elseResolvedType)
 		
 		ifExpr.type = resolvedType
 	
@@ -58,7 +64,10 @@ class If(ValueExpr):
 		state.appendInstr(BrIf(ast, ifBlock.index, elseBlock.index))
 		
 		beginBlock(state, ast.block, ifBlock)
+		assert not state.didBreak
 		ast.block.writeIR(state)
+		didBreak = state.didBreak
+		state.didBreak = False
 		
 		endIfBlock = None
 		lastType = type(state.instr[-1])
@@ -70,6 +79,8 @@ class If(ValueExpr):
 		state.setupLocals(inputTypes, inputSymbols)
 		state.appendInstr(BlockMarker(ast.elseBlock, elseBlock.index))
 		ast.elseBlock.writeIR(state)
+		
+		state.didBreak = state.didBreak and didBreak
 		
 		lastType = type(state.instr[-1])
 		if lastType not in (Br, BrIf, Ret):

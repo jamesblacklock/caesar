@@ -29,8 +29,6 @@ class Field(ValueExpr):
 	
 	def pretty(self, output, indent=0):
 		self.expr.pretty(output, indent)
-		if self.deref:
-			output.write('^')
 		for p in self.path:
 			output.write('.')
 			output.write(p.content)

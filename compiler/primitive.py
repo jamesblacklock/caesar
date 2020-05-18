@@ -131,7 +131,7 @@ class IntLit(ValueExpr):
 		self.suffix = suffix
 	
 	def analyze(lit, state, implicitType):
-		if implicitType and not types.canAccommodate(implicitType, lit.value):
+		if not implicitType or not implicitType.isIntLikeType or not types.canAccommodate(implicitType, lit.value):
 			implicitType = None
 		
 		if lit.suffix == 'i8':

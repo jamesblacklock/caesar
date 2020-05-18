@@ -34,7 +34,7 @@ class FnCall(ValueExpr):
 		for (i, (expected, arg)) in enumerate(zip(fnType.params, fnCall.args)):
 			arg = state.analyzeNode(arg, expected.type)
 			fnCall.args[i] = arg
-			if not typesMatch(expected.type, arg.type):
+			if arg.type and not typesMatch(expected.type, arg.type):
 				logError(state, arg.span, 
 					'expected type {}, found {}'.format(expected.type, arg.type))
 		

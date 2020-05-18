@@ -21,6 +21,7 @@ class LoopCtlFlow(AST):
 			state.scope.doBreak(expr, isContinue)
 	
 	def writeIR(ast, state, isContinue=False):
+		state.didBreak = True
 		if isContinue:
 			for symbol in state.loopInfo.inputSymbols:
 				offset = state.localOffset(symbol)
@@ -85,6 +86,7 @@ class Return(AST):
 		return ret.block
 	
 	def writeIR(ast, state):
+		state.didBreak = True
 		if ast.expr != None:
 			ast.expr.writeIR(state)
 		

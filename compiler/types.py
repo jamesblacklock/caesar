@@ -37,7 +37,7 @@ class PrimitiveType(Type):
 	def __init__(self, name, byteSize, isIntType=False, 
 		isIntLikeType=False, isFloatType=False, isSigned=False):
 		super().__init__(name, byteSize, byteSize, 
-			isPrimitiveType=True, isIntType=isIntType, 
+			isPrimitiveType=True, isIntLikeType=isIntLikeType, isIntType=isIntType, 
 			isFloatType=isFloatType, isSigned=isSigned)
 
 class OptionType(Type):
@@ -255,15 +255,6 @@ def typesMatch(type1, type2):
 	elif type1.isIntType and type2.isIntType and \
 		type1.byteSize == type2.byteSize and type1.isSigned == type2.isSigned:
 		return True
-	# elif type1.isTupleType and type2.isTupleType and \
-	# 	len(type1.fields) == len(type2.fields):
-	# 	for (f1, f2) in zip(type1.fields, type2.fields):
-	# 		if not typesMatch(f1.type, f2.type):
-	# 			return False
-	# 	return True
-	# elif type1.isArrayType and type2.isArrayType and type1.count == type2.count and \
-	# 	typesMatch(type1.baseType, type2.baseType):
-	# 	return True
 	elif type1.isCompositeType and type2.isCompositeType and shapesMatch(type1, type2):
 		return True
 	
@@ -279,89 +270,89 @@ def shapesMatch(type1, type2):
 	
 	return True
 
-def getValidAssignType(expectedType, foundType):
-	if expectedType is foundType:
-		return expectedType
-	elif expectedType == None:
-		return foundType
-	elif foundType == None:
-		return expectedType
-	elif expectedType.isPtrType and foundType.isPtrType and \
-		getValidAssignType(expectedType.baseType, foundType.baseType) != None and \
-		expectedType.indLevel == foundType.indLevel:
-		return expectedType
-	elif expectedType.isOptionType:
-		if foundType.isOptionType and len(expectedType.types) == len(foundType.types):
-			for t in expectedType.types:
-				if t not in foundType.types:
-					return None
-			return expectedType
-		elif foundType in expectedType.types:
-			return expectedType
-	elif expectedType.isIntType and foundType.isIntType and \
-		expectedType.byteSize == foundType.byteSize and expectedType.isSigned == foundType.isSigned:
-		return expectedType
-	elif expectedType.isTupleType or foundType.isTupleType:
-		return getValidTupleAssignType(expectedType, foundType)
-	elif expectedType.isArrayType or foundType.isArrayType:
-		return getValidArrayAssignType(expectedType, foundType)
-	elif expectedType.isStructType and foundType.isStructType:
-		return getValidStructAssignType(expectedType, foundType)
-	else:
-		return None
+# def getValidAssignType(expectedType, foundType):
+# 	if expectedType is foundType:
+# 		return expectedType
+# 	elif expectedType == None:
+# 		return foundType
+# 	elif foundType == None:
+# 		return expectedType
+# 	elif expectedType.isPtrType and foundType.isPtrType and \
+# 		getValidAssignType(expectedType.baseType, foundType.baseType) != None and \
+# 		expectedType.indLevel == foundType.indLevel:
+# 		return expectedType
+# 	elif expectedType.isOptionType:
+# 		if foundType.isOptionType and len(expectedType.types) == len(foundType.types):
+# 			for t in expectedType.types:
+# 				if t not in foundType.types:
+# 					return None
+# 			return expectedType
+# 		elif foundType in expectedType.types:
+# 			return expectedType
+# 	elif expectedType.isIntType and foundType.isIntType and \
+# 		expectedType.byteSize == foundType.byteSize and expectedType.isSigned == foundType.isSigned:
+# 		return expectedType
+# 	elif expectedType.isTupleType or foundType.isTupleType:
+# 		return getValidTupleAssignType(expectedType, foundType)
+# 	elif expectedType.isArrayType or foundType.isArrayType:
+# 		return getValidArrayAssignType(expectedType, foundType)
+# 	elif expectedType.isStructType and foundType.isStructType:
+# 		return getValidStructAssignType(expectedType, foundType)
+# 	else:
+# 		return None
 
-def getValidStructAssignType(expectedType, foundType):
-	if expectedType.byteSize != foundType.byteSize:
-		return None
-	if expectedType.align != foundType.align:
-		return None
+# def getValidStructAssignType(expectedType, foundType):
+# 	if expectedType.byteSize != foundType.byteSize:
+# 		return None
+# 	if expectedType.align != foundType.align:
+# 		return None
 	
-	expectedFields = expectedType.fields
-	foundFields    =    foundType.fields
-	if len(expectedFields) != len(foundFields):
-		return None
+# 	expectedFields = expectedType.fields
+# 	foundFields    =    foundType.fields
+# 	if len(expectedFields) != len(foundFields):
+# 		return None
 	
-	for (expected, found) in zip(expectedFields, foundFields):
-		if getValidAssignType(expected.type, found.type) == None:
-			return None
-		if expected.offset != found.offset:
-			return None
-		if expected.name != found.name:
-			return None
+# 	for (expected, found) in zip(expectedFields, foundFields):
+# 		if getValidAssignType(expected.type, found.type) == None:
+# 			return None
+# 		if expected.offset != found.offset:
+# 			return None
+# 		if expected.name != found.name:
+# 			return None
 	
-	return expectedType
+# 	return expectedType
 
-def getValidArrayAssignType(expectedType, foundType):
-	if expectedType.isArrayType and foundType.isArrayType:
-		if getValidAssignType(expectedType.baseType, foundType.baseType) == None:
-			return None
-		if expectedType.count != foundType.count:
-			return None
-		return expectedType
+# def getValidArrayAssignType(expectedType, foundType):
+# 	if expectedType.isArrayType and foundType.isArrayType:
+# 		if getValidAssignType(expectedType.baseType, foundType.baseType) == None:
+# 			return None
+# 		if expectedType.count != foundType.count:
+# 			return None
+# 		return expectedType
 	
-	if not (expectedType.isCompositeType and foundType.isCompositeType):
-		return None
+# 	if not (expectedType.isCompositeType and foundType.isCompositeType):
+# 		return None
 	
-	return getValidTupleAssignType(expectedType, foundType)
+# 	return getValidTupleAssignType(expectedType, foundType)
 
-def getValidTupleAssignType(expectedType, foundType):
-	if expectedType.byteSize != foundType.byteSize:
-		return None
-	if expectedType.align != foundType.align:
-		return None
+# def getValidTupleAssignType(expectedType, foundType):
+# 	if expectedType.byteSize != foundType.byteSize:
+# 		return None
+# 	if expectedType.align != foundType.align:
+# 		return None
 	
-	expectedFields = expectedType.fields if expectedType.isCompositeType else [FieldInfo(None, expectedType, 0)]
-	foundFields    =    foundType.fields if    foundType.isCompositeType else [FieldInfo(None,    foundType, 0)]
-	if len(expectedFields) != len(foundFields):
-		return None
+# 	expectedFields = expectedType.fields if expectedType.isCompositeType else [FieldInfo(None, expectedType, 0)]
+# 	foundFields    =    foundType.fields if    foundType.isCompositeType else [FieldInfo(None,    foundType, 0)]
+# 	if len(expectedFields) != len(foundFields):
+# 		return None
 	
-	for (expected, found) in zip(expectedFields, foundFields):
-		if getValidAssignType(expected.type, found.type) == None:
-			return None
-		if expected.offset != found.offset:
-			return None
+# 	for (expected, found) in zip(expectedFields, foundFields):
+# 		if getValidAssignType(expected.type, found.type) == None:
+# 			return None
+# 		if expected.offset != found.offset:
+# 			return None
 	
-	return expectedType
+# 	return expectedType
 
 def canPromote(fromType, toType):
 	return (fromType and toType) and \

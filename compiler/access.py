@@ -108,7 +108,7 @@ class SymbolAccess(ValueExpr):
 			output.write('^' * self.deref)
 		if self.field:
 			output.write('.' + self.field.name)
-		if self.staticOffset or self.dynOffsets:
+		if not self.field and self.staticOffset or self.dynOffsets:
 			output.write('[')
 			needPlus = False
 			if self.staticOffset:
@@ -333,6 +333,9 @@ class SymbolWrite(SymbolAccess):
 			state.appendInstr(DerefW(expr))
 		else:
 			expr.rvalue.writeIR(state)
+			if state.didBreak:
+				return
+			
 			stackOffset = 0 if expr.symbol not in state.operandsBySymbol else state.localOffset(expr.symbol)
 			# if expr.symbol in state.operandsBySymbol:
 				# stackOffset = state.localOffset(expr.symbol)
@@ -415,17 +418,17 @@ def _SymbolAccess__analyzeSymbolAccess(state, expr, access, exprs, implicitType=
 		t = access.type
 		for tok in expr.path:
 			if t.isStructType:
-				name = 'type `{}`'.format(t.name) if not t.anon else 'struct'
 				if tok.content not in t.fieldDict:
+					name = 'type `{}`'.format(t.name) if not t.anon else 'struct'
 					logError(state, tok.span, '{} has no field `{}`'.format(name, tok.content))
 					access.type = None
 					return
 				
 				fieldInfo = t.fieldDict[tok.content]
 			elif t.isTupleType:
-				name = 'type `{}`'.format(t.name) if not t.anon else 'tuple'
 				fieldIndex = None if tok.type != TokenType.INTEGER else int(tok.content)
 				if fieldIndex == None or fieldIndex not in range(0, len(t.fields)):
+					name = 'type `{}`'.format(t.name) if not t.anon else 'tuple'
 					logError(state, tok.span, '{} has no field `{}`'.format(name, tok.content))
 					access.type = None
 					return
@@ -439,7 +442,7 @@ def _SymbolAccess__analyzeSymbolAccess(state, expr, access, exprs, implicitType=
 			offset += fieldInfo.offset
 			t = fieldInfo.type
 		
-		access.staticOffset += fieldInfo.offset
+		access.staticOffset += offset
 		access.type = fieldInfo.type
 		if len(access.dynOffsets) == 0:
 			access.field = fieldInfo

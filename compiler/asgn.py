@@ -14,21 +14,8 @@ class Asgn(AST):
 		self.lvalue = lvalue
 		self.rvalue = rvalue
 	
-	# def lower(asgn, state):
-	# 	return asgn
-		
-		
-		
-	# 		asgn.hasRValueTempSymbol = True
-	
 	def analyze(asgn, state, ignoredImplicitType):
 		return access.SymbolAccess.analyzeSymbolAccess(state, asgn)
-		
-		
-		
-		# asgn.lvalue = state.analyzeNode(asgn.lvalue)
-		# if asgn.hasRValueTempSymbol:
-		# 	asgn.rvalue.exprs[0].type = asgn.lvalue.type
 	
 	def pretty(self, output, indent=0):
 		self.lvalue.pretty(output, indent)

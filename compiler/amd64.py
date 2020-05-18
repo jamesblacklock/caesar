@@ -336,7 +336,6 @@ class GeneratorState:
 				target = StackTarget(t, 0)
 				targets[i] = target
 				stackTargets.append(target)
-				self.callStack.append(target)
 			elif len(regs) == 1:
 				r = regs[0]
 				r.type = t
@@ -344,21 +343,24 @@ class GeneratorState:
 			else:
 				structParts[i] = (t, regs)
 		
-		offset = -16
-		for target in stackTargets:
-			offset -= max(8, target.type.byteSize)
+		offset = -8
+		for target in stackTargets[:-1]:
+			alignedSize = target.type.byteSize
+			if alignedSize % 8 != 0:
+				alignedSize += alignedSize % 8
+			offset -= alignedSize
 		
 		for target in reversed(stackTargets):
 			target.offset = offset
-			offset += max(8, target.type.byteSize)
+			offset += target.type.byteSize
+			if offset % 8 != 0:
+				offset += offset % 8
+			
+			self.callStack.append(target)
 		
-		retAddr = StackTarget(I64, -8)
+		retAddr = StackTarget(I64, 0)
 		retAddr.setActive(True)
 		self.callStack.append(retAddr)
-		
-		oldRbp = StackTarget(I64, 0)
-		oldRbp.setActive(True)
-		self.callStack.append(oldRbp)
 		
 		self.sp = 0
 		
@@ -376,7 +378,7 @@ class GeneratorState:
 	def appendInstr(self, opcode, *operands, isLabel=False, isComment=False):
 		instr = Instr(opcode, operands, isLabel, isComment)
 		self.instr.append(instr)
-		print(instr)
+		# print(instr)
 	
 	def findReg(self, type=None, exclude=[]):
 		for reg in self.intRegs:
@@ -765,9 +767,11 @@ def moveStruct(state, src, dest, srcDeref, destDeref, srcOffset, destOffset, typ
 		partialType = FundamentalType(byteSize)
 		
 		if not srcDeref:
-			partialSrc = StackTarget(partialType, src.offset - offset)
+			partialSrcOffset = src.offset + offset if src.fromTop else src.offset - offset
+			partialSrc = StackTarget(partialType, partialSrcOffset, fromTop=src.fromTop)
 		if not destDeref:
-			partialDest = StackTarget(partialType, dest.offset - offset)
+			partialDestOffset = dest.offset + offset if dest.fromTop else dest.offset - offset
+			partialDest = StackTarget(partialType, partialDestOffset, fromTop=dest.fromTop)
 		
 		moveData(state, partialSrc, partialDest, srcDeref, destDeref, srcOffset, destOffset, partialType)
 		offset += byteSize
@@ -1457,8 +1461,12 @@ def call(state, ir):
 		
 		state.allocateStack(requiredStackSpace)
 		
-		for (i, src) in enumerate(stackArgs):
-			moveData(state, src, StackTarget(src.type, i * 8, fromTop=True))
+		offset = 0
+		for src in stackArgs:
+			moveData(state, src, StackTarget(src.type, offset, fromTop=True))
+			offset += src.type.byteSize
+			if offset % 8 != 0:
+				offset += offset % 8
 	
 	if ir.cVarArgs:
 		state.appendInstr('mov', 

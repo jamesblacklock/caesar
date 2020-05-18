@@ -2,7 +2,7 @@ from .ast    import ValueExpr
 from .types  import Void
 from .       import ctlflow, letdecl, asgn, ifexpr, access
 from .scope  import ScopeType
-from .log    import logError
+from .log    import logError, logWarning
 from .span   import Span
 
 class BlockInfo:
@@ -53,23 +53,20 @@ class Block(ValueExpr):
 		newExprs = []
 		retVal = None
 		for (i, expr) in enumerate(block.exprs):
-			if state.scope.didReturn or state.scope.didBreak:
+			if block.scopeType and (state.scope.didReturn or state.scope.didBreak):
 				unreachableSpan = Span.merge(unreachableSpan, expr.span) if unreachableSpan else expr.span
 			
 			lastExpr = i+1 == len(block.exprs)
 			
 			if not block.lowered and expr.hasValue and type(expr) not in (Block, ifexpr.If):
-				(tempSymbol, tempWrite, tempRead) = access.createTempTriple(expr)
-				valueExprLowered = [tempSymbol, tempWrite]
-				
-				if lastExpr and implicitType != Void:
-					tempWrite.rvalueImplicitType = implicitType
-					valueExprLowered.append(tempRead)
-				
-				if block.scopeType != None:
-					state.scope.dropBlock = tempWrite.dropBlock
-				
-				expr = Block(valueExprLowered, expr.span, noLower=True)
+					(tempSymbol, tempWrite, tempRead) = access.createTempTriple(expr)
+					valueExprLowered = [tempSymbol, tempWrite]
+					
+					if lastExpr and implicitType != Void:
+						tempWrite.rvalueImplicitType = implicitType
+						valueExprLowered.append(tempRead)
+					
+					expr = Block(valueExprLowered, expr.span, noLower=True)
 			
 			if lastExpr and expr.hasValue and \
 				block.scopeType == ScopeType.FN and implicitType != Void:
@@ -91,9 +88,6 @@ class Block(ValueExpr):
 			if retVal:
 				(tempSymbol, tempWrite, tempRead) = access.createTempTriple(retVal)
 				tempWrite.rvalueImplicitType = state.scope.fnDecl.returnType
-				
-				if block.scopeType != None:
-					state.scope.dropBlock = tempWrite.dropBlock
 				
 				block.exprs.append(state.analyzeNode(tempSymbol))
 				block.exprs.append(state.analyzeNode(tempWrite))
@@ -128,9 +122,10 @@ class Block(ValueExpr):
 			state.scope.allowUnsafe = False
 	
 	def writeIR(block, state):
+		state.didBreak = False
 		for expr in block.exprs:
 			expr.writeIR(state)
-			if type(expr) in (ctlflow.Break, ctlflow.Continue, ctlflow.Return):
+			if state.didBreak:
 				break
 	
 	def pretty(self, output, indent=0):

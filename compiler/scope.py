@@ -153,15 +153,13 @@ class Scope:
 							elif info.symbol.dropFn and info.symbol.type.isCopyable:
 								lastUse.copy = True
 								self.dropSymbol(info.symbol, lastUse.dropBlock)
-						else:#if lastUse.write or lastUse.isFieldAccess:#type(lastUse) in (asgnmod.Asgn, fieldmod.Field, fieldmod.Index):
+						else:
 							if loopExpr and loopExpr != self.loopExpr:
 								for (br, otherLoopExpr) in info.breaksSinceLastUse.items():
 									if loopExpr == otherLoopExpr:
 										self.dropSymbol(info.symbol, br.block)
 							else:
 								self.dropSymbol(info.symbol, lastUse.dropBlock)
-						# else:
-							# assert 0
 			else:
 				outerSymbolInfo[info.symbol] = info
 		

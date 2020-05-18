@@ -108,5 +108,5 @@ class StructLit(ValueExpr):
 		for field in self.fields[:-1]:
 			field.pretty(output, indent + 1)
 			output.write('\n')
-		if len(self.fields) > 1:
+		if len(self.fields) > 0:
 			self.fields[-1].pretty(output, indent + 1)
