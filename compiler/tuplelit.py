@@ -24,7 +24,7 @@ class TupleLit(ValueExpr):
 	
 	def writeIR(ast, state):
 		fType = ir.FundamentalType.fromResolvedType(ast.type)
-		state.appendInstr(ir.Struct(ast, fType))
+		state.appendInstr(ir.Res(ast, fType))
 		state.initCompositeFields(ast, 0)
 	
 	def pretty(self, output, indent=0):
@@ -65,7 +65,7 @@ class ArrayLit(ValueExpr):
 	
 	def writeIR(ast, state):
 		fType = ir.FundamentalType.fromResolvedType(ast.type)
-		state.appendInstr(ir.Struct(ast, fType))
+		state.appendInstr(ir.Res(ast, fType))
 		state.initCompositeFields(ast, 0)
 	
 	def pretty(self, output, indent=0):

@@ -1,7 +1,7 @@
 from .ast   import ValueExpr, StaticDataType
 from .      import block, deref, valueref, letdecl, field, asgn, address, staticdecl, fndecl, coercion
 from .types import typesMatch, canPromote, getAlignedSize, PtrType, USize
-from .ir    import Swap, Raise, Deref, DerefW, Field, FieldW, DerefField, DerefFieldW, \
+from .ir    import Swap, Write, Raise, Deref, DerefW, Field, FieldW, DerefField, DerefFieldW, \
                    Fix, Dup, Addr, Imm, Global, Mul, Add, IPTR, FundamentalType
 from .scope import ScopeType
 from .token import TokenType
@@ -51,10 +51,14 @@ class SymbolAccess(ValueExpr):
 			exprs.append(expr)
 			access = SymbolWrite(expr.expr, expr.span, expr.nameTok.span)
 			access.rvalueImplicitType = rvalueImplicitType
+			assert expr.dropBlock
+			access.dropBlock = expr.dropBlock
 			expr.expr = None
 		elif type(expr) == asgn.Asgn:
 			access = SymbolWrite(expr.rvalue, expr.span, expr.lvalue.span)
 			access.rvalueImplicitType = rvalueImplicitType
+			assert expr.dropBlock
+			access.dropBlock = expr.dropBlock
 			expr = expr.lvalue
 		else:
 			access = SymbolRead(expr.span)
@@ -153,8 +157,7 @@ class SymbolRead(SymbolAccess):
 		exprs = []
 		
 		if access.borrows:
-			assert state.scope.dropBlock
-			access.dropBlock = state.scope.dropBlock
+			access.dropBlock = state.scope.scopeLevelDropBlock
 			exprs.append(expr)
 		else:
 			isCopyableDrop = type(access.symbol) == letdecl.LetDecl and access.symbol.dropFn and \
@@ -257,8 +260,6 @@ class SymbolWrite(SymbolAccess):
 		self.hasValue = False
 	
 	def analyze(access, state, ignoredImplicitType):
-		state.scope.dropBlock = access.dropBlock
-		
 		if access.rvalueImplicitType == None:
 			access.rvalueImplicitType = access.type
 		
@@ -340,7 +341,11 @@ class SymbolWrite(SymbolAccess):
 			# if expr.symbol in state.operandsBySymbol:
 				# stackOffset = state.localOffset(expr.symbol)
 			if stackOffset > 0:
-				state.appendInstr(Swap(expr, stackOffset))
+				if expr.symbol.fixed:
+					state.appendInstr(Write(expr, stackOffset))
+				else:
+					state.appendInstr(Swap(expr, stackOffset))
+					state.appendInstr(Pop(expr))
 			else:
 				state.nameTopOperand(expr.symbol)
 				if expr.symbol.fixed:
@@ -360,7 +365,15 @@ def _SymbolAccess__analyzeSymbolAccess(state, expr, access, exprs, implicitType=
 	elif type(expr) == address.Address and not access.write:
 		if implicitType and implicitType.isPtrType:
 			implicitType = implicitType.typeAfterDeref()
-		_SymbolAccess__analyzeSymbolAccess(state, expr.expr, access, exprs, implicitType)
+		addlExprs = []
+		_SymbolAccess__analyzeSymbolAccess(state, expr.expr, access, addlExprs, implicitType)
+		
+		if len(addlExprs) > 0:
+			tempSymbol = addlExprs[0]
+			tempSymbol.reserve = True
+			tempSymbol.fixed = True
+			state.scope.beforeScopeLevelExpr.append(tempSymbol)
+			exprs.extend(addlExprs[1:])
 		
 		if access.deref:
 			access.deref -= 1

@@ -95,7 +95,7 @@ class StructLit(ValueExpr):
 	
 	def writeIR(ast, state):
 		fType = ir.FundamentalType.fromResolvedType(ast.type)
-		state.appendInstr(ir.Struct(ast, fType))
+		state.appendInstr(ir.Res(ast, fType))
 		state.initStructFields(ast, 0)
 	
 	def pretty(self, output, indent=0):

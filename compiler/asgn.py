@@ -13,6 +13,7 @@ class Asgn(AST):
 		super().__init__(span)
 		self.lvalue = lvalue
 		self.rvalue = rvalue
+		self.dropBlock = None
 	
 	def analyze(asgn, state, ignoredImplicitType):
 		return access.SymbolAccess.analyzeSymbolAccess(state, asgn)

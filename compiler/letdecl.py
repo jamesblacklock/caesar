@@ -2,6 +2,7 @@ from .ast    import AST, ValueSymbol
 from .       import access, block
 from .types  import typesMatch, PtrType
 from .log    import logError
+from .ir     import Res, Fix, FundamentalType
 
 TEMP_COUNTER = 0
 
@@ -38,6 +39,8 @@ class LetDecl(ValueSymbol):
 		self.expr = expr
 		self.temp = temp
 		self.fixed = False
+		self.reserve = False
+		self.dropBlock = None
 	
 	@staticmethod
 	def createTemp(span):
@@ -85,7 +88,13 @@ class LetDecl(ValueSymbol):
 		return result
 	
 	def writeIR(ast, state):
-		pass
+		if ast.reserve:
+			assert ast.type
+			fType = FundamentalType.fromResolvedType(ast.type)
+			state.appendInstr(Res(ast, fType))
+			state.nameTopOperand(ast)
+			if ast.fixed:
+				state.appendInstr(Fix(ast))
 	
 	def pretty(self, output, indent=0):
 		output.write('let ', indent)

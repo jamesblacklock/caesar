@@ -33,13 +33,14 @@ class Block(ValueExpr):
 			block.unsafe = block.fnDecl.unsafe
 		
 		resetScopeSafety = False
-		if block.scopeType != None:
+		if block.scopeType:
 			state.pushScope(
 				block.scopeType, 
 				ifExpr=block.ifExpr, 
 				loopExpr=block.loopExpr,
 				fnDecl=block.fnDecl, 
 				allowUnsafe=block.unsafe)
+			state.scope.beforeScopeLevelExpr = []
 		elif block.unsafe and not state.scope.allowUnsafe:
 			state.scope.allowUnsafe = True
 			resetScopeSafety = True
@@ -58,7 +59,10 @@ class Block(ValueExpr):
 			
 			lastExpr = i+1 == len(block.exprs)
 			
-			if not block.lowered and expr.hasValue and type(expr) not in (Block, ifexpr.If):
+			if not block.lowered:
+				assert block.scopeType
+				
+				if expr.hasValue and type(expr) not in (Block, ifexpr.If):
 					(tempSymbol, tempWrite, tempRead) = access.createTempTriple(expr)
 					valueExprLowered = [tempSymbol, tempWrite]
 					
@@ -67,14 +71,23 @@ class Block(ValueExpr):
 						valueExprLowered.append(tempRead)
 					
 					expr = Block(valueExprLowered, expr.span, noLower=True)
+					state.scope.scopeLevelDropBlock = tempWrite.dropBlock
+				elif type(expr) in (letdecl.LetDecl, asgn.Asgn):
+					expr.dropBlock = Block([], expr.span)
+					state.scope.scopeLevelDropBlock = expr.dropBlock
 			
 			if lastExpr and expr.hasValue and \
 				block.scopeType == ScopeType.FN and implicitType != Void:
 				retVal = expr
 			else:
+				
 				expr = state.analyzeNode(expr, implicitType if lastExpr else Void)
 				if type(expr) in (ctlflow.Break, ctlflow.Continue):
 					expr = expr.block
+				
+				if block.scopeType:
+					newExprs.extend(state.scope.beforeScopeLevelExpr)
+					state.scope.beforeScopeLevelExpr = []
 				
 				newExprs.append(expr)
 				

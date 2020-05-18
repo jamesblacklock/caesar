@@ -105,7 +105,8 @@ class Scope:
 		self.ifExpr = ifExpr
 		self.loopExpr = loopExpr
 		self.ifBranchOuterSymbolInfo = ifBranchOuterSymbolInfo
-		self.dropBlock = None
+		self.scopeLevelDropBlock = None
+		self.beforeScopeLevelExpr = None
 		self.allowUnsafe = allowUnsafe
 		
 		if parent:

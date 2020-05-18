@@ -101,7 +101,7 @@ class Imm(Instr):
 	def __str__(self):
 		return 'imm {}.{}'.format(self.value, self.type)
 
-class Struct(Instr):
+class Res(Instr):
 	def __init__(self, ast, fType):
 		assert fType.byteSize > 0
 		self.ast = ast
@@ -111,7 +111,7 @@ class Struct(Instr):
 		state.pushOperand(self.type)
 	
 	def __str__(self):
-		return 'struct {}'.format(self.type)
+		return 'res {}'.format(self.type)
 
 class Raise(Instr):
 	def __init__(self, ast, offset):
@@ -157,6 +157,18 @@ class Pop(Instr):
 	
 	def __str__(self):
 		return 'pop'
+
+class Write(Instr):
+	def __init__(self, ast, offset):
+		super().__init__(ast)
+		self.offset = offset
+		assert offset > 0
+		
+	def affectStack(self, state):
+		state.popOperand()
+	
+	def __str__(self):
+		return 'write {}'.format(self.offset)
 
 class Static(Instr):
 	def __init__(self, ast, type, label):

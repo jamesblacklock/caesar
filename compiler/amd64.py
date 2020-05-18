@@ -5,7 +5,7 @@ from .ast   import StaticData, StaticDataType
 from .ir    import Dup, Global, Imm, Static, Deref, DerefW, Add, Sub, Mul, Div, Mod, Eq, NEq, Less, LessEq, \
                    Greater, GreaterEq, FAdd, FSub, FMul, FDiv, FEq, FNEq, FLess, FLessEq, FGreater, FGreaterEq, \
                    Call, Extend, IExtend, Truncate, FExtend, FTruncate, IToF, UToF, FToI, FToU, Ret, BrIf, \
-                   Br, Swap, Pop, Raise, Neg, Struct, Field, FieldW, DerefField, DerefFieldW, Fix, Addr, \
+                   Br, Swap, Write, Pop, Raise, Neg, Res, Field, FieldW, DerefField, DerefFieldW, Fix, Addr, \
                    I8, I16, I32, I64, IPTR, F32, F64, FundamentalType, BlockMarker
 from .types import U32_RNG, I32_RNG
 
@@ -57,7 +57,7 @@ class Target:
 	def fromIR(ir):
 		if type(ir) == Global or type(ir) == Static:
 			return GlobalTarget(ir.type, ir.label)
-		elif type(ir) == Struct:
+		elif type(ir) == Res:
 			return Target(ir.type, Storage.NONE)
 		elif type(ir) == Imm:
 			return ImmTarget(ir.type, ir.value)
@@ -367,18 +367,20 @@ class GeneratorState:
 		for i in structParts:
 			(t, regs) = structParts[i]
 			target = self.findTarget(t, True)
+			target.setActive(True)
 			targets[i] = target
 			for (j, reg) in enumerate(regs):
 				offset = ImmTarget(I64, j*8)
 				moveData(self, reg, target, destOffset=offset, type=I64)
 		
 		for target in targets:
+			target.setActive(False)
 			self.pushOperand(target)
 	
 	def appendInstr(self, opcode, *operands, isLabel=False, isComment=False):
 		instr = Instr(opcode, operands, isLabel, isComment)
 		self.instr.append(instr)
-		# print(instr)
+		print(instr)
 	
 	def findReg(self, type=None, exclude=[]):
 		for reg in self.intRegs:
@@ -471,12 +473,13 @@ class GeneratorState:
 		index = len(self.operandStack) - 1 - offset
 		assert index >= 0
 		
-		target = self.operandStack[index]
-		target.setActive(False)
-		target.operandIndex = None
+		other = self.operandStack[index]
+		other.setActive(False)
+		other.operandIndex = None
 		target = self.operandStack.pop()
 		target.operandIndex = index
 		self.operandStack[index] = target
+		self.pushOperand(other)
 	
 	def popOperand(self):
 		target = self.operandStack.pop()
@@ -505,7 +508,7 @@ def irToAsm(state, ir, nextIR):
 	
 	if type(ir) == Imm:
 		imm(state, ir)
-	elif type(ir) in (Global, Static, Struct):
+	elif type(ir) in (Global, Static, Res):
 		state.pushIROperand(ir)
 	elif type(ir) == Pop:
 		state.popOperand()
@@ -513,6 +516,8 @@ def irToAsm(state, ir, nextIR):
 		dup(state, ir)
 	elif type(ir) == Swap:
 		swap(state, ir)
+	elif type(ir) == Write:
+		write(state, ir)
 	elif type(ir) == Raise:
 		raise_(state, ir)
 	elif type(ir) == Fix:
@@ -855,6 +860,12 @@ def fix(state, ir):
 		src = newSrc
 	
 	src.fixed = True
+
+def write(state, ir):
+	src = state.getOperand(0)
+	dest = state.getOperand(ir.offset)
+	moveData(state, src, dest)
+	state.popOperand()
 
 def addr(state, ir):
 	src = state.getOperand(ir.offset)
