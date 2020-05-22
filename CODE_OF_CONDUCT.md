@@ -7,7 +7,6 @@ Also fuck off if you:
 - like offending people a lot
 - get offended too easily
 - feel an affinity towards coporate structures
-- are still upset about the 2016 US presidential election
 - think C++ is a beautiful language
 - don't think C is a beautiful language
 - are a prude
