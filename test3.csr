@@ -2,13 +2,13 @@
 extern unsafe fn printf(fmt: &byte, ...) -> int
 
 @ffi("C")
-extern fn getchar() -> int
+extern unsafe fn getchar() -> int
 
 @ffi("C")
-extern fn malloc(size: usize) -> &mut byte
+extern unsafe fn malloc(size: usize) -> owned(malloc, free) &mut byte
 
 @ffi("C")
-extern fn free(buf: &byte) -> &byte
+extern unsafe fn free(buf: owned(malloc, free) &byte) -> &byte
 
 fn fib(n: int) -> int
 	if n <= 1
@@ -20,11 +20,11 @@ fn main(argc: int, argv: &&byte) -> int
 	unsafe printf("What is your name? ")
 	
 	let size: usize = 128
-	let buf = malloc(size)
-	let mut pt = buf
+	let buf = unsafe malloc(size)
+	let mut pt = borrow buf
 	
 	let mut i = 1usz, while {let j=i, i=i+1, j} <= size # for _ in 1...size
-		let c = getchar() as char
+		let c = unsafe getchar() as char
 		if c == '\n'
 			pt^ = 0x0
 			break
@@ -36,20 +36,21 @@ fn main(argc: int, argv: &&byte) -> int
 		# printf("a\n")
 		# void
 	
-	unsafe "%s, %s\n" -> printf("Hello"; buf)
+	unsafe "%s, %s\n" -> printf("Hello"; borrow buf)
 	
-	let mut asdf = 4
-	loop {
-		unsafe printf("%d\n", asdf);
-		asdf = asdf-1;
-		if asdf == 0 { break; }
-	}
-	
-	unsafe printf("%d %d %d %d %d %d %d %d %d %d\n"
-		fib(1), fib(2), fib(3), fib(4), fib(5)
-		fib(6), fib(7), fib(8), fib(9), fib(10))
-	
-	unsafe printf("\n");
-	free(buf)
+	unsafe
+		let mut asdf = 4
+		loop {
+			printf("%d\n", asdf);
+			asdf = asdf-1;
+			if asdf == 0 { break; }
+		}
+		
+		printf("%d %d %d %d %d %d %d %d %d %d\n"
+			fib(1), fib(2), fib(3), fib(4), fib(5)
+			fib(6), fib(7), fib(8), fib(9), fib(10))
+		
+		printf("\n");
+		free(buf)
 	
 	return 0

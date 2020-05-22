@@ -161,7 +161,7 @@ class Scope:
 										self.dropSymbol(info.symbol, br.block)
 							else:
 								self.dropSymbol(info.symbol, lastUse.dropBlock)
-			else:
+			elif not self.didReturn:
 				outerSymbolInfo[info.symbol] = info
 		
 		if self.type == ScopeType.ELSE:
@@ -397,8 +397,8 @@ class Scope:
 		elif isIndex:
 			pass
 		else:
-			info.moved = True
-			info.typeModifiers.uninit = True
+			info.moved = not expr.copy
+			info.typeModifiers.uninit = info.moved
 	
 	def writeSymbol(self, expr, typeModifiers=None):
 		symbol = expr.symbol
@@ -409,7 +409,7 @@ class Scope:
 		info = self.symbolInfo[symbol]
 		
 		if expr.deref:
-			if not symbol.type.mut:
+			if symbol.type.isPtrType and not symbol.type.mut:
 				logError(self.state, expr.lvalueSpan, 'assignment target is not mutable')
 			return
 		
@@ -467,9 +467,13 @@ class Scope:
 		else:
 			info.typeModifiers.uninit = False
 	
-	def dropSymbol(self, symbol, block, prepend=True):
+	def dropSymbol(self, symbol, block):
 		valueWasMoved = False
 		exprs = []
+		
+		if symbol.type.isOwnedType:
+			logError(self.state, symbol.nameTok.span, 'owned value was not discarded')
+			logExplain(self.state, block.span, 'value goes out of scope here')
 		
 		if symbol.dropFn:
 			fnRef = accessmod.SymbolRead(block.span)
@@ -506,10 +510,7 @@ class Scope:
 		if not valueWasMoved:
 			exprs.append(DropSymbol(symbol))
 		
-		if prepend:
-			block.exprs[:0] = exprs
-		else:
-			block.exprs.extend(exprs)
+		block.exprs[:0] = exprs
 	
 	def lookupSymbol(self, name):
 		scope = self

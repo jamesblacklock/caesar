@@ -135,6 +135,7 @@ class SymbolRead(SymbolAccess):
 	def __init__(self, span):
 		super().__init__(span)
 		self.addr = False
+		self.borrow = False
 	
 	def analyze(access, state, implicitType):
 		if type(access.symbol) == staticdecl.StaticDecl:
@@ -267,7 +268,7 @@ class SymbolWrite(SymbolAccess):
 		if access.symbol.type == None:
 			access.symbol.type = access.rvalue.type
 			access.type = access.rvalue.type
-		elif access.rvalue.type:
+		elif access.type and access.rvalue.type:
 			if canPromote(access.rvalue.type, access.type):
 				access.rvalue = coercion.Coercion(access.rvalue, None, access.span, resolvedType=access.type)
 			
@@ -362,6 +363,15 @@ def _SymbolAccess__analyzeSymbolAccess(state, expr, access, exprs, implicitType=
 		access.symbol = state.lookupSymbol(expr)
 		if access.symbol:
 			access.type = access.symbol.type
+	elif type(expr) == valueref.Borrow:
+		_SymbolAccess__analyzeSymbolAccess(state, expr.expr, access, exprs, implicitType)
+		if access.type and not access.type.isOwnedType:
+			logError(state, expr.span, 'type `{}` cannot be borrowed'.format(access.type))
+		else:
+			access.type = access.type.baseType
+			access.borrow = True
+			access.copy = True
+			access.borrows = {access}
 	elif type(expr) == address.Address and not access.write:
 		if implicitType and implicitType.isPtrType:
 			implicitType = implicitType.typeAfterDeref()
@@ -407,18 +417,22 @@ def _SymbolAccess__analyzeSymbolAccess(state, expr, access, exprs, implicitType=
 			access.type = symbol.type
 			assert access.type == None or access.type.isPtrType and access.type.count == 1
 		
-		if access.type == None:
+		t = access.type
+		if t and t.isOwnedType:
+			t = t.baseType
+		
+		if t == None:
 			pass
-		elif not access.type.isPtrType:
+		elif not t.isPtrType:
 			logError(state, expr.expr.span, 'cannot dereference non-pointer type `{}`'.format(access.type))
 			access.type = None
-		elif access.type.indLevel < access.deref:
-			baseType = access.type.baseType
+		elif t.indLevel < access.deref:
+			baseType = t.baseType
 			logError(state, expr.expr.span, 'dereferenced too many times (max: {}; found: {})'.format(
-				access.type.indLevel, access.deref))
+				t.indLevel, access.deref))
 			access.type = None
 		else:
-			access.type = access.type.typeAfterDeref(access.deref)
+			access.type = t.typeAfterDeref(access.deref)
 	elif type(expr) == field.Field:
 		_SymbolAccess__analyzeSymbolAccess(state, expr.expr, access, exprs)
 		if access.type == None:

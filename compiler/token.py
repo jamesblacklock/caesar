@@ -68,6 +68,8 @@ class TokenType(Enum):
 	IMPL       = '`impl`'
 	TRAIT      = '`trait`'
 	UNSAFE     = '`unsafe`'
+	OWNED      = '`owned`'
+	BORROW     = '`borrow`'
 	AS         = '`as`'
 	OFFSETOF   = '`offsetof`'
 	SIZEOF     = '`sizeof`'

@@ -14,6 +14,21 @@ class NamedTypeRef(TypeRef):
 		self.nameTok = path[-1]
 		super().__init__(self.nameTok.content, span)
 
+class OwnedTypeRef(AST):
+	def __init__(self, baseType, acquire, release, span):
+		super().__init__(span)
+		self.baseType = baseType
+		self.acquire = acquire
+		self.release = release
+	
+	def pretty(self, output, indent=0):
+		output.write('owned(', indent)
+		output.write(self.acquire.path[-1].content)
+		output.write(', ')
+		output.write(self.release.path[-1].content)
+		output.write(') ')
+		self.baseType.pretty(output, indent)
+
 class PtrTypeRef(TypeRef):
 	def __init__(self, baseType, indLevel, mut, span):
 		name = '{}{}{}'.format('&' * indLevel, 'mut ' if mut else '', baseType.name)

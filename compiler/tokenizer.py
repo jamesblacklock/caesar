@@ -325,6 +325,8 @@ def lexNameOrKeyword(state):
 		('trait', TokenType.TRAIT),
 		('unsafe', TokenType.UNSAFE),
 		('as', TokenType.AS),
+		('owned', TokenType.OWNED),
+		('borrow', TokenType.BORROW),
 		('sizeof', TokenType.SIZEOF),
 		('offsetof', TokenType.OFFSETOF),
 		('void', TokenType.VOID),

@@ -7,10 +7,10 @@ extern unsafe fn printf(format: &byte, ...) -> int
 extern unsafe fn scanf(format: &byte, ...) -> int
 
 @ffi("C")
-extern fn time(ret: &int64) -> int64
+extern unsafe fn time(ret: &int64) -> int64
 
 @ffi("C")
-extern fn getchar() -> int
+extern unsafe fn getchar() -> int
 
 const NULL = 0 as &int64
 

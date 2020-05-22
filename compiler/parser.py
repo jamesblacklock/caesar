@@ -8,7 +8,7 @@ from .ast        import ValueExpr
 from .sign       import Sign
 from .structdecl import FieldDecl, StructDecl, UnionFields
 from .attrs      import Attr
-from .typeref    import PtrTypeRef, NamedTypeRef, ArrayTypeRef, TupleTypeRef
+from .typeref    import PtrTypeRef, NamedTypeRef, ArrayTypeRef, TupleTypeRef, OwnedTypeRef
 from .mod        import Mod
 from .fndecl     import FnDecl, CConv
 from .staticdecl import StaticDecl, ConstDecl
@@ -22,7 +22,7 @@ from .letdecl    import LetDecl, FnParam, CVarArgsParam
 from .asgn       import Asgn
 from .ifexpr     import If
 from .infix      import InfixOp, InfixOps
-from .valueref   import ValueRef
+from .valueref   import ValueRef, Borrow
 from .field      import Index, Field
 from .deref      import Deref
 from .structlit  import StructLit, FieldLit
@@ -554,8 +554,39 @@ def parseArrayTypeRef(state):
 	state.advance()
 	return ArrayTypeRef(baseType, count, span)
 
+def parseOwnedTypeRef(state):
+	def parseItem(state):
+		if expectType(state, TokenType.NAME):
+			path = parsePath(state)
+			return ValueRef(path.path, path.span)
+		else:
+			return None
+	
+	span = state.tok.span
+	
+	state.advance()
+	state.skipSpace()
+	
+	isValid = False
+	if expectType(state, TokenType.LPAREN):
+		ownedParams = parseBlock(state, parseItem, BlockMarkers.PAREN, True)
+		if len(ownedParams.list) == 2:
+			isValid = True
+		else:
+			logError(state, ownedParams.span, 
+				'expected 2 params for (acquire, release) (found {})'.format(len(ownedParams.list)))
+		state.skipSpace()
+	
+	typeRef = parseTypeRef(state)
+	if typeRef and isValid:
+		typeRef = OwnedTypeRef(typeRef, ownedParams.list[0], ownedParams.list[1], Span.merge(span, typeRef.span))
+	
+	return typeRef
+
 def parseTypeRef(state):
-	if state.tok.type in (TokenType.AMP, TokenType.AND):
+	if state.tok.type == TokenType.OWNED:
+		return parseOwnedTypeRef(state)
+	elif state.tok.type in (TokenType.AMP, TokenType.AND):
 		return parsePtrTypeRef(state)
 	elif state.tok.type == TokenType.LBRACK:
 		return parseArrayTypeRef(state)
@@ -565,14 +596,11 @@ def parseTypeRef(state):
 		return parseStructDecl(state, None, True)
 	elif state.tok.type == TokenType.UNION:
 		return parseUnionDecl(state, None, True)
-	
-	if expectType(state, TokenType.NAME, TokenType.VOID) == False:
+	elif expectType(state, TokenType.NAME, TokenType.VOID):
+		path = parsePath(state)
+		return NamedTypeRef(path.path, path.span)
+	else:
 		return None
-	
-	path = parsePath(state)
-	span = path.span
-	
-	return NamedTypeRef(path.path, span)
 
 def parseSimpleFnCall(state, expr):
 	span = expr.span
@@ -991,6 +1019,13 @@ def parseValueExprImpl(state, precedence, noSkipSpace, allowSimpleFnCall):
 		state.advance()
 	elif state.tok.type == TokenType.PLUS or state.tok.type == TokenType.MINUS:
 		expr = parseSign(state)
+	elif state.tok.type == TokenType.BORROW:
+		span = state.tok.span
+		state.advance()
+		state.skipSpace()
+		expr = parseValueExpr(state, precedence=UNARY_PRECEDENCE)
+		if expr:
+			expr = Borrow(expr, Span.merge(span, expr.span))
 	elif state.tok.type == TokenType.AMP:
 		expr = parseAddress(state)
 	elif state.tok.type == TokenType.INTEGER:
@@ -1245,7 +1280,8 @@ VALUE_EXPR_TOKS = (
 	TokenType.TRUE,
 	TokenType.IF,
 	TokenType.VOID,
-	TokenType.UNSAFE
+	TokenType.UNSAFE,
+	TokenType.BORROW
 )
 
 FN_EXPR_TOKS = (

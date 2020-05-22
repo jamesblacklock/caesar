@@ -34,7 +34,7 @@ class StructDecl(TypeSymbol):
 			if field.name in fieldNames:
 				logError(state, field.nameTok.span, 'duplicate field declared in {}'.format(decl.declType))
 			
-			fieldType = state.resolveTypeRef(field.typeRef)
+			fieldType = state.resolveTypeRefSig(field.typeRef)
 			fieldNames.append(field.name)
 			types.append(fieldType)
 		

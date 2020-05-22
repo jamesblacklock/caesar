@@ -1,11 +1,11 @@
 @ffi("C")
-extern fn fopen(path: &byte, mode: &byte) -> &FILE
+extern unsafe fn fopen(path: &byte, mode: &byte) -> owned(fopen, fclose) &FILE
 
 @ffi("C")
-extern fn fread(buf: &byte, size: usize, count: usize, file: &FILE) -> usize
+extern unsafe fn fread(buf: &byte, size: usize, count: usize, file: &FILE) -> usize
 
 @ffi("C")
-extern fn fclose(file: &FILE)
+extern unsafe fn fclose(file: owned(fopen, fclose) &FILE)
 
 @ffi("C")
 extern unsafe fn printf(fmt: &byte, ...)
@@ -40,10 +40,10 @@ fn main()
     
     unsafe printf("%d\n", z^)
     
-    let f = fopen("text.txt", "r")
+    let f = unsafe fopen("text.txt", "r")
     let mut buf: [byte * 512] = []
-    let i = fread(&buf as &byte, 1, 512, f)
-    fclose(f)
+    let i = unsafe fread(&buf as &byte, 1, 512, borrow f)
+    unsafe fclose(f)
     buf[i] = 0x0
     
     unsafe

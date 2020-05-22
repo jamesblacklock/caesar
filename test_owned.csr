@@ -1,0 +1,26 @@
+@ffi("C")
+extern unsafe fn printf(fmt: &byte) -> int
+
+@ffi("C")
+extern unsafe fn malloc(size: usize) -> owned(malloc, free) &mut void
+# extern unsafe fn malloc(size: usize) -> owned(malloc, free) &mut [byte * size]
+
+@ffi("C")
+extern unsafe fn free(ptr: owned(malloc, free) &void)
+
+unsafe fn main()
+    let buf = malloc(8) as &mut [byte * 8]
+    
+    buf^[0] = 'H' as byte
+    buf^[1] = 'e' as byte
+    buf^[2] = 'l' as byte
+    buf^[3] = 'l' as byte
+    buf^[4] = 'o' as byte
+    buf^[5] = '!' as byte
+    buf^[6] = '\n' as byte
+    buf^[7] = 0
+    
+    printf(borrow buf as &byte)
+    
+    free(buf as &void)
+    

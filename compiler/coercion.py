@@ -1,6 +1,6 @@
 from .ast   import ValueExpr, StaticDataType
 from .log   import logError
-from .types import canCoerce, typesMatch
+from .types import canCoerce, typesMatch, OwnedType
 from .ir    import FundamentalType, IExtend, Extend, Truncate, FExtend, FTruncate, IToF, UToF, FToI, FToU
 
 class Coercion(ValueExpr):
@@ -16,6 +16,10 @@ class Coercion(ValueExpr):
 		
 		if typesMatch(asExpr.expr.type, asExpr.type):
 			return asExpr.expr
+		
+		if asExpr.expr.type.isOwnedType and not asExpr.type.isOwnedType:
+			t = asExpr.expr.type
+			asExpr.type = OwnedType(asExpr.type, t.acquire, t.release, t.acquireSpan, t.releaseSpan)
 		
 		if not canCoerce(asExpr.expr.type, asExpr.type):
 			logError(state, asExpr.span, 'cannot coerce from {} to {}'

@@ -41,7 +41,8 @@ class FnCall(ValueExpr):
 		if fnType.cVarArgs and len(fnCall.args) > len(fnType.params):
 			offset = len(fnType.params)
 			for (i, arg) in enumerate(fnCall.args[offset:]):
-				fnCall.args[i + offset] = state.analyzeNode(arg)
+				arg = state.analyzeNode(arg)
+				fnCall.args[i + offset] = arg
 				if arg.type and not arg.type.isPrimitiveType:
 					logError(state, arg.span, 
 						'type {} cannot be used as a C variadic argument'.format(arg.type))

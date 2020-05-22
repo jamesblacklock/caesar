@@ -1,7 +1,8 @@
 import ctypes
-from .typeref    import NamedTypeRef, PtrTypeRef, ArrayTypeRef, TupleTypeRef
-from .types      import Type, UnknownType, FieldInfo, PtrType, ArrayType, TupleType, Void, Bool, Byte, Char, Int8, \
-                        UInt8, Int16, UInt16, Int32, UInt32, Int64, UInt64, ISize, USize, Float32, Float64
+from .typeref    import NamedTypeRef, PtrTypeRef, ArrayTypeRef, TupleTypeRef, OwnedTypeRef
+from .types      import Type, UnknownType, FieldInfo, PtrType, ArrayType, TupleType, OwnedType, \
+                        Void, Bool, Byte, Char, Int8, UInt8, Int16, UInt16, Int32, UInt32, \
+                        Int64, UInt64, ISize, USize, Float32, Float64, typesMatch, canCoerce
 from .log        import logError, logExplain
 from .ast        import ASTPrinter, TypeSymbol
 from .scope      import Scope, ScopeType
@@ -36,10 +37,59 @@ class FieldLayout:
 		self.byteSize = byteSize
 		self.fields = fields
 
-def analyzeTupleTypeRef(state, tupleTypeRef):
-	resolvedTypes = [state.resolveTypeRef(t) for t in tupleTypeRef.types]
+def analyzeTupleTypeRefSig(state, tupleTypeRef):
+	resolvedTypes = [state.resolveTypeRefSig(t) for t in tupleTypeRef.types]
 	layout = state.generateFieldLayout(resolvedTypes)
 	tupleTypeRef.type = TupleType(layout.align, layout.byteSize, layout.fields)
+
+def finishAnalyzingTupleType(state, resolvedType):
+	for field in resolvedType.fields:
+		field.type = state.finishResolvingType(field.type)
+	return resolvedType
+
+def finishAnalyzingStructType(state, resolvedType):
+	for field in resolvedType.fields:
+		field.type = state.finishResolvingType(field.type)
+	return resolvedType
+
+def analyzeOwnedTypeRefSig(state, ownedTypeRef):
+	baseType = state.resolveTypeRefSig(ownedTypeRef.baseType)
+	
+	acquire = state.lookupSymbol(ownedTypeRef.acquire)
+	release = state.lookupSymbol(ownedTypeRef.release)
+	
+	if acquire:
+		if type(acquire) != FnDecl:
+			logError(state, ownedTypeRef.acquire.span, '`{}` must be a function', acquire.name)
+			acquire = None
+	
+	if release:
+		if type(release) != FnDecl:
+			logError(state, ownedTypeRef.release.span, '`{}` must be a function', release.name)
+			release = None
+	
+	return OwnedType(baseType, acquire, release, ownedTypeRef.acquire.span, ownedTypeRef.release.span)
+
+def finishAnalyzingOwnedType(state, ownedType):
+	if ownedType.acquire:
+		if ownedType.acquire.returnType and \
+			not typesMatch(ownedType, ownedType.acquire.returnType) and \
+			not canCoerce(ownedType, ownedType.acquire.returnType):
+			logError(state, ownedType.acquireSpan, '`{}` must return `{}` (found `{}`)'.format(
+				ownedType.acquire.name, ownedType.name, ownedType.acquire.returnType.name))
+	
+	if ownedType.release:
+		isValid = False
+		for param in ownedType.release.params:
+			if param.type and (typesMatch(ownedType, param.type) or canCoerce(ownedType, param.type)):
+				isValid = True
+				break
+		
+		if not isValid:
+			logError(state, ownedType.releaseSpan, '`{}` must take an argument of type `{}`'.format( 
+				ownedType.release.name, ownedType.name))
+	
+	return ownedType
 
 def buildSymbolTable(state, mod):
 	symbolTable = {}
@@ -82,8 +132,8 @@ def analyze(ast):
 	
 	state.popScope()
 	
-	# p = ASTPrinter()
-	# ast.pretty(p)
+	p = ASTPrinter()
+	ast.pretty(p)
 	
 	if state.failed:
 		exit(1)
@@ -101,10 +151,12 @@ class AnalyzerState:
 		newAST = ast.analyze(state, implicitType)
 		return newAST if newAST else ast
 	
-	def resolveTypeRef(state, typeRef):
+	def resolveTypeRefSig(state, typeRef):
 		if type(typeRef) == NamedTypeRef:
 			result = state.lookupSymbol(typeRef, True)
 			return result if result else UnknownType
+		elif type(typeRef) == OwnedTypeRef:
+			return analyzeOwnedTypeRefSig(state, typeRef)
 		elif type(typeRef) == PtrTypeRef:
 			baseType = state.resolveTypeRef(typeRef.baseType)
 			return PtrType(baseType, typeRef.indLevel, typeRef.mut)
@@ -112,12 +164,33 @@ class AnalyzerState:
 			baseType = state.resolveTypeRef(typeRef.baseType)
 			return ArrayType(baseType, typeRef.count)
 		elif type(typeRef) == TupleTypeRef:
-			return analyzeTupleTypeRef(state, typeRef)
+			return analyzeTupleTypeRefSig(state, typeRef)
 		elif type(typeRef) == StructDecl:
 			typeRef.analyzeSig(state)
 			return typeRef.type
 		else:
 			assert 0
+	
+	def finishResolvingType(state, resolvedType):
+		if resolvedType == None:
+			return None
+		elif resolvedType.isOwnedType:
+			return finishAnalyzingOwnedType(state, resolvedType)
+		elif resolvedType.isPtrType:
+			resolvedType.baseType = state.finishResolvingType(resolvedType.baseType)
+			return resolvedType
+		elif resolvedType.isArrayType:
+			resolvedType.baseType = state.finishResolvingType(resolvedType.baseType)
+			return resolvedType
+		elif resolvedType.isTupleType:
+			return finishAnalyzingTupleType(state, resolvedType)
+		elif resolvedType.isStructType:
+			return finishAnalyzingStructType(state, resolvedType)
+		else:
+			return resolvedType
+	
+	def resolveTypeRef(state, typeRef):
+		return state.finishResolvingType(state.resolveTypeRefSig(typeRef))
 	
 	def mangleName(state, decl):
 		if type(decl) == FnDecl and decl.cconv == CConv.C:

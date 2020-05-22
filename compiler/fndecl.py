@@ -26,13 +26,13 @@ class FnDecl(ValueSymbol):
 		attrs.invokeAttrs(state, decl)
 		
 		if decl.returnTypeRef:
-			decl.returnType = state.resolveTypeRef(decl.returnTypeRef)
+			decl.returnType = state.resolveTypeRefSig(decl.returnTypeRef)
 		else:
 			decl.returnType = Void
 		
 		symbolNames = set()
 		for param in decl.params:
-			param.type = state.resolveTypeRef(param.typeRef)
+			param.type = state.resolveTypeRefSig(param.typeRef)
 			if param.name in symbolNames:
 				logError(state, param.span, 'duplicate parameter name')
 			else:
@@ -43,13 +43,17 @@ class FnDecl(ValueSymbol):
 		if decl.cVarArgs:
 			if decl.cconv != CConv.C:
 				logError(state, decl.cVarArgsSpan, 'may not use C variadic parameter without the C calling convention')
-			if not decl.unsafe:
-				logError(state, decl.cVarArgsSpan, 
-					'C variadic parameter is not type safe; `{}` must be labelled `unsafe`'.format(decl.name))
+		
+		if decl.extern and not decl.unsafe:
+			logError(state, decl.nameTok.span, '`{}` must be labelled `unsafe` because it is `extern`'.format(decl.name))
 		
 		decl.mangledName = state.mangleName(decl)
 	
 	def analyze(decl, state, implicitType):
+		decl.returnType = state.finishResolvingType(decl.returnType)
+		for param in decl.params:
+			param.type = state.finishResolvingType(param.type)
+		
 		if decl.extern:
 			return
 		
