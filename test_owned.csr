@@ -1,8 +1,10 @@
 @ffi("C")
 extern unsafe fn printf(fmt: &byte) -> int
 
+alias mallocptr = owned(malloc, free) &mut void
+
 @ffi("C")
-extern unsafe fn malloc(size: usize) -> owned(malloc, free) &mut void
+extern unsafe fn malloc(size: usize) -> mallocptr
 # extern unsafe fn malloc(size: usize) -> owned(malloc, free) &mut [byte * size]
 
 @ffi("C")

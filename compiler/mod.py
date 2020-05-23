@@ -13,12 +13,16 @@ class Mod(Symbol):
 		self.statics = []
 		self.consts = []
 		self.imports = []
+		self.aliases = []
 		self.mainFn = None
 	
 	def analyzeSig(mod, state):
 		attrs.invokeAttrs(state, mod)
 		
 		for decl in mod.structs:
+			decl.analyzeSig(state)
+		
+		for decl in mod.aliases:
 			decl.analyzeSig(state)
 		
 		for decl in mod.fns:

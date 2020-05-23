@@ -147,10 +147,9 @@ class InfixOp(ValueExpr):
 		self.opTok = opTok
 	
 	def analyze(infixOp, state, implicitType):
-		opErr = lambda: \
-			logError(state, infixOp.opTok.span, 
-				'invalid operand types for operator `{}` ({} and {})'
-					.format(infixOp.op.value, infixOp.l.type, infixOp.r.type))
+		def opErr(lType, rType):
+			logError(state, infixOp.opTok.span, 'invalid operand types for operator `{}` ({} and {})'
+				.format(infixOp.op.value, lType, rType))
 		
 		lIndefinite = not hasDefiniteType(infixOp.l)
 		rIndefinite = not hasDefiniteType(infixOp.r)
@@ -172,78 +171,86 @@ class InfixOp(ValueExpr):
 		elif rIndefinite and type(infixOp.l) not in (Block, If):
 			infixOp.l = state.analyzeNode(infixOp.l, implicitType)
 			if type(infixOp.r) == IntLit and infixOp.l.type and infixOp.l.type.isPtrType:
-				if infixOp.op in PTR_INT_OPS:
+				# if infixOp.op in PTR_INT_OPS:
 					infixOp.r = state.analyzeNode(infixOp.r, ISize if infixOp.r.value < 0 else USize)
-				else:
-					opErr()
-					return
+				# else:
+				# 	opErr()
+				# 	return
 			else:
 				infixOp.r = state.analyzeNode(infixOp.r, infixOp.l.type)
 		elif lIndefinite or type(infixOp.l) in (Block, If):
 			infixOp.r = state.analyzeNode(infixOp.r, implicitType)
 			if type(infixOp.l) == IntLit and infixOp.r.type and infixOp.r.type.isPtrType:
-				if infixOp.op in PTR_INT_OPS:
+				# if infixOp.op in PTR_INT_OPS:
 					infixOp.l = state.analyzeNode(infixOp.l, ISize if infixOp.l.value < 0 else USize)
-				else:
-					opErr()
-					return
+				# else:
+					# opErr()
+					# return
 			else:
 				infixOp.l = state.analyzeNode(infixOp.l, infixOp.r.type)
 		else:
 			infixOp.l = state.analyzeNode(infixOp.l, implicitType)
 			infixOp.r = state.analyzeNode(infixOp.r, implicitType)
 		
-		if not infixOp.l.type or not infixOp.r.type:
+		lType = infixOp.l.type
+		if lType.isOwnedType:# or rType.isRenamedType:
+			lType = lType.baseType
+		
+		rType = infixOp.r.type
+		if rType.isOwnedType:# or rType.isRenamedType:
+			rType = rType.baseType
+		
+		if not lType or not rType:
 			return
 		
-		if canPromote(infixOp.l.type, infixOp.r.type):
-			infixOp.l = Coercion(infixOp.l, None, infixOp.l.span, resolvedType=infixOp.r.type)
-		elif canPromote(infixOp.r.type, infixOp.l.type):
-			infixOp.r = Coercion(infixOp.r, None, infixOp.r.span, resolvedType=infixOp.l.type)
+		if canPromote(lType, rType):
+			infixOp.l = Coercion(infixOp.l, None, infixOp.l.span, resolvedType=rType)
+		elif canPromote(rType, lType):
+			infixOp.r = Coercion(infixOp.r, None, infixOp.r.span, resolvedType=lType)
 		
-		if infixOp.l.type == Bool and infixOp.r.type == Bool:
+		if lType == Bool and rType == Bool:
 			if infixOp.op == InfixOps.EQ:
 				infixOp.type = Bool
 				return
-		elif infixOp.l.type == Byte and infixOp.r.type == Byte:
+		elif lType == Byte and rType == Byte:
 			if infixOp.op == InfixOps.EQ:
 				infixOp.type = Bool
 				return
 			if infixOp.op in BITWISE_OPS:
 				infixOp.type = Byte
 				return
-		elif infixOp.l.type == Char and infixOp.r.type == Char:
+		elif lType == Char and rType == Char:
 			if infixOp.op == InfixOps.EQ:
 				infixOp.type = Bool
 				return
-		elif infixOp.l.type.isPtrType and infixOp.r.type.isIntType:
-			if infixOp.op in PTR_INT_OPS and infixOp.r.type.byteSize == USize.byteSize:
-				infixOp.type = infixOp.l.type
+		elif lType.isPtrType and rType.isIntType:
+			if infixOp.op in PTR_INT_OPS and rType.byteSize == USize.byteSize:
+				infixOp.type = lType
 				return
-		elif infixOp.l.type.isIntType and infixOp.r.type.isPtrType:
+		elif lType.isIntType and rType.isPtrType:
 			if infixOp.op in INT_PTR_OPS and infixOp.l.type.byteSize == USize.byteSize:
-				infixOp.type = infixOp.r.type
+				infixOp.type = rType
 				return
-		elif infixOp.l.type.isPtrType and infixOp.r.type.isPtrType:
-			if infixOp.op in PTR_PTR_OPS and typesMatch(infixOp.l.type, infixOp.r.type):
-				infixOp.type = infixOp.l.type
+		elif lType.isPtrType and rType.isPtrType:
+			if infixOp.op in PTR_PTR_OPS and typesMatch(lType, rType):
+				infixOp.type = lType
 				return
-		elif typesMatch(infixOp.l.type, infixOp.r.type) and (infixOp.l.type.isIntType or infixOp.l.type.isFloatType):
+		elif typesMatch(lType, rType) and (lType.isIntType or lType.isFloatType):
 			if infixOp.op == InfixOps.MODULO:
-				if infixOp.l.type.isIntType:
-					infixOp.type = infixOp.l.type
+				if lType.isIntType:
+					infixOp.type = lType
 					return
 			elif infixOp.op in ARITHMETIC_OPS:
-				infixOp.type = infixOp.l.type
+				infixOp.type = lType
 				return
-			elif (infixOp.op in BITWISE_OPS or infixOp.op in BITSHIFT_OPS) and infixOp.l.type.isIntType:
-				infixOp.type = infixOp.l.type
+			elif (infixOp.op in BITWISE_OPS or infixOp.op in BITSHIFT_OPS) and lType.isIntType:
+				infixOp.type = lType
 				return
 			elif infixOp.op in CMP_OPS:
 				infixOp.type = Bool
 				return
 		
-		opErr()
+		opErr(lType, rType)
 	
 	def writeIR(ast, state):
 		if ast.op == InfixOps.PLUS:

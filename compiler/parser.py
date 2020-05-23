@@ -28,6 +28,7 @@ from .deref      import Deref
 from .structlit  import StructLit, FieldLit
 from .tuplelit   import TupleLit, ArrayLit
 from .address    import Address
+from .alias      import AliasDecl
 from .scope      import ScopeType
 
 INFIX_PRECEDENCE = {
@@ -475,8 +476,9 @@ def parseBlock(state, parseItem, blockMarkers=BlockMarkers.BRACE,
 		item = parseItem(state)
 		if item == None:
 			# if item parsing failed, try to skip to a sane place
-			skipUntilTypes = (TokenType.COMMA, TokenType.SEMICOLON, TokenType.NEWLINE, closeMarker) \
-				if needsTerm else (TokenType.COMMA, TokenType.SEMICOLON, TokenType.NEWLINE)
+			# skipUntilTypes = (TokenType.COMMA, TokenType.SEMICOLON, TokenType.NEWLINE, closeMarker) \
+			# 	if needsTerm else (TokenType.COMMA, TokenType.SEMICOLON, TokenType.NEWLINE)
+			skipUntilTypes = (TokenType.NEWLINE, closeMarker) if needsTerm else (TokenType.NEWLINE,)
 			state.skipUntil(*skipUntilTypes)
 		else:
 			list.append(item)
@@ -1191,6 +1193,25 @@ def parseConstDecl(state, doccomment):
 			decl.typeRef, decl.expr, decl.span)
 	return decl
 
+def parseAlias(state, doccomment):
+	span = state.tok.span
+	state.advance()
+	state.skipSpace()
+	
+	nameTok = None
+	if expectType(state, TokenType.NAME):
+		nameTok = state.tok
+		state.advance()
+		state.skipSpace()
+	
+	typeRef = None
+	if expectType(state, TokenType.ASGN):
+		state.advance()
+		state.skipSpace()
+		typeRef = parseTypeRef(state)
+	
+	return AliasDecl(nameTok, typeRef, span, doccomment)
+
 def parseFnDecl(state, doccomment, extern):
 	span = state.tok.span
 	startLine = state.tok.span.startLine
@@ -1254,6 +1275,7 @@ class ExprClass(Enum):
 
 MOD_EXPR_TOKS = (
 	TokenType.MOD, 
+	TokenType.ALIAS, 
 	TokenType.FN, 
 	TokenType.UNSAFE, 
 	TokenType.STATIC, 
@@ -1286,6 +1308,7 @@ VALUE_EXPR_TOKS = (
 
 FN_EXPR_TOKS = (
 	*VALUE_EXPR_TOKS, 
+	TokenType.ALIAS, 
 	TokenType.LET, 
 	TokenType.LOOP, 
 	TokenType.WHILE, 
@@ -1349,6 +1372,8 @@ def parseExpr(state, exprClass, precedence=0, noSkipSpace=False, allowSimpleFnCa
 	decl = None
 	if state.tok.type == TokenType.MOD:
 		decl = parseModule(state, doccomment)
+	elif state.tok.type == TokenType.ALIAS:
+		decl = parseAlias(state, doccomment)
 	elif state.tok.type == TokenType.FN or state.tok.type == TokenType.UNSAFE and exprClass == ExprClass.MOD:
 		decl = parseFnDecl(state, doccomment, extern)
 	elif state.tok.type == TokenType.STATIC:

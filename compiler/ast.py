@@ -105,6 +105,7 @@ class TypeSymbol(Symbol):
 		super().__init__(nameTok, span, doccomment)
 		self.declaredType = None
 		self.dropFn = None
+		self.type = None
 
 class ValueSymbol(Symbol):
 	def __init__(self, nameTok, typeRef, span, doccomment=None, extern=False):

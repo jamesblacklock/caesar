@@ -11,6 +11,7 @@ from .mod        import Mod
 from .fndecl     import FnDecl, CConv
 from .staticdecl import StaticDecl, ConstDecl
 from .structdecl import StructDecl
+from .alias      import AliasDecl
 
 BUILTIN_TYPES = {
 	Void.name:    Void,
@@ -103,6 +104,8 @@ def buildSymbolTable(state, mod):
 		
 		if type(decl) == StructDecl:
 			mod.structs.append(decl)
+		elif type(decl) == AliasDecl:
+			mod.aliases.append(decl)
 		elif type(decl) == FnDecl:
 			mod.fns.append(decl)
 			if decl.name == 'main':
@@ -116,6 +119,8 @@ def buildSymbolTable(state, mod):
 		elif type(decl) == Mod:
 			mod.mods.append(decl)
 			decl.symbolTable = buildSymbolTable(state, decl)
+		else:
+			assert 0
 	
 	return symbolTable
 
