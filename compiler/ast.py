@@ -121,6 +121,7 @@ class ValueExpr(AST):
 		self.typeModifiers = None
 		self.borrows = None
 		self.hasValue = True
+		self.typeModifiers = None
 	
 	def staticEval(self, state):
 		return None

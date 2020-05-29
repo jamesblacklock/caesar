@@ -1,51 +1,103 @@
 from .ast   import ValueExpr
-from .types import typesMatch
+from .      import access, block
+from .types import typesMatch, PtrType
 from .ir    import FundamentalType, Call, IExtend, Extend, FExtend, IPTR, F64
 from .log   import logError
 
 class FnCall(ValueExpr):
 	def __init__(self, expr, args, span):
 		super().__init__(span)
+		self.isMethodCall = False
 		self.expr = expr
 		self.args = args
 		self.isDrop = False
 	
 	def analyze(fnCall, state, implicitType):
-		fnCall.expr = state.analyzeNode(fnCall.expr)
-		fnType = fnCall.expr.type
-		if fnType == None:
-			return
-		elif not fnType.isFnType:
-			logError(state, fnCall.expr.span, 'the expression cannot be called as a function')
-			return
+		selfExpr = None
+		failed = False
+		if fnCall.isMethodCall:
+			selfExpr = access.SymbolAccess.analyzeSymbolAccess(state, fnCall.args[0], noAccess=True)
+			fnCall.args[0] = selfExpr
+			if not selfExpr.type:
+				failed = True
+			else:
+				name = fnCall.expr.path[0].content
+				if name not in selfExpr.type.symbolTable:
+					logError(state, fnCall.expr.span, 'type `{}` has no method `{}`'.format(selfExpr.type, name))
+					failed = True
+				else:
+					symbol = selfExpr.type.symbolTable[name]
+					fnCall.expr = access.SymbolRead(fnCall.expr.span)
+					fnCall.expr.symbol = symbol
+					fnCall.expr.type = symbol.type
+					fnCall.expr.ref = True
 		
-		fnCall.type = fnType.returnType
+		fnType = None
+		if not failed:
+			fnCall.expr = state.analyzeNode(fnCall.expr)
+			if fnCall.expr.type:
+				fnType = fnCall.expr.type
+				if not fnType.isFnType:
+					logError(state, fnCall.expr.span, 'the expression cannot be called as a function')
+				else:
+					if fnCall.isMethodCall:
+						if len(fnType.params) > 0 and fnType.params[0].type.isPtrType:
+							selfExpr.type = PtrType(selfExpr.type, 1, fnType.params[0].type.mut)
+							if type(selfExpr) == block.Block:
+								read = selfExpr.exprs[-1]
+								read.type = selfExpr.type
+								selfExpr = read
+							
+							assert type(selfExpr) == access.SymbolRead
+							
+							selfExpr.ref = False
+							selfExpr.addr = True
+							selfExpr.borrows = {selfExpr}
+							selfExpr.dropBlock = state.scope.scopeLevelDropBlock
+						elif type(selfExpr) == block.Block:
+							selfExpr = selfExpr.exprs[-1]
+						
+						state.scope.accessSymbol(selfExpr)
+					
+					fnCall.type = fnType.returnType
+					if fnType.unsafe and not state.scope.allowUnsafe:
+						logError(state, fnCall.expr.span, 'unsafe function called in a safe context')
+					
+					if len(fnCall.args) < len(fnType.params) or \
+						not fnType.cVarArgs and len(fnCall.args) > len(fnType.params):
+						logError(state, fnCall.span, 
+							'function called with wrong number of arguments (expected {}, found {})'
+								.format(len(fnType.params), len(fnCall.args)))
 		
-		if fnType.unsafe and not state.scope.allowUnsafe:
-			logError(state, fnCall.expr.span, 'unsafe function called in a safe context')
+		params = list(fnType.params) if fnType else []
+		for _ in range(len(params), len(fnCall.args)):
+			params.append(None)
 		
-		if len(fnCall.args) < len(fnType.params) or \
-			not fnType.cVarArgs and len(fnCall.args) > len(fnType.params):
-			logError(state, fnCall.span, 
-				'function called with wrong number of arguments (expected {}, found {})'
-					.format(len(fnType.params), len(fnCall.args)))
-			return
-		
-		for (i, (expected, arg)) in enumerate(zip(fnType.params, fnCall.args)):
-			arg = state.analyzeNode(arg, expected.type)
-			fnCall.args[i] = arg
-			if arg.type and not typesMatch(expected.type, arg.type):
-				logError(state, arg.span, 
-					'expected type {}, found {}'.format(expected.type, arg.type))
-		
-		if fnType.cVarArgs and len(fnCall.args) > len(fnType.params):
-			offset = len(fnType.params)
-			for (i, arg) in enumerate(fnCall.args[offset:]):
-				arg = state.analyzeNode(arg)
-				fnCall.args[i + offset] = arg
+		isSelfArg = fnCall.isMethodCall
+		cVarArgs = fnType.cVarArgs if fnType else False
+		args = []
+		for (param, arg) in zip(params, fnCall.args):
+			expectedType = param.type if param else None
+			
+			if not isSelfArg:
+				arg = state.analyzeNode(arg, expectedType)
 				if arg.type and not arg.type.isPrimitiveType:
-					logError(state, arg.span, 
-						'type {} cannot be used as a C variadic argument'.format(arg.type))
+					if expectedType == None and cVarArgs:
+						logError(state, arg.span, 
+							'type {} cannot be used as a C variadic argument'.format(arg.type))
+			
+			if arg.typeModifiers and arg.typeModifiers.uninit:
+				if param:
+					logError(state, arg.span, '`uninit` value passed as param `{}`'.format(param.name))
+				else:
+					assert cVarArgs
+					logError(state, arg.span, 'C variadic argument must be initialized')
+			
+			arg = state.typeCheck(arg, expectedType)
+			args.append(arg)
+			isSelfArg = False
+		
+		fnCall.args = args
 	
 	def writeIR(ast, state):
 		normalArgs = ast.args

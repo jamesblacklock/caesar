@@ -2,16 +2,17 @@ import ctypes
 from .typeref    import NamedTypeRef, PtrTypeRef, ArrayTypeRef, TupleTypeRef, OwnedTypeRef
 from .types      import Type, UnknownType, FieldInfo, PtrType, ArrayType, TupleType, OwnedType, \
                         Void, Bool, Byte, Char, Int8, UInt8, Int16, UInt16, Int32, UInt32, \
-                        Int64, UInt64, ISize, USize, Float32, Float64, typesMatch, canCoerce
+                        Int64, UInt64, ISize, USize, Float32, Float64, typesMatch, canCoerce, tryPromote
 from .log        import logError, logExplain
 from .ast        import ASTPrinter, TypeSymbol
 from .scope      import Scope, ScopeType
 from .attrs      import invokeAttrs
-from .mod        import Mod
+from .mod        import Mod, Impl
 from .fndecl     import FnDecl, CConv
 from .staticdecl import StaticDecl, ConstDecl
 from .structdecl import StructDecl
-from .alias      import AliasDecl
+from .alias      import AliasDecl, TypeDecl
+from .access     import SymbolAccess, SymbolRead
 
 BUILTIN_TYPES = {
 	Void.name:    Void,
@@ -55,19 +56,18 @@ def finishAnalyzingStructType(state, resolvedType):
 
 def analyzeOwnedTypeRefSig(state, ownedTypeRef):
 	baseType = state.resolveTypeRefSig(ownedTypeRef.baseType)
+	if not baseType.isCopyable:
+		logError(state, ownedTypeRef.baseType.span, 'base type of owned type must be copyable')
 	
 	acquire = state.lookupSymbol(ownedTypeRef.acquire)
+	if acquire and type(acquire) != FnDecl:
+		logError(state, ownedTypeRef.acquire.span, '`{}` must be a function'.format(acquire.name))
+		acquire = None
+	
 	release = state.lookupSymbol(ownedTypeRef.release)
-	
-	if acquire:
-		if type(acquire) != FnDecl:
-			logError(state, ownedTypeRef.acquire.span, '`{}` must be a function', acquire.name)
-			acquire = None
-	
-	if release:
-		if type(release) != FnDecl:
-			logError(state, ownedTypeRef.release.span, '`{}` must be a function', release.name)
-			release = None
+	if release and type(release) != FnDecl:
+		logError(state, ownedTypeRef.release.span, '`{}` must be a function'.format(release.name))
+		release = None
 	
 	return OwnedType(baseType, acquire, release, ownedTypeRef.acquire.span, ownedTypeRef.release.span)
 
@@ -102,10 +102,8 @@ def buildSymbolTable(state, mod):
 		else:
 			symbolTable[decl.name] = decl
 		
-		if type(decl) == StructDecl:
-			mod.structs.append(decl)
-		elif type(decl) == AliasDecl:
-			mod.aliases.append(decl)
+		if type(decl) in (StructDecl, AliasDecl, TypeDecl):
+			mod.types.append(decl)
 		elif type(decl) == FnDecl:
 			mod.fns.append(decl)
 			if decl.name == 'main':
@@ -116,7 +114,7 @@ def buildSymbolTable(state, mod):
 			mod.consts.append(decl)
 		# elif type(decl) == ImportDecl:
 		# 	mod.imports.append(decl)
-		elif type(decl) == Mod:
+		elif type(decl) in (Mod, Impl):
 			mod.mods.append(decl)
 			decl.symbolTable = buildSymbolTable(state, decl)
 		else:
@@ -129,13 +127,8 @@ def analyze(ast):
 	
 	ast.symbolTable = buildSymbolTable(state, ast)
 	
-	state.pushScope(ScopeType.MOD, name=ast.name)
-	state.scope.setSymbolTable(ast.symbolTable)
-	
 	ast.analyzeSig(state)
 	ast = state.analyzeNode(ast)
-	
-	state.popScope()
 	
 	p = ASTPrinter()
 	ast.pretty(p)
@@ -181,10 +174,7 @@ class AnalyzerState:
 			return None
 		elif resolvedType.isOwnedType:
 			return finishAnalyzingOwnedType(state, resolvedType)
-		elif resolvedType.isPtrType:
-			resolvedType.baseType = state.finishResolvingType(resolvedType.baseType)
-			return resolvedType
-		elif resolvedType.isArrayType:
+		elif resolvedType.isPtrType or resolvedType.isArrayType or resolvedType.isTypeDef:
 			resolvedType.baseType = state.finishResolvingType(resolvedType.baseType)
 			return resolvedType
 		elif resolvedType.isTupleType:
@@ -196,6 +186,16 @@ class AnalyzerState:
 	
 	def resolveTypeRef(state, typeRef):
 		return state.finishResolvingType(state.resolveTypeRefSig(typeRef))
+	
+	def typeCheck(state, expr, expectedType):
+		if not (expr.type and expectedType):
+			return expr
+		
+		expr = tryPromote(expr, expectedType)
+		if not typesMatch(expr.type, expectedType):
+			logError(state, expr.span, 'expected type {}, found {}'.format(expectedType, expr.type))
+		
+		return expr
 	
 	def mangleName(state, decl):
 		if type(decl) == FnDecl and decl.cconv == CConv.C:
@@ -257,13 +257,14 @@ class AnalyzerState:
 		
 		return FieldLayout(maxAlign, offset, fields)
 	
-	def pushScope(self, scopeType, name=None, fnDecl=None, ifExpr=None, loopExpr=None, allowUnsafe=False):
+	def pushScope(self, scopeType, name=None, mod=None, fnDecl=None, ifExpr=None, loopExpr=None, allowUnsafe=False):
 		self.scope = Scope(
 			self, 
 			self.scope, 
 			scopeType, 
 			name=name, 
 			fnDecl=fnDecl, 
+			mod=mod, 
 			loopExpr=loopExpr, 
 			ifExpr=ifExpr, 
 			ifBranchOuterSymbolInfo=self.lastIfBranchOuterSymbolInfo, 

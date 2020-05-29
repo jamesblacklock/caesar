@@ -1,0 +1,23 @@
+@ffi("C")
+extern unsafe fn printf(fmt: &byte, ...)
+
+type MyType = int
+
+impl MyType
+    fn addInt(self: &MyType, arg: int) -> int
+        (self^ as int + arg)
+    
+    fn add(self: &MyType, other: MyType) -> MyType
+        (self^ as int + other as int) as MyType
+
+impl MyType unsafe fn print(self: MyType)
+    printf("%d\n", self as int)
+
+fn main()
+    let a = +127 as MyType
+    let b = -127 as MyType
+    
+    unsafe
+        a->add(b)->print
+        # a->print
+        printf("%d\n", a->addInt(128))

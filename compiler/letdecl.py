@@ -14,6 +14,9 @@ class FnParam(ValueSymbol):
 	def __init__(self, nameTok, typeRef, span):
 		super().__init__(nameTok, typeRef, span)
 		self.dropFn = None
+		# self.mut = mut
+		# self.defaultExpr = defaultExpr
+		self.fixed = False
 		self.dropBlock = None
 	
 	def analyze(param, state, implicitType):

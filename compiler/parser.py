@@ -9,7 +9,7 @@ from .sign       import Sign
 from .structdecl import FieldDecl, StructDecl, UnionFields
 from .attrs      import Attr
 from .typeref    import PtrTypeRef, NamedTypeRef, ArrayTypeRef, TupleTypeRef, OwnedTypeRef
-from .mod        import Mod
+from .mod        import Mod, Impl
 from .fndecl     import FnDecl, CConv
 from .staticdecl import StaticDecl, ConstDecl
 from .coercion   import Coercion
@@ -29,6 +29,7 @@ from .structlit  import StructLit, FieldLit
 from .tuplelit   import TupleLit, ArrayLit
 from .address    import Address
 from .alias      import AliasDecl
+from .alias      import TypeDecl
 from .scope      import ScopeType
 
 INFIX_PRECEDENCE = {
@@ -629,8 +630,12 @@ def parseFnCall(state, expr):
 
 def parseMethodCall(state, l, r):
 	if type(r) != FnCall:
-		r = FnCall(r, [], Span.merge(l.span, r.span))
+		if type(r) != ValueRef or len(r.path) != 1:
+			logError(state, r.span, 'found unexpected expression instead of method call')
+		r = FnCall(r, [], r.span)
 	r.args.insert(0, l)
+	r.isMethodCall = True
+	r.span = Span.merge(l.span, r.span)
 	return r
 
 def parseIf(state):
@@ -1212,6 +1217,25 @@ def parseAlias(state, doccomment):
 	
 	return AliasDecl(nameTok, typeRef, span, doccomment)
 
+def parseTypeDecl(state, doccomment):
+	span = state.tok.span
+	state.advance()
+	state.skipSpace()
+	
+	nameTok = None
+	if expectType(state, TokenType.NAME):
+		nameTok = state.tok
+		state.advance()
+		state.skipSpace()
+	
+	typeRef = None
+	if expectType(state, TokenType.ASGN):
+		state.advance()
+		state.skipSpace()
+		typeRef = parseTypeRef(state)
+	
+	return TypeDecl(nameTok, typeRef, span, doccomment)
+
 def parseFnDecl(state, doccomment, extern):
 	span = state.tok.span
 	startLine = state.tok.span.startLine
@@ -1264,24 +1288,51 @@ def parseFnDecl(state, doccomment, extern):
 def parseModLevelDecl(state):
 	return parseExpr(state, ExprClass.MOD)
 
+def parseLevelImplDecl(state):
+	return parseExpr(state, ExprClass.IMPL)
+
 def parseFnBodyExpr(state):
 	return parseExpr(state, ExprClass.FN)
 
 class ExprClass(Enum):
 	MOD = 'MOD'
+	IMPL = 'IMPL'
+	TRAIT = 'TRAIT'
 	FN = 'FN'
 	ATTR = 'ATTR'
 	VALUE_EXPR = 'VALUE_EXPR'
 
 MOD_EXPR_TOKS = (
 	TokenType.MOD, 
+	TokenType.FN, 
+	TokenType.UNSAFE, 
+	TokenType.STATIC, 
+	TokenType.STRUCT, 
+	TokenType.UNION, 
+	TokenType.CONST, 
+	TokenType.ALIAS, 
+	TokenType.TYPE, 
+	TokenType.IMPL, 
+	TokenType.TRAIT
+)
+
+IMPL_EXPR_TOKS = (
 	TokenType.ALIAS, 
 	TokenType.FN, 
 	TokenType.UNSAFE, 
 	TokenType.STATIC, 
 	TokenType.STRUCT, 
 	TokenType.UNION, 
-	TokenType.CONST
+	TokenType.CONST, 
+	TokenType.TYPE
+)
+
+TRAIT_EXPR_TOKS = (
+	TokenType.FN, 
+	TokenType.UNSAFE, 
+	TokenType.STATIC, 
+	TokenType.CONST, 
+	TokenType.TYPE
 )
 
 VALUE_EXPR_TOKS = (
@@ -1350,9 +1401,12 @@ def parseExpr(state, exprClass, precedence=0, noSkipSpace=False, allowSimpleFnCa
 	
 	if startToken == None: startToken = state.tok
 	
-	validToks = None
 	if exprClass == ExprClass.MOD:
 		if state.tok.type not in MOD_EXPR_TOKS:
+			logError(state, state.tok.span, 'expected declaration, found {}'.format(state.tok.type.desc()))
+			return None
+	elif exprClass == ExprClass.IMPL:
+		if state.tok.type not in IMPL_EXPR_TOKS:
 			logError(state, state.tok.span, 'expected declaration, found {}'.format(state.tok.type.desc()))
 			return None
 	elif exprClass == ExprClass.FN:
@@ -1372,9 +1426,16 @@ def parseExpr(state, exprClass, precedence=0, noSkipSpace=False, allowSimpleFnCa
 	decl = None
 	if state.tok.type == TokenType.MOD:
 		decl = parseModule(state, doccomment)
+	elif state.tok.type == TokenType.IMPL:
+		decl = parseImpl(state, doccomment)
+	elif state.tok.type == TokenType.TRAIT:
+		decl = parseTrait(state, doccomment)
 	elif state.tok.type == TokenType.ALIAS:
 		decl = parseAlias(state, doccomment)
-	elif state.tok.type == TokenType.FN or state.tok.type == TokenType.UNSAFE and exprClass == ExprClass.MOD:
+	elif state.tok.type == TokenType.TYPE:
+		decl = parseTypeDecl(state, doccomment)
+	elif state.tok.type == TokenType.FN or \
+		state.tok.type == TokenType.UNSAFE and exprClass in (ExprClass.MOD, ExprClass.IMPL):
 		decl = parseFnDecl(state, doccomment, extern)
 	elif state.tok.type == TokenType.STATIC:
 		decl = parseStaticDecl(state, doccomment, extern)
@@ -1409,6 +1470,27 @@ def parseExpr(state, exprClass, precedence=0, noSkipSpace=False, allowSimpleFnCa
 		decl.attrs = attrs
 	
 	return decl
+
+def parseImpl(state, doccomment):
+	span = state.tok.span
+	state.advance()
+	state.skipSpace()
+	
+	if expectType(state, TokenType.NAME):
+		path = parsePath(state)
+		state.skipSpace()
+	
+	if state.tok.type in (IMPL_EXPR_TOKS):
+		decl = parseLevelImplDecl(state)
+		decls = [decl]
+		span = Span.merge(span, decl.span)
+	else:
+		block = parseBlock(state, parseLevelImplDecl)
+		decls = block.list
+		span = Span.merge(span, block.span)
+	
+	impl = Impl(path.path, doccomment, decls, span)
+	return impl
 
 def parseModule(state, doccomment):
 	span = state.tok.span

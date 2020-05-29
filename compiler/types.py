@@ -9,7 +9,7 @@ class Type:
 		isFnType=False, isPtrType=False, isStructType=False, 
 		isIntType=False, isIntLikeType=False, isFloatType=False, isOptionType=False, 
 		isPrimitiveType=False, isSigned=False, isArrayType=False, isOwnedType=False, 
-		isTupleType=False, isCompositeType=False, isResolved=True):
+		isTupleType=False, isCompositeType=False, isResolved=True, isTypeDef=False):
 		self.name = name
 		self.byteSize = byteSize
 		self.align = align
@@ -29,10 +29,17 @@ class Type:
 		self.isTupleType = isTupleType
 		self.isCompositeType = isCompositeType
 		self.isOwnedType = isOwnedType
+		self.isTypeDef = isTypeDef
 		self.dropFn = None
+		self.symbolTable = {}
 	
 	def __str__(self):
 		return self.name
+
+class TypeDefType(Type):
+	def __init__(self, name, baseType):
+		super().__init__(name, baseType.byteSize, baseType.align, isTypeDef=True)
+		self.baseType = baseType
 
 class OwnedType(Type):
 	def __init__(self, baseType, acquire, release, acquireSpan, releaseSpan):
@@ -285,6 +292,31 @@ def shapesMatch(type1, type2):
 	
 	return True
 
+def tryPromote(expr, toType):
+	fromType = expr.type
+	if not fromType or not toType or fromType == toType:
+		return expr
+	
+	intToInt = fromType.isIntType and toType.isIntType
+	intOrFloatToFloat = (fromType.isIntType or fromType.isFloatType) and toType.isFloatType
+	if intToInt or intOrFloatToFloat:
+		signsMatch = fromType.isSigned == toType.isSigned
+		sizeDoesIncrease = fromType.byteSize < toType.byteSize
+		if signsMatch and sizeDoesIncrease:
+			return coercion.Coercion(expr, None, expr.span, resolvedType=toType)
+	
+	# if type(expr) == SymbolAccess and expr.ref and indefiniteMatch(expr.type, expectedType):
+	# 	expr.symbol.type = expectedType
+	# 	expr.type = expectedType
+	# 	return expr
+	
+	# if toType.isOptionType:
+	# 	for t in toType.types:
+	# 		if typesMatch(fromType, t):
+	# 			return constructOptionInstance(expr)
+	
+	return expr
+
 def canPromote(fromType, toType):
 	if not (fromType and toType):
 		return False
@@ -301,6 +333,11 @@ def canCoerce(fromType, toType):
 			return False
 		
 		fromType = fromType.baseType
+		toType = toType.baseType
+	
+	while fromType.isTypeDef:
+		fromType = fromType.baseType
+	while toType.isTypeDef:
 		toType = toType.baseType
 	
 	fromIsInt = fromType.isIntType or fromType in (Bool, Byte, Char)

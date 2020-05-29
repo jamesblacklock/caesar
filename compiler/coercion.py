@@ -14,10 +14,11 @@ class Coercion(ValueExpr):
 		asExpr.type = state.resolveTypeRef(asExpr.typeRef)
 		asExpr.expr = state.analyzeNode(asExpr.expr, asExpr.type)
 		
-		if typesMatch(asExpr.expr.type, asExpr.type):
+		if not asExpr.expr.type:
+			return None
+		elif typesMatch(asExpr.expr.type, asExpr.type):
 			return asExpr.expr
-		
-		if asExpr.expr.type.isOwnedType and not asExpr.type.isOwnedType:
+		elif asExpr.expr.type.isOwnedType and not asExpr.type.isOwnedType:
 			t = asExpr.expr.type
 			asExpr.type = OwnedType(asExpr.type, t.acquire, t.release, t.acquireSpan, t.releaseSpan)
 		

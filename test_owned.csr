@@ -8,7 +8,7 @@ extern unsafe fn malloc(size: usize) -> mallocptr
 # extern unsafe fn malloc(size: usize) -> owned(malloc, free) &mut [byte * size]
 
 @ffi("C")
-extern unsafe fn free(ptr: owned(malloc, free) &void)
+extern unsafe fn free(ptr: mallocptr)
 
 unsafe fn main()
     let buf = malloc(8) as &mut [byte * 8]

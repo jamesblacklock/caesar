@@ -77,6 +77,7 @@ class TokenType(Enum):
 	TRUE       = '`true`'
 	FALSE      = '`false`'
 	ALIAS      = '`alias`'
+	TYPE       = '`type`'
 	NAME       = 'name'
 	UNKNOWN    = '<unknown>'
 	EOF        = '<end-of-file>'

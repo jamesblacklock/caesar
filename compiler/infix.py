@@ -193,12 +193,12 @@ class InfixOp(ValueExpr):
 			infixOp.r = state.analyzeNode(infixOp.r, implicitType)
 		
 		lType = infixOp.l.type
-		if lType.isOwnedType:# or rType.isRenamedType:
-			lType = lType.baseType
+		# if lType.isOwnedType:# or rType.isRenamedType:
+			# lType = lType.baseType
 		
 		rType = infixOp.r.type
-		if rType.isOwnedType:# or rType.isRenamedType:
-			rType = rType.baseType
+		# if rType.isOwnedType:# or rType.isRenamedType:
+			# rType = rType.baseType
 		
 		if not lType or not rType:
 			return

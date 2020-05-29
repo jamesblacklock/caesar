@@ -43,6 +43,8 @@ class SymbolInfo:
 		self.breaksAfterMove = {}
 		self.breaksSinceLastUse = {}
 		self.borrows = set()
+		self.borrowedBy = set()
+		self.usesOfBorrowsSinceLastUse = set()
 		
 		
 		# def addFieldInfo(fields, expr):
@@ -91,13 +93,14 @@ class SymbolInfo:
 
 class Scope:
 	def __init__(self, state, parent, scopeType, 
-		name=None, fnDecl=None, loopExpr=None, ifExpr=None, ifBranchOuterSymbolInfo=None, allowUnsafe=False):
+		name=None, mod=None, fnDecl=None, loopExpr=None, 
+		ifExpr=None, ifBranchOuterSymbolInfo=None, allowUnsafe=False):
 		self.state = state
 		self.parent = parent
 		self.type = scopeType
 		self.symbolTable = {}
 		self.symbolInfo = {}
-		self.name = name
+		self.name = mod.name if mod else name
 		self.didBreak = False
 		self.didReturn = False
 		self.fnDecl = fnDecl
@@ -108,6 +111,9 @@ class Scope:
 		self.scopeLevelDropBlock = None
 		self.beforeScopeLevelExpr = None
 		self.allowUnsafe = allowUnsafe
+		
+		if mod:
+			self.setSymbolTable(mod.symbolTable)
 		
 		if parent:
 			self.loopDepth = parent.loopDepth
@@ -131,7 +137,9 @@ class Scope:
 		outerSymbolInfo = {}
 		for info in self.symbolInfo.values():
 			if info.wasDeclared:
-				if info.symbol.unused:
+				if info.symbol.type == None:
+					continue
+				elif info.symbol.unused:
 					if type(info.symbol) == letdecl.LetDecl:
 						logWarning(self.state, info.symbol.span, 'unused symbol')
 					elif type(info.symbol) == letdecl.FnParam:
@@ -267,6 +275,8 @@ class Scope:
 			scope = scope.parent
 	
 	def setLastUse(self, info, use, isRead):
+		use.typeModifiers = info.typeModifiers.clone()
+		
 		if info.moved and info.symbol.type.isCopyable and \
 			(isRead or info.symbol.dropFn):
 			for lastUse in info.lastUses:
@@ -302,6 +312,31 @@ class Scope:
 		
 		if info.dropInBlock:
 			info.dropInBlock = set()
+		
+		if info.usesOfBorrowsSinceLastUse:
+			for borrowUse in info.usesOfBorrowsSinceLastUse:
+				borrowUse.isBorrowed = True
+			info.usesOfBorrowsSinceLastUse = set()
+		
+		if info.borrowedBy:
+			for borrower in info.borrowedBy:
+				borrowerInfo = self.symbolInfo[borrower]
+				borrowerInfo.usesOfBorrowsSinceLastUse.add(use)
+		
+		if info.borrows:
+			use.borrows = info.borrows
+			scopeErrCount = 0
+			for borrow in info.borrows:
+				if borrow.symbol not in self.symbolInfo:
+					if scopeErrCount == 0:
+						logError(self.state, use.lvalueSpan, 'borrowed value has gone out of scope')
+					scopeErrCount += 1
+					countStr = '' if scopeErrCount < 2 else '({}) '.format(scopeErrCount)
+					logExplain(self.state, borrow.span, 'borrow {}originally occurred here'.format(countStr))
+				elif info.symbol != borrow.symbol:
+					borrowInfo = self.symbolInfo[borrow.symbol]
+					borrowInfo.borrowedBy.add(info.symbol)
+					self.setLastUse(borrowInfo, use, isRead)
 		
 		info.lastUses = { use: self.loopExpr }
 	
@@ -378,19 +413,6 @@ class Scope:
 		
 		self.setLastUse(info, expr, isRead=True)
 		
-		if info.borrows:
-			expr.borrows = info.borrows
-			errCount = 0
-			for borrow in info.borrows:
-				if borrow.symbol not in self.symbolInfo:
-					if errCount == 0:
-						logError(self.state, expr.span, 'borrowed value has gone out of scope')
-					errCount += 1
-					countStr = '' if errCount < 2 else '({}) '.format(errCount)
-					logExplain(self.state, borrow.span, 'borrow {}originally occurred here'.format(countStr))
-				else:
-					self.setLastUse(self.symbolInfo[borrow.symbol], expr, isRead=True)
-		
 		if isField:
 			if fieldInfo:
 				fieldInfo.moved = not field.type.isCopyable
@@ -413,20 +435,12 @@ class Scope:
 				logError(self.state, expr.lvalueSpan, 'assignment target is not mutable')
 			return
 		
-		info.borrows = expr.rvalue.borrows
+		for borrow in info.borrows:
+			if borrow.symbol in self.symbolInfo:
+				borrowInfo = self.symbolInfo[borrow.symbol]
+				borrowInfo.borrowedBy.remove(info.symbol)
 		
-		if info.borrows:
-			expr.borrows = info.borrows
-			scopeErrCount = 0
-			for borrow in info.borrows:
-				if borrow.symbol not in self.symbolInfo:
-					if scopeErrCount == 0:
-						logError(self.state, expr.lvalueSpan, 'borrowed value has gone out of scope')
-					scopeErrCount += 1
-					countStr = '' if scopeErrCount < 2 else '({}) '.format(scopeErrCount)
-					logExplain(self.state, borrow.span, 'borrow {}originally occurred here'.format(countStr))
-				else:
-					self.setLastUse(self.symbolInfo[borrow.symbol], expr, isRead=False)
+		info.borrows = expr.rvalue.borrows
 		
 		if not symbol.mut and not info.uninit:
 			logError(self.state, expr.lvalueSpan, 'assignment target is not mutable')

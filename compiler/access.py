@@ -31,6 +31,7 @@ class SymbolAccess(ValueExpr):
 	def __init__(self, span):
 		super().__init__(span)
 		self.symbol = None
+		self.isBorrowed = False
 		self.staticOffset = 0
 		self.dynOffsets = []
 		self.deref = 0
@@ -42,9 +43,10 @@ class SymbolAccess(ValueExpr):
 		self.fieldSpan = None
 		self.type = None
 		self.dropBlock = None
+		self.noAccess = False
 	
 	@staticmethod
-	def analyzeSymbolAccess(state, expr, implicitType=None, rvalueImplicitType=None):
+	def analyzeSymbolAccess(state, expr, implicitType=None, rvalueImplicitType=None, noAccess=False):
 		exprs = []
 		
 		if type(expr) == letdecl.LetDecl:
@@ -83,7 +85,9 @@ class SymbolAccess(ValueExpr):
 		if access.symbol == None:
 			return access
 		
+		access.noAccess = noAccess
 		result = state.analyzeNode(access, implicitType)
+		access.noAccess = False
 		exprBlock = None
 		if type(result) == block.Block:
 			exprBlock = result
@@ -129,7 +133,11 @@ class SymbolAccess(ValueExpr):
 			output.write(']')
 		if self.write:
 			output.write(' = ')
-			self.rvalue.pretty(output)
+			if type(self.rvalue) == block.Block and len(self.rvalue.exprs) > 1:
+				output.write('\n')
+				self.rvalue.pretty(output, indent + 1)
+			else:
+				self.rvalue.pretty(output)
 		
 class SymbolRead(SymbolAccess):
 	def __init__(self, span):
@@ -145,8 +153,9 @@ class SymbolRead(SymbolAccess):
 			access.type = access.symbol.type
 		if access.field and access.field.isUnionField and not state.scope.allowUnsafe:
 			logError(state, fnCall.expr.span, 'reading union fields is unsafe; context is safe')
-			
-		state.scope.accessSymbol(access)
+		
+		if not access.noAccess:
+			state.scope.accessSymbol(access)
 		
 		access.ref = not access.addr and not access.isFieldAccess
 		
@@ -237,7 +246,7 @@ class SymbolRead(SymbolAccess):
 			state.appendInstr(Addr(expr, stackOffset))
 		else:
 			stackOffset = 0 if stackTop else state.localOffset(expr.symbol)
-			if expr.copy:
+			if expr.copy or expr.isBorrowed:
 				state.appendInstr(Dup(expr, stackOffset))
 			elif stackOffset > 0:
 				state.appendInstr(Raise(expr, stackOffset))
@@ -286,7 +295,8 @@ class SymbolWrite(SymbolAccess):
 		if access.field and access.field.isUnionField and not state.scope.allowUnsafe:
 			logError(state, fnCall.expr.span, 'writing union fields is unsafe; context is safe')
 		
-		state.scope.accessSymbol(access)
+		if not access.noAccess:
+			state.scope.accessSymbol(access)
 		
 		return block.Block([access, access.dropBlock], access.span, noLower=True)
 	
