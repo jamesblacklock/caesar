@@ -205,8 +205,10 @@ class InfixOp(ValueExpr):
 		
 		if canPromote(lType, rType):
 			infixOp.l = Coercion(infixOp.l, None, infixOp.l.span, resolvedType=rType)
+			lType = rType
 		elif canPromote(rType, lType):
 			infixOp.r = Coercion(infixOp.r, None, infixOp.r.span, resolvedType=lType)
+			rType = lType
 		
 		if lType == Bool and rType == Bool:
 			if infixOp.op == InfixOps.EQ:

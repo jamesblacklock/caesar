@@ -183,6 +183,7 @@ class ArrayType(TypeSymbol):
 		self.baseType = baseType
 		self.count = count
 		self.fields = ArrayFields(baseType, count)
+		self.anon = True
 
 class TupleType(TypeSymbol):
 	def __init__(self, align, byteSize, fields):
@@ -332,6 +333,8 @@ def typesMatch(type1, type2, selfType=None):
 		if type1.acquire != type2.acquire or type1.release != type2.release:
 			return False
 		return typesMatch(type1.baseType, type2.baseType)
+	elif type1.isCompositeType and type2.isCompositeType:
+		return type1.anon and type2.anon and shapesMatch(type1, type2)
 	elif type1.isFnType and type2.isFnType:
 		if type1.unsafe != type2.unsafe or type1.cVarArgs != type2.cVarArgs or type1.cconv != type2.cconv:
 			return False

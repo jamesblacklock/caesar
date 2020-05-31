@@ -60,14 +60,14 @@ class StructDecl(TypeSymbol):
 		decl.applyLayout(layout)
 	
 	def pretty(self, output, indent=0):
-		output.write('union ' if isUnion else 'struct ', indent)
+		output.write('union ' if self.isUnion else 'struct ', indent)
 		if self.name: output.write(self.name)
 		output.write('\n')
-		for field in self.fields[:-1]:
+		for field in self.fieldDecls[:-1]:
 			field.pretty(output, indent + 1)
 			output.write('\n')
-		if len(self.fields) > 0:
-			self.fields[-1].pretty(output, indent + 1)
+		if len(self.fieldDecls) > 0:
+			self.fieldDecls[-1].pretty(output, indent + 1)
 
 class UnionFields(AST):
 	def __init__(self, fields, span):

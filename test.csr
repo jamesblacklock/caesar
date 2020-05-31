@@ -15,9 +15,9 @@ extern unsafe fn getchar() -> int
 const NULL = 0 as &int64
 
 unsafe fn drop(q: int) { printf("dropping value: %d\n", q) }
+
 unsafe fn doTheThing(n: int16) -> int16 #=hello=#
-	printf("Normal function-call syntax%s\n", ".")
-	"Here is a number: %d\n" -> printf(n)
+	printf("Here is a number: %d\n", n)
 	
 	return 17
 

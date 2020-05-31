@@ -435,10 +435,11 @@ class Scope:
 				logError(self.state, expr.lvalueSpan, 'assignment target is not mutable')
 			return
 		
-		for borrow in info.borrows:
-			if borrow.symbol in self.symbolInfo:
-				borrowInfo = self.symbolInfo[borrow.symbol]
-				borrowInfo.borrowedBy.remove(info.symbol)
+		if info.borrows:
+			for borrow in info.borrows:
+				if borrow.symbol in self.symbolInfo:
+					borrowInfo = self.symbolInfo[borrow.symbol]
+					borrowInfo.borrowedBy.remove(info.symbol)
 		
 		info.borrows = expr.rvalue.borrows
 		

@@ -32,11 +32,8 @@ fn main(argc: int, argv: &&byte) -> int
 			continue
 		pt^ = c as byte
 		pt = pt + 1 # pt += 1
-		# printf("%d <= %d: %d\n", i, size, if i <= size {true} else {false})
-		# printf("a\n")
-		# void
 	
-	unsafe "%s, %s\n" -> printf("Hello"; borrow buf)
+	unsafe printf("%s, %s\n"; "Hello"; borrow buf)
 	
 	unsafe
 		let mut asdf = 4

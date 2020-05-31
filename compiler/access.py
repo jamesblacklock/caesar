@@ -195,7 +195,7 @@ class SymbolRead(SymbolAccess):
 			return exprs[0]
 		
 		exprBlock = block.Block(exprs, access.span, noLower=True)
-		exprBlock.type = access.type
+		exprBlock.type = expr.type
 		return exprBlock
 	
 	def writeIR(expr, state):

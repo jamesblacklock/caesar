@@ -28,9 +28,8 @@ class TypeDecl(TypeSymbol):
 	
 	def analyzeSig(self, state):
 		self.baseType = state.resolveTypeRefSig(self.typeRef)
-		self.byteSize = baseType.byteSize
-		self.align = baseType.align
-		self.baseType = baseType
+		self.byteSize = self.baseType.byteSize
+		self.align = self.baseType.align
 	
 	def pretty(self, output, indent=0):
 		output.write('type ', indent)
