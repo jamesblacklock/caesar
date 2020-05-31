@@ -404,6 +404,7 @@ class DerefField(Instr):
 class FieldW(Instr):
 	def __init__(self, ast, offset):
 		super().__init__(ast)
+		assert offset > 1
 		self.offset = offset
 	
 	def affectStack(self, state):
@@ -416,6 +417,7 @@ class FieldW(Instr):
 class DerefFieldW(Instr):
 	def __init__(self, ast, offset):
 		super().__init__(ast)
+		assert offset > 1
 		self.offset = offset
 	
 	def affectStack(self, state):

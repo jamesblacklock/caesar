@@ -1,13 +1,13 @@
 import ctypes
 from .typeref    import NamedTypeRef, PtrTypeRef, ArrayTypeRef, TupleTypeRef, OwnedTypeRef
-from .types      import Type, UnknownType, FieldInfo, PtrType, ArrayType, TupleType, OwnedType, \
+from .types      import TypeSymbol, UnknownType, FieldInfo, PtrType, ArrayType, TupleType, OwnedType, \
                         Void, Bool, Byte, Char, Int8, UInt8, Int16, UInt16, Int32, UInt32, \
                         Int64, UInt64, ISize, USize, Float32, Float64, typesMatch, canCoerce, tryPromote
 from .log        import logError, logExplain
-from .ast        import ASTPrinter, TypeSymbol
+from .ast        import ASTPrinter
 from .scope      import Scope, ScopeType
 from .attrs      import invokeAttrs
-from .mod        import Mod, Impl
+from .mod        import Mod, Impl, TraitDecl
 from .fndecl     import FnDecl, CConv
 from .staticdecl import StaticDecl, ConstDecl
 from .structdecl import StructDecl
@@ -59,12 +59,12 @@ def analyzeOwnedTypeRefSig(state, ownedTypeRef):
 	if not baseType.isCopyable:
 		logError(state, ownedTypeRef.baseType.span, 'base type of owned type must be copyable')
 	
-	acquire = state.lookupSymbol(ownedTypeRef.acquire)
+	acquire = state.lookupSymbol(ownedTypeRef.acquire.path)
 	if acquire and type(acquire) != FnDecl:
 		logError(state, ownedTypeRef.acquire.span, '`{}` must be a function'.format(acquire.name))
 		acquire = None
 	
-	release = state.lookupSymbol(ownedTypeRef.release)
+	release = state.lookupSymbol(ownedTypeRef.release.path)
 	if release and type(release) != FnDecl:
 		logError(state, ownedTypeRef.release.span, '`{}` must be a function'.format(release.name))
 		release = None
@@ -102,8 +102,10 @@ def buildSymbolTable(state, mod):
 		else:
 			symbolTable[decl.name] = decl
 		
-		if type(decl) in (StructDecl, AliasDecl, TypeDecl):
+		if type(decl) in (StructDecl, AliasDecl, TypeDecl, TraitDecl):
 			mod.types.append(decl)
+			if type(decl) == TraitDecl:
+				decl.mod.symbolTable = buildSymbolTable(state, decl.mod)
 		elif type(decl) == FnDecl:
 			mod.fns.append(decl)
 			if decl.name == 'main':
@@ -151,21 +153,21 @@ class AnalyzerState:
 	
 	def resolveTypeRefSig(state, typeRef):
 		if type(typeRef) == NamedTypeRef:
-			result = state.lookupSymbol(typeRef, True)
+			result = state.lookupSymbol(typeRef.path, True)
 			return result if result else UnknownType
 		elif type(typeRef) == OwnedTypeRef:
 			return analyzeOwnedTypeRefSig(state, typeRef)
 		elif type(typeRef) == PtrTypeRef:
-			baseType = state.resolveTypeRef(typeRef.baseType)
+			baseType = state.resolveTypeRefSig(typeRef.baseType)
 			return PtrType(baseType, typeRef.indLevel, typeRef.mut)
 		elif type(typeRef) == ArrayTypeRef:
-			baseType = state.resolveTypeRef(typeRef.baseType)
+			baseType = state.resolveTypeRefSig(typeRef.baseType)
 			return ArrayType(baseType, typeRef.count)
 		elif type(typeRef) == TupleTypeRef:
 			return analyzeTupleTypeRefSig(state, typeRef)
 		elif type(typeRef) == StructDecl:
 			typeRef.analyzeSig(state)
-			return typeRef.type
+			return typeRef
 		else:
 			assert 0
 	
@@ -287,9 +289,9 @@ class AnalyzerState:
 					info.wasDeclared = self.scope.symbolInfo[info.symbol].wasDeclared
 				self.scope.symbolInfo[info.symbol] = info
 	
-	def lookupSymbol(self, ref, inTypePosition=False):
-		symbolTok = ref.path[0]
-		path = ref.path[1:]
+	def lookupSymbol(self, path, inTypePosition=False):
+		symbolTok = path[0]
+		path = path[1:]
 		
 		if symbolTok.content == '_':
 			logError(self, symbolTok.span, '`_` is not a valid symbol name')
@@ -317,19 +319,20 @@ class AnalyzerState:
 					logError(self, symbolTok.span, '`{}` is not a module'.format(symbol.name))
 					return None
 		
-		if symbol and inTypePosition and isinstance(symbol, TypeSymbol):
-			symbol = symbol.type
+		if type(symbol) == AliasDecl:
+			assert symbol.symbol
+			symbol = symbol.symbol
 		
 		if inTypePosition:
 			if symbol == None:
 				logError(self, symbolTok.span, 'cannot resolve type `{}`'.format(symbolTok.content))
-			elif not isinstance(symbol, Type):
+			elif not isinstance(symbol, TypeSymbol):
 				logError(self, symbolTok.span, '`{}` is not a type'.format(symbolTok.content))
 				symbol = None
 		else:
 			if symbol == None:
 				logError(self, symbolTok.span, 'cannot resolve the symbol `{}`'.format(symbolTok.content))
-			elif isinstance(symbol, Type):
+			elif isinstance(symbol, TypeSymbol):
 				logError(self, symbolTok.span, 'found a type reference where a value was expected')
 				symbol = None
 			elif type(symbol) == Mod:

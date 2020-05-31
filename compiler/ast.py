@@ -100,13 +100,6 @@ class Symbol(AST):
 		self.doccomment = doccomment
 		self.extern = extern
 
-class TypeSymbol(Symbol):
-	def __init__(self, nameTok, span, doccomment):
-		super().__init__(nameTok, span, doccomment)
-		self.declaredType = None
-		self.dropFn = None
-		self.type = None
-
 class ValueSymbol(Symbol):
 	def __init__(self, nameTok, typeRef, span, doccomment=None, extern=False):
 		super().__init__(nameTok, span, doccomment, extern)

@@ -1,7 +1,8 @@
-from .ast   import StaticData, StaticDataType, AST, ValueExpr, TypeModifiers
-from .types import typesMatch, StructType
-from .log   import logError
-from .      import ir
+from .ast        import StaticData, StaticDataType, AST, ValueExpr, TypeModifiers
+from .types      import typesMatch
+from .structdecl import StructDecl
+from .log        import logError
+from .           import ir
 
 class FieldLit(AST):
 	def __init__(self, nameTok, expr, span):
@@ -16,12 +17,12 @@ class FieldLit(AST):
 		self.expr.pretty(output)
 
 class StructLit(ValueExpr):
-	def __init__(self, path, fields, span):
+	def __init__(self, typeRef, fields, span):
 		super().__init__(span)
-		self.path = path
-		self.anon = path == None
-		self.nameTok = path[-1] if path else None
-		self.name = self.nameTok.content if path else None
+		self.typeRef = typeRef
+		self.anon = typeRef == None
+		self.nameTok = typeRef.path[-1] if typeRef else None
+		self.name = self.nameTok.content if self.nameTok else None
 		self.fields = fields
 		self.typeModifiers = TypeModifiers(False)
 
@@ -29,10 +30,10 @@ class StructLit(ValueExpr):
 		fieldDict =  None
 		uninitFields = set()
 		resolvedType = None
-		if expr.path:
-			resolvedType = state.lookupSymbol(expr, True)
-			if resolvedType == None:
-				resolvedType = Type(expr.name, 0)
+		if expr.typeRef:
+			resolvedType = state.resolveTypeRef(expr.typeRef)
+			if resolvedType.isUnknown:
+				expr.type = resolvedType
 				return
 		elif implicitType:
 			resolvedType = implicitType
@@ -65,8 +66,8 @@ class StructLit(ValueExpr):
 					logError(state, fieldInit.nameTok.span, 
 						'type `{}` has no field `{}`'.format(resolvedType.name, fieldInit.name))
 			
-			state.analyzeNode(fieldInit.expr, fieldType)
-			if fieldType and not typesMatch(fieldType, fieldInit.expr.type):
+			fieldInit.expr = state.analyzeNode(fieldInit.expr, fieldType)
+			if fieldInit.expr.type and fieldType and not typesMatch(fieldType, fieldInit.expr.type):
 				logError(state, fieldInit.expr.span, 
 					'expected type {}, found {}'.format(fieldType, fieldInit.expr.type))
 		
@@ -74,7 +75,7 @@ class StructLit(ValueExpr):
 			fieldTypes = [field.expr.type for field in expr.fields]
 			fieldNames = [field.name for field in expr.fields]
 			layout = state.generateFieldLayout(fieldTypes, fieldNames)
-			resolvedType = StructType(None, None, layout.align, layout.byteSize, layout.fields)
+			resolvedType = StructDecl.generateAnonStructDecl(layout)
 		
 		expr.type = resolvedType
 	
@@ -99,11 +100,8 @@ class StructLit(ValueExpr):
 		state.initStructFields(ast, 0)
 	
 	def pretty(self, output, indent=0):
-		if self.path:
-			output.write(self.path[0].content, indent)
-			for p in self.path[1:]:
-				output.write('::')
-				output.write(p.content)
+		if self.typeRef:
+			self.typeRef.pretty(output, indent)
 		output.write('\n')
 		for field in self.fields[:-1]:
 			field.pretty(output, indent + 1)

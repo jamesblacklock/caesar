@@ -37,7 +37,7 @@ def alignAttr(state, decl, params, span):
 		decl.align = align
 
 def dropAttr(state, decl, params, span):
-	decl.dropFn = state.lookupSymbol(params[0])
+	decl.dropFn = state.lookupSymbol(params[0].path)
 
 class AttrInfo:
 	def __init__(self, name, proc, appliesTo, argInfo):

@@ -50,16 +50,20 @@ class ArrayLit(ValueExpr):
 			implicitElementType = implicitType.fields[0].type
 			count = len(implicitType.fields)
 		
+		values = []
 		resolvedElementType = implicitElementType
 		if len(arr.values) > 0:
-			state.analyzeNode(arr.values[0], implicitElementType)
+			val = state.analyzeNode(arr.values[0], implicitElementType)
+			values.append(val)
 			resolvedElementType = arr.values[0].type
 		
 		for expr in arr.values[1:]:
-			state.analyzeNode(expr, resolvedElementType)
+			val = state.analyzeNode(expr, resolvedElementType)
+			values.append(val)
 			if not typesMatch(resolvedElementType, expr.type):
 				logError(state, expr.span, 'expected {}, found {}'.format(resolvedElementType, expr.type))
 		
+		arr.values = values
 		count = max(len(arr.values), count)
 		arr.type = ArrayType(resolvedElementType, count)
 	

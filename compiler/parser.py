@@ -9,7 +9,7 @@ from .sign       import Sign
 from .structdecl import FieldDecl, StructDecl, UnionFields
 from .attrs      import Attr
 from .typeref    import PtrTypeRef, NamedTypeRef, ArrayTypeRef, TupleTypeRef, OwnedTypeRef
-from .mod        import Mod, Impl
+from .mod        import Mod, Impl, TraitDecl
 from .fndecl     import FnDecl, CConv
 from .staticdecl import StaticDecl, ConstDecl
 from .coercion   import Coercion
@@ -866,7 +866,7 @@ def parsePath(state):
 	
 	return Path(path, span)
 
-def parseStructLit(state, path):
+def parseStructLit(state, typeRef):
 	def parseFieldLit(state):
 		if expectType(state, TokenType.NAME) == False:
 			return None
@@ -895,10 +895,10 @@ def parseStructLit(state, path):
 		
 		return FieldLit(nameTok, expr, span)
 	
-	span = path.span if path else state.tok.span
+	span = typeRef.span if typeRef else state.tok.span
 	block = parseBlock(state, parseFieldLit)
 	span = Span.merge(span, block.span)
-	return StructLit(path.path if path else None, block.list, span)
+	return StructLit(typeRef, block.list, span)
 
 def parseSign(state):
 	negate = state.tok.type == TokenType.MINUS
@@ -1015,7 +1015,8 @@ def parseValueExprImpl(state, precedence, noSkipSpace, allowSimpleFnCall):
 	elif state.tok.type == TokenType.NAME:
 		path = parsePath(state)
 		if isStructLitStart(state):
-			expr = parseStructLit(state, path)
+			typeRef = NamedTypeRef(path.path, path.span)
+			expr = parseStructLit(state, typeRef)
 		else:
 			expr = ValueRef(path.path, path.span)
 	elif state.tok.type == TokenType.STRING:
@@ -1236,7 +1237,7 @@ def parseTypeDecl(state, doccomment):
 	
 	return TypeDecl(nameTok, typeRef, span, doccomment)
 
-def parseFnDecl(state, doccomment, extern):
+def parseFnDecl(state, doccomment, extern, traitDecl=False):
 	span = state.tok.span
 	startLine = state.tok.span.startLine
 	onOneLine = True
@@ -1278,7 +1279,7 @@ def parseFnDecl(state, doccomment, extern):
 			span = Span.merge(span, returnType.span)
 	
 	body = None
-	if not extern:
+	if not (extern or traitDecl):
 		blockInfo = parseBlock(state, parseFnBodyExpr)
 		body = Block.fromInfo(blockInfo, ScopeType.FN)
 		span = Span.merge(span, body.span)
@@ -1290,6 +1291,9 @@ def parseModLevelDecl(state):
 
 def parseLevelImplDecl(state):
 	return parseExpr(state, ExprClass.IMPL)
+
+def parseLevelTraitDecl(state):
+	return parseExpr(state, ExprClass.TRAIT)
 
 def parseFnBodyExpr(state):
 	return parseExpr(state, ExprClass.FN)
@@ -1409,6 +1413,10 @@ def parseExpr(state, exprClass, precedence=0, noSkipSpace=False, allowSimpleFnCa
 		if state.tok.type not in IMPL_EXPR_TOKS:
 			logError(state, state.tok.span, 'expected declaration, found {}'.format(state.tok.type.desc()))
 			return None
+	elif exprClass == ExprClass.TRAIT:
+		if state.tok.type not in TRAIT_EXPR_TOKS:
+			logError(state, state.tok.span, 'expected declaration, found {}'.format(state.tok.type.desc()))
+			return None
 	elif exprClass == ExprClass.FN:
 		if state.tok.type not in FN_EXPR_TOKS:
 			logError(state, state.tok.span, 'expected expression, found {}'.format(state.tok.type.desc()))
@@ -1433,18 +1441,27 @@ def parseExpr(state, exprClass, precedence=0, noSkipSpace=False, allowSimpleFnCa
 	elif state.tok.type == TokenType.ALIAS:
 		decl = parseAlias(state, doccomment)
 	elif state.tok.type == TokenType.TYPE:
-		decl = parseTypeDecl(state, doccomment)
+		if exprClass == ExprClass.TRAIT:
+			decl = parseTraitTypeDecl(state, doccomment)
+		else:
+			decl = parseTypeDecl(state, doccomment)
 	elif state.tok.type == TokenType.FN or \
-		state.tok.type == TokenType.UNSAFE and exprClass in (ExprClass.MOD, ExprClass.IMPL):
-		decl = parseFnDecl(state, doccomment, extern)
+		state.tok.type == TokenType.UNSAFE and exprClass in (ExprClass.MOD, ExprClass.IMPL, ExprClass.TRAIT):
+		decl = parseFnDecl(state, doccomment, extern, exprClass == ExprClass.TRAIT)
 	elif state.tok.type == TokenType.STATIC:
-		decl = parseStaticDecl(state, doccomment, extern)
+		if exprClass == ExprClass.TRAIT:
+			decl = parseTraitStaticDecl(state, doccomment, extern)
+		else:
+			decl = parseStaticDecl(state, doccomment, extern)
 	elif state.tok.type == TokenType.STRUCT:
 		decl = parseStructDecl(state, doccomment, False)
 	elif state.tok.type == TokenType.UNION:
 		decl = parseUnionDecl(state, doccomment, False)
 	elif state.tok.type == TokenType.CONST:
-		decl = parseConstDecl(state, doccomment)
+		if exprClass == ExprClass.TRAIT:
+			decl = parseTraitConstDecl(state, doccomment)
+		else:
+			decl = parseConstDecl(state, doccomment)
 	elif state.tok.type in VALUE_EXPR_TOKS:
 		if exprClass == ExprClass.VALUE_EXPR:
 			decl = parseValueExprImpl(state, precedence, noSkipSpace, allowSimpleFnCall)
@@ -1477,8 +1494,16 @@ def parseImpl(state, doccomment):
 	state.skipSpace()
 	
 	if expectType(state, TokenType.NAME):
-		path = parsePath(state)
+		path = parsePath(state).path
 		state.skipSpace()
+	
+	traitPath = None
+	if state.tok.type == TokenType.COLON:
+		state.advance()
+		state.skipSpace()
+		if expectType(state, TokenType.NAME):
+			traitPath = parsePath(state).path
+			state.skipSpace()
 	
 	if state.tok.type in (IMPL_EXPR_TOKS):
 		decl = parseLevelImplDecl(state)
@@ -1489,8 +1514,31 @@ def parseImpl(state, doccomment):
 		decls = block.list
 		span = Span.merge(span, block.span)
 	
-	impl = Impl(path.path, doccomment, decls, span)
+	impl = Impl(path, traitPath, doccomment, decls, span)
 	return impl
+
+def parseTrait(state, doccomment):
+	span = state.tok.span
+	state.advance()
+	state.skipSpace()
+	
+	nameTok = None
+	if expectType(state, TokenType.NAME):
+		nameTok = state.tok
+		state.advance()
+		state.skipSpace()
+	
+	if state.tok.type in (TRAIT_EXPR_TOKS):
+		decl = parseLevelTraitDecl(state)
+		decls = [decl]
+		span = Span.merge(span, decl.span)
+	else:
+		block = parseBlock(state, parseLevelTraitDecl)
+		decls = block.list
+		span = Span.merge(span, block.span)
+	
+	trait = TraitDecl(nameTok, doccomment, decls, span)
+	return trait
 
 def parseModule(state, doccomment):
 	span = state.tok.span

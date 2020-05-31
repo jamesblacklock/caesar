@@ -1,7 +1,7 @@
 from .ast   import ValueExpr
 from .      import access, block
 from .types import typesMatch, PtrType
-from .ir    import FundamentalType, Call, IExtend, Extend, FExtend, IPTR, F64
+from .ir    import FundamentalType, Imm, Add, Deref, Call, Field, IExtend, Extend, FExtend, IPTR, F64
 from .log   import logError
 
 class FnCall(ValueExpr):
@@ -11,6 +11,7 @@ class FnCall(ValueExpr):
 		self.expr = expr
 		self.args = args
 		self.isDrop = False
+		self.selfExpr = None
 	
 	def analyze(fnCall, state, implicitType):
 		selfExpr = None
@@ -26,6 +27,9 @@ class FnCall(ValueExpr):
 					logError(state, fnCall.expr.span, 'type `{}` has no method `{}`'.format(selfExpr.type, name))
 					failed = True
 				else:
+					if selfExpr.type.isTraitType:
+						fnCall.selfExpr = selfExpr
+					
 					symbol = selfExpr.type.symbolTable[name]
 					fnCall.expr = access.SymbolRead(fnCall.expr.span)
 					fnCall.expr.symbol = symbol
@@ -50,9 +54,12 @@ class FnCall(ValueExpr):
 							
 							assert type(selfExpr) == access.SymbolRead
 							
-							selfExpr.ref = False
-							selfExpr.addr = True
-							selfExpr.borrows = {selfExpr}
+							if selfExpr.deref:
+								selfExpr.deref -= 1
+							else:
+								selfExpr.ref = False
+								selfExpr.addr = True
+								selfExpr.borrows = {selfExpr}
 							selfExpr.dropBlock = state.scope.scopeLevelDropBlock
 						elif type(selfExpr) == block.Block:
 							selfExpr = selfExpr.exprs[-1]
@@ -86,12 +93,12 @@ class FnCall(ValueExpr):
 						logError(state, arg.span, 
 							'type {} cannot be used as a C variadic argument'.format(arg.type))
 			
-			if arg.typeModifiers and arg.typeModifiers.uninit:
+			if arg.type and arg.type.isPtrType and arg.typeModifiers and arg.typeModifiers.uninit:
 				if param:
-					logError(state, arg.span, '`uninit` value passed as param `{}`'.format(param.name))
+					logError(state, arg.span, 'reference to uninit symbol passed as parameter `{}`'.format(param.name))
 				else:
 					assert cVarArgs
-					logError(state, arg.span, 'C variadic argument must be initialized')
+					logError(state, arg.span, 'reference to uninit symbol passed as C variadic argument')
 			
 			arg = state.typeCheck(arg, expectedType)
 			args.append(arg)
@@ -102,8 +109,8 @@ class FnCall(ValueExpr):
 	def writeIR(ast, state):
 		normalArgs = ast.args
 		cVarArgs = []
+		numParams = len(ast.expr.type.params)
 		if ast.expr.type.cVarArgs:
-			numParams = len(ast.expr.type.params)
 			normalArgs = ast.args[:numParams]
 			cVarArgs = ast.args[numParams:]
 		
@@ -127,7 +134,16 @@ class FnCall(ValueExpr):
 				else:
 					state.appendInstr(Extend(ast, IPTR))
 		
-		ast.expr.writeIR(state)
+		if ast.selfExpr:
+			index = ast.selfExpr.type.baseType.mod.decls.index(ast.expr.symbol)
+			state.appendInstr(Imm(ast, IPTR, IPTR.byteSize))
+			state.appendInstr(Field(ast, numParams, IPTR))
+			if index > 0:
+				state.appendInstr(Imm(ast, IPTR, IPTR.byteSize * index))
+				state.appendInstr(Add(ast))
+			state.appendInstr(Deref(ast, IPTR))
+		else:
+			ast.expr.writeIR(state)
 		
 		retType = FundamentalType.fromResolvedType(ast.type) if not ast.type.isVoidType else None
 		state.appendInstr(Call(ast, len(ast.args), retType, ast.expr.type.cVarArgs))

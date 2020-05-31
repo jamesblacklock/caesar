@@ -213,8 +213,10 @@ class SymbolRead(SymbolAccess):
 			# stackOffset = state.localOffset(expr.symbol)
 		
 		if expr.isFieldAccess:
-			assert not expr.addr
-			if expr.deref > 1:
+			if expr.addr:
+				stackOffset = 0 if stackTop else state.localOffset(expr.symbol)
+				state.appendInstr(Addr(expr, stackOffset))
+			elif expr.deref > 1:
 				stackOffset = 0 if stackTop else state.localOffset(expr.symbol)
 				state.appendInstr(Dup(expr, stackOffset))
 				for _ in range(0, expr.deref - 1):
@@ -239,6 +241,9 @@ class SymbolRead(SymbolAccess):
 			stackOffset = 1 if stackTop else state.localOffset(expr.symbol)
 			if expr.deref:
 				state.appendInstr(DerefField(expr, stackOffset, fType))
+			elif expr.addr:
+				assert doAdd
+				state.appendInstr(Add(expr))
 			else:
 				state.appendInstr(Field(expr, stackOffset, fType))
 		elif expr.addr:
@@ -370,7 +375,7 @@ def _SymbolAccess__analyzeSymbolAccess(state, expr, access, exprs, implicitType=
 		access.symbol = expr
 		access.type = access.symbol.type
 	elif type(expr) == valueref.ValueRef:
-		access.symbol = state.lookupSymbol(expr)
+		access.symbol = state.lookupSymbol(expr.path)
 		if access.symbol:
 			access.type = access.symbol.type
 	elif type(expr) == valueref.Borrow:
@@ -410,7 +415,15 @@ def _SymbolAccess__analyzeSymbolAccess(state, expr, access, exprs, implicitType=
 	elif type(expr) == deref.Deref:
 		if implicitType:
 			implicitType = PtrType(implicitType, expr.count, False)
-		_SymbolAccess__analyzeSymbolAccess(state, expr.expr, access, exprs, implicitType)
+		
+		if type(expr.expr) != valueref.ValueRef:
+			(symbol, write) = createTempSymbol(expr.expr)
+			access.symbol = symbol
+			exprs.append(state.analyzeNode(symbol))
+			exprs.append(state.analyzeNode(write))
+			access.type = access.symbol.type
+		else:
+			_SymbolAccess__analyzeSymbolAccess(state, expr.expr, access, exprs, implicitType)
 		
 		if access.write:
 			access.deref = 1

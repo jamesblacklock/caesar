@@ -690,8 +690,9 @@ def moveData(state, src, dest,
 		restoreSrc = saveReg(state, src)
 	
 	# move source to register if necessary
-	if not srcIsReg and srcDeref or srcIsStk and (destIsStk or destDeref) or \
-		src.storage == Storage.IMM and dest.storage == Storage.XMM:
+	if (not srcIsReg and srcDeref) or (srcIsStk and (destIsStk or destDeref)) or \
+		(src.storage == Storage.IMM and dest.storage == Storage.XMM) or \
+		(src.storage == Storage.GLOBAL and not destIsReg):
 		if srcIsStk and srcOffset and not srcDeref:
 			reg = getReg()
 			state.appendInstr('mov', 
@@ -1652,6 +1653,11 @@ def defineStatics(mod, output):
 		
 		bytes = ','.join(str(b) for b in decl.staticValue.toBytes())
 		output.write('\t{}: db {}\n'.format(decl.staticValue.label, bytes))
+	
+	if mod.isImpl and mod.vtbl:
+		output.write('\t{}:\n'.format(mod.vtblName))
+		for name in mod.vtbl:
+			output.write('\t\tdq {}\n'.format(name))
 
 def defineFns(mod, output):
 	for decl in mod.mods:

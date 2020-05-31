@@ -1,22 +1,23 @@
 from enum import Enum
 from .    import primitive
-from .ast import TypeModifiers
+from .ast import Symbol, TypeModifiers
 
 PLATFORM_WORD_SIZE = 8
 
-class Type:
-	def __init__(self, name, byteSize, align, 
-		isFnType=False, isPtrType=False, isStructType=False, 
+class TypeSymbol(Symbol):
+	def __init__(self, nameTok=None, span=None, doccomment=None, 
+		name=None, byteSize=None, align=None, 
+		isFnType=False, isPtrType=False, isStructType=False, isTraitType=False, 
 		isIntType=False, isIntLikeType=False, isFloatType=False, isOptionType=False, 
 		isPrimitiveType=False, isSigned=False, isArrayType=False, isOwnedType=False, 
-		isTupleType=False, isCompositeType=False, isResolved=True, isTypeDef=False):
-		self.name = name
+		isTupleType=False, isCompositeType=False, isUnknown=False, isTypeDef=False):
+		super().__init__(nameTok, span, doccomment)
+		if name: self.name = name
 		self.byteSize = byteSize
 		self.align = align
-		self.isResolved = isResolved
+		self.isUnknown = isUnknown
 		self.isPrimitiveType = isPrimitiveType
-		self.isCopyable = isFnType or isPrimitiveType
-		self.isVoidType = byteSize == 0
+		self.isCopyable = isFnType or isPrimitiveType or isPtrType
 		self.isFnType = isFnType
 		self.isPtrType = isPtrType
 		self.isStructType = isStructType
@@ -29,44 +30,66 @@ class Type:
 		self.isTupleType = isTupleType
 		self.isCompositeType = isCompositeType
 		self.isOwnedType = isOwnedType
+		self.isTraitType = isTraitType
 		self.isTypeDef = isTypeDef
 		self.dropFn = None
 		self.symbolTable = {}
+		self.traitImpls = {}
+	
+	@property
+	def isVoidType(self):
+		return self.byteSize == 0
+	
+	@property
+	def isUnsized(self):
+		return self.byteSize == None
 	
 	def __str__(self):
 		return self.name
+	
+	def pretty(self, output, indent=0):
+		output.write(self.name, indent)
 
-class TypeDefType(Type):
-	def __init__(self, name, baseType):
-		super().__init__(name, baseType.byteSize, baseType.align, isTypeDef=True)
-		self.baseType = baseType
-
-class OwnedType(Type):
+class OwnedType(TypeSymbol):
 	def __init__(self, baseType, acquire, release, acquireSpan, releaseSpan):
 		name = 'owned({}, {}) {}'.format(acquire.name, release.name, baseType.name)
-		super().__init__(name, baseType.byteSize, baseType.align, isOwnedType=True)
+		super().__init__(
+			name=name, 
+			byteSize=baseType.byteSize, 
+			align=baseType.align, 
+			isOwnedType=True)
 		self.baseType = baseType
 		self.acquire = acquire
 		self.release = release
 		self.acquireSpan = acquireSpan
 		self.releaseSpan = releaseSpan
 
-class PrimitiveType(Type):
+class PrimitiveType(TypeSymbol):
 	def __init__(self, name, byteSize, isIntType=False, 
 		isIntLikeType=False, isFloatType=False, isSigned=False):
-		super().__init__(name, byteSize, byteSize, 
-			isPrimitiveType=True, isIntLikeType=isIntLikeType, isIntType=isIntType, 
-			isFloatType=isFloatType, isSigned=isSigned)
+		super().__init__(
+			name=name, 
+			byteSize=byteSize, 
+			align=byteSize, 
+			isPrimitiveType=True, 
+			isIntLikeType=isIntLikeType, 
+			isIntType=isIntType, 
+			isFloatType=isFloatType, 
+			isSigned=isSigned)
 
-class OptionType(Type):
+class OptionType(TypeSymbol):
 	def __init__(self, *types):
 		align = max(t.align for t in types)
 		name = '|'.join(t.name for t in types)
 		byteSize = max(t.byteSize for t in types)
-		super().__init__(name, byteSize, align, isOptionType=True)
+		super().__init__(
+			name=name, 
+			byteSize=byteSize, 
+			align=align, 
+			isOptionType=True)
 		self.types = types
 
-class FnType(Type):
+class FnType(TypeSymbol):
 	def __init__(self, unsafe, params, returnType, cVarArgs, cconv):
 		name = '{}fn({}{}{}) -> {}'.format(
 			'unsafe ' if unsafe else '',
@@ -74,8 +97,9 @@ class FnType(Type):
 			', ' if cVarArgs and len(params) > 0 else '',
 			'...' if cVarArgs else '',
 			returnType.name)
-		super().__init__(name, PLATFORM_WORD_SIZE, PLATFORM_WORD_SIZE, 
-			isFnType=True, isPtrType=True)
+		super().__init__(
+			name=name, 
+			isFnType=True)
 		self.unsafe = unsafe
 		self.returnType = returnType
 		self.returnTypeModifiers = TypeModifiers(False)
@@ -90,26 +114,28 @@ class FieldInfo:
 		self.offset = offset
 		self.isUnionField = isUnionField
 
-class StructType(Type):
-	def __init__(self, name, dropFn, align, byteSize, fields):
-		super().__init__(name, byteSize, align, 
-			isStructType=True, isCompositeType=True)
-		
-		self.name = name if name else '<anonymous struct>'
-		self.anon = name == None
-		self.dropFn = dropFn
-		self.fields = fields
-		self.fieldDict = {}
-		
-		if len(fields) > 0:
-			for field in fields:
-				self.fieldDict[field.name] = field
-
-class PtrType(Type):
+class PtrType(TypeSymbol):
 	def __init__(self, baseType, indLevel, mut):
 		name = '{}{}{}'.format('&' * indLevel, 'mut ' if mut else '', baseType.name)
-		super().__init__(name, PLATFORM_WORD_SIZE, PLATFORM_WORD_SIZE, 
-			isIntLikeType=True, isPtrType=True, isPrimitiveType=True)
+		isTraitPtr = baseType.isTraitType and indLevel == 1
+		byteSize=PLATFORM_WORD_SIZE * (2 if isTraitPtr else 1)
+		align=PLATFORM_WORD_SIZE * (2 if isTraitPtr else 1)
+		
+		super().__init__(
+			name=name, 
+			byteSize=byteSize, 
+			align=align, 
+			isIntLikeType=not isTraitPtr, 
+			isPrimitiveType=not isTraitPtr, 
+			isPtrType=True, 
+			isCompositeType=isTraitPtr)
+		
+		if isTraitPtr:
+			self.fields = [
+				FieldInfo('$self', PtrType(Void, 1, mut), PLATFORM_WORD_SIZE), 
+				FieldInfo('$vtbl', PtrType(Void, 1, False), PLATFORM_WORD_SIZE)
+			]
+		self.isTraitPtr = isTraitPtr
 		self.baseType = baseType
 		self.indLevel = indLevel
 		self.mut = mut
@@ -137,25 +163,39 @@ class ArrayFields:
 	def __len__(self):
 		return self.count
 
-class ArrayType(Type):
+class ArrayType(TypeSymbol):
 	def __init__(self, baseType, count):
 		name = '[{} * {}]'.format(baseType.name, count)
 		byteSize = getAlignedSize(baseType) * count
-		super().__init__(name, byteSize, baseType.align, isArrayType=True, isCompositeType=True)
+		super().__init__(
+			name=name, 
+			byteSize=byteSize, 
+			align=baseType.align, 
+			isArrayType=True, 
+			isCompositeType=True)
 		self.baseType = baseType
 		self.count = count
 		self.fields = ArrayFields(baseType, count)
 
-class TupleType(Type):
+class TupleType(TypeSymbol):
 	def __init__(self, align, byteSize, fields):
 		name = '({})'.format(', '.join(f.type.name for f in fields))
-		super().__init__(name, byteSize, align, isTupleType=True, isCompositeType=True)
+		super().__init__(
+			name=name, 
+			byteSize=byteSize, 
+			align=align, 
+			isTupleType=True, 
+			isCompositeType=True)
 		self.fields = fields
 		self.anon = True
 
 SZ = PLATFORM_WORD_SIZE
 
-UnknownType = Type('<unknown>', 0, 0, isResolved=False)
+UnknownType = TypeSymbol(
+	name='<unknown>', 
+	byteSize=0, 
+	align=0, 
+	isUnknown=True)
 
 Void    = PrimitiveType('void',    0)
 Bool    = PrimitiveType('bool',    1)
@@ -257,27 +297,50 @@ def canAccommodate(type, intValue):
 	else:
 		assert 0
 
-def typesMatch(type1, type2):
+def typesMatch(type1, type2, selfType=None):
 	if type1 == type2:
 		return True
-	elif type1.isPtrType and type2.isPtrType and \
-		typesMatch(type1.baseType, type2.baseType) and \
-		type1.indLevel == type2.indLevel:
-		return True
-	elif type1.isOptionType and type2.isOptionType and \
-		len(type1.types) == len(type2.types):
+	elif type1.isPtrType and type2.isPtrType:
+		if type1.indLevel != type2.indLevel:
+			return False
+		return typesMatch(type1.baseType, type2.baseType)
+	elif type1.isOptionType and type2.isOptionType:
+		if len(type1.types) != len(type2.types):
+			return False
 		for t in type1.types:
 			if t not in type2.types:
 				return False
 		return True
-	elif type1.isIntType and type2.isIntType and \
-		type1.byteSize == type2.byteSize and type1.isSigned == type2.isSigned:
-		return True
-	elif type1.isCompositeType and type2.isCompositeType and shapesMatch(type1, type2):
-		return True
-	elif type1.isOwnedType and type2.isOwnedType and \
-		type1.acquire == type2.acquire and type1.release == type2.release and \
-		typesMatch(type1.baseType, type2.baseType):
+	elif type1.isIntType and type2.isIntType:
+		return type1.byteSize == type2.byteSize and type1.isSigned == type2.isSigned
+	elif type1.isCompositeType and type2.isCompositeType:
+		return shapesMatch(type1, type2)
+	elif type1.isOwnedType and type2.isOwnedType:
+		if type1.acquire != type2.acquire or type1.release != type2.release:
+			return False
+		return typesMatch(type1.baseType, type2.baseType)
+	elif type1.isFnType and type2.isFnType:
+		if type1.unsafe != type2.unsafe or type1.cVarArgs != type2.cVarArgs or type1.cconv != type2.cconv:
+			return False
+		if not typesMatch(type1.returnType, type2.returnType):
+			return False
+		if len(type1.params) != len(type2.params):
+			return False
+		isSelfParam = selfType != None
+		for (p1, p2) in zip(type1.params, type2.params):
+			t1 = p1.type
+			t2 = p2.type
+			if isSelfParam:
+				isSelfParam = False
+				if not (t2.isPtrType and t1.isPtrType and t1.indLevel == 1 and t2.indLevel == 1):
+					pass
+				elif not (t2.isTraitPtr and t2.baseType in t1.baseType.traitImpls):
+					pass
+				elif typesMatch(t1.baseType, selfType):
+					continue
+			
+			if not typesMatch(t1, t2):
+				return False
 		return True
 	
 	return False
@@ -287,12 +350,14 @@ def shapesMatch(type1, type2):
 		return False
 	
 	for (f1, f2) in zip(type1.fields, type2.fields):
-		if f1.offset != f2.offset or not typesMatch(f1.type, f2.type):
+		if f1.offset != f2.offset or f1.name != f2.name or not typesMatch(f1.type, f2.type):
 			return False
 	
 	return True
 
 def tryPromote(expr, toType):
+	from . import coercion
+	
 	fromType = expr.type
 	if not fromType or not toType or fromType == toType:
 		return expr
@@ -303,6 +368,12 @@ def tryPromote(expr, toType):
 		signsMatch = fromType.isSigned == toType.isSigned
 		sizeDoesIncrease = fromType.byteSize < toType.byteSize
 		if signsMatch and sizeDoesIncrease:
+			return coercion.Coercion(expr, None, expr.span, resolvedType=toType)
+	
+	if fromType.isPtrType and toType.isPtrType:
+		toDerefType = toType.typeAfterDeref()
+		fromDerefType = fromType.typeAfterDeref()
+		if toDerefType.isTraitType and toDerefType in fromDerefType.traitImpls:
 			return coercion.Coercion(expr, None, expr.span, resolvedType=toType)
 	
 	# if type(expr) == SymbolAccess and expr.ref and indefiniteMatch(expr.type, expectedType):

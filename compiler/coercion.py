@@ -1,7 +1,8 @@
 from .ast   import ValueExpr, StaticDataType
 from .log   import logError
 from .types import canCoerce, typesMatch, OwnedType
-from .ir    import FundamentalType, IExtend, Extend, Truncate, FExtend, FTruncate, IToF, UToF, FToI, FToU
+from .ir    import FundamentalType
+from .      import ir
 
 class Coercion(ValueExpr):
 	def __init__(self, expr, typeRef, span, resolvedType=None):
@@ -49,17 +50,38 @@ class Coercion(ValueExpr):
 		else:
 			return None
 	
+	def writeTraitCoercionIR(expr, state):
+		vtblName = expr.expr.type.baseType.traitImpls[expr.type.baseType].vtblName
+		fType = FundamentalType.fromResolvedType(expr.type)
+		
+		state.appendInstr(ir.Res(expr, fType))
+		
+		expr.expr.writeIR(state)
+		state.appendInstr(ir.Imm(expr, ir.IPTR, 0))
+		state.appendInstr(ir.FieldW(expr, 2))
+		
+		state.appendInstr(ir.Global(expr, ir.IPTR, vtblName))
+		state.appendInstr(ir.Imm(expr, ir.IPTR, ir.IPTR.byteSize))
+		state.appendInstr(ir.FieldW(expr, 2))
+	
 	def writeIR(expr, state):
+		fromType = expr.expr.type
+		toType = expr.type
+		
+		if fromType.isPtrType and not fromType.isTraitPtr and \
+			toType.isPtrType and toType.isTraitPtr:
+			expr.writeTraitCoercionIR(state)
+			return
+		
 		expr.expr.writeIR(state)
 		
 		if expr.type.isVoidType:
 			return
 		
-		fromType = FundamentalType.fromResolvedType(expr.expr.type)
-		toType = FundamentalType.fromResolvedType(expr.type)
-		
 		fromSigned = expr.expr.type.isSigned
 		toSigned = expr.type.isSigned
+		fromType = FundamentalType.fromResolvedType(fromType)
+		toType = FundamentalType.fromResolvedType(toType)
 		
 		if fromType.byteSize == toType.byteSize and fromType.isFloatType == toType.isFloatType:
 			return
@@ -67,27 +89,27 @@ class Coercion(ValueExpr):
 		instr = None
 		if fromType.isFloatType and toType.isFloatType:
 			if fromType.byteSize < toType.byteSize:
-				instr = FExtend(expr, toType)
+				instr = ir.FExtend(expr, toType)
 			else:
-				instr = FTruncate(expr, toType)
+				instr = ir.FTruncate(expr, toType)
 		elif fromType.isFloatType:
 			if toSigned:
-				instr = FToI(expr, toType)
+				instr = ir.FToI(expr, toType)
 			else:
-				instr = FToU(expr, toType)
+				instr = ir.FToU(expr, toType)
 		elif toType.isFloatType:
 			if fromSigned:
-				instr = IToF(expr, toType)
+				instr = ir.IToF(expr, toType)
 			else:
-				instr = UToF(expr, toType)
+				instr = ir.UToF(expr, toType)
 		else:
 			if fromType.byteSize < toType.byteSize:
 				if toSigned:
-					instr = IExtend(expr, toType)
+					instr = ir.IExtend(expr, toType)
 				else:
-					instr = Extend(expr, toType)
+					instr = ir.Extend(expr, toType)
 			else:
-				instr = Truncate(expr, toType)
+				instr = ir.Truncate(expr, toType)
 		
 		state.appendInstr(instr)
 		
@@ -98,28 +120,3 @@ class Coercion(ValueExpr):
 			self.typeRef.pretty(output)
 		else:
 			output.write(self.type.name)
-
-# class Coercion(ValueExpr):
-		# if self.expr.isConstExpr:
-		# 	self.isConstExpr = self.expr.isConstExpr
-		# 	if self.type.isVoidType and self.type.isPrimitiveType:
-		# 		self.bytes = []
-		# 	elif self.expr.type.isIntType and self.type.isFloatType:
-		# 		assert 0
-		# 	elif self.expr.type.isFloatType and self.type.isIntType:
-		# 		assert 0
-		# 	elif (self.expr.type.isIntType or self.expr.type.isPtrType) and \
-		# 		(self.type.isIntType or self.type.isPtrType):
-		# 		if self.type.byteSize < self.expr.type.byteSize:
-		# 			self.bytes = self.expr.bytes[:self.type.byteSize]
-		# 		elif self.type.byteSize > self.expr.type.byteSize:
-		# 			count = self.type.byteSize - self.expr.type.byteSize
-		# 			b = 0xff if self.expr.value < 0 else 0x00
-		# 			self.bytes = list(self.expr.bytes)
-		# 			for _ in range(0, count): self.bytes.append(b)
-		# 		else:
-		# 			self.bytes = self.expr.bytes
-		# 	elif self.expr.type.isFloatType and self.type.isFloatType:
-		# 		assert 0
-		# 	else:
-		# 		assert 0
