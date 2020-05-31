@@ -164,6 +164,11 @@ def lexOperator(state):
 	[
 		('...', TokenType.ELLIPSIS),
 		('..<', TokenType.RNGOPEN),
+		('*=', TokenType.TIMESASGN),
+		('/=', TokenType.DIVASGN),
+		('%=', TokenType.MODULOASGN),
+		('+=', TokenType.PLUSASGN),
+		('-=', TokenType.MINUSASGN),
 		('>=', TokenType.GREATEREQ),
 		('<=', TokenType.LESSEQ),
 		('&&', TokenType.AND),

@@ -1095,7 +1095,8 @@ def parseValueExprOrAsgn(state):
 		return None
 	
 	state.skipSpace()
-	if state.tok.type == TokenType.ASGN:
+	if state.tok.type in ASGN_OPER_TOKS:
+		opTok = state.tok
 		if type(expr) not in (ValueRef, Index, Deref, Field):
 			logError(state, state.tok.span, "invalid assignment target in assignment")
 		
@@ -1105,7 +1106,7 @@ def parseValueExprOrAsgn(state):
 		lvalue = expr
 		rvalue = parseValueExpr(state)
 		
-		expr = Asgn(lvalue, rvalue, Span.merge(lvalue.span, rvalue.span))
+		expr = Asgn(lvalue, rvalue, opTok, Span.merge(lvalue.span, rvalue.span))
 	
 	return expr
 
@@ -1373,9 +1374,18 @@ FN_EXPR_TOKS = (
 	# TokenType.CONST, 
 	# TokenType.STRUCT, 
 	# TokenType.UNION, 
-	TokenType.CONTINUE,
+	TokenType.CONTINUE, 
 	TokenType.BREAK, 
 	TokenType.RETURN
+)
+
+ASGN_OPER_TOKS = (
+	TokenType.ASGN, 
+	TokenType.TIMESASGN, 
+	TokenType.DIVASGN, 
+	TokenType.MODULOASGN, 
+	TokenType.PLUSASGN, 
+	TokenType.MINUSASGN
 )
 
 def parseExpr(state, exprClass, precedence=0, noSkipSpace=False, allowSimpleFnCall=False):

@@ -31,7 +31,7 @@ fn main(argc: int, argv: &&byte) -> int
 		else if c == 'a'
 			continue
 		pt^ = c as byte
-		pt = pt + 1 # pt += 1
+		pt += 1
 	
 	unsafe printf("%s, %s\n"; "Hello"; borrow buf)
 	
