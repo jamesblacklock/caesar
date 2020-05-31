@@ -6,7 +6,7 @@ PLATFORM_WORD_SIZE = 8
 
 class TypeSymbol(Symbol):
 	def __init__(self, nameTok=None, span=None, doccomment=None, 
-		name=None, byteSize=None, align=None, 
+		name=None, byteSize=None, align=None, isDefinite=True, 
 		isFnType=False, isPtrType=False, isStructType=False, isTraitType=False, 
 		isIntType=False, isIntLikeType=False, isFloatType=False, isOptionType=False, 
 		isPrimitiveType=False, isSigned=False, isArrayType=False, isOwnedType=False, 
@@ -15,6 +15,7 @@ class TypeSymbol(Symbol):
 		if name: self.name = name
 		self.byteSize = byteSize
 		self.align = align
+		self.isDefinite = isDefinite
 		self.isUnknown = isUnknown
 		self.isPrimitiveType = isPrimitiveType
 		self.isCopyable = isFnType or isPrimitiveType or isPtrType
@@ -43,6 +44,12 @@ class TypeSymbol(Symbol):
 	@property
 	def isUnsized(self):
 		return self.byteSize == None
+	
+	def canChangeTo(self, other):
+		if not self.isDefinite and self.isCompositeType and other.isCompositeType:
+			return shapesMatch(self, other)
+		
+		return False
 	
 	def __str__(self):
 		return self.name
@@ -189,6 +196,14 @@ class TupleType(TypeSymbol):
 		self.fields = fields
 		self.anon = True
 
+# class IndefiniteIntType(TypeSymbol):
+# 	def __init__(self, initialValue):
+		
+# 		elif access.symbol.type.isIntLikeType and implicitType.isIntLikeType:
+# 			doChangeType = access.symbol.type.canChangeTo(implicitType)
+		
+# 		if access.symbol.type.canChangeTo(implicitType):
+
 SZ = PLATFORM_WORD_SIZE
 
 UnknownType = TypeSymbol(
@@ -313,8 +328,6 @@ def typesMatch(type1, type2, selfType=None):
 		return True
 	elif type1.isIntType and type2.isIntType:
 		return type1.byteSize == type2.byteSize and type1.isSigned == type2.isSigned
-	elif type1.isCompositeType and type2.isCompositeType:
-		return shapesMatch(type1, type2)
 	elif type1.isOwnedType and type2.isOwnedType:
 		if type1.acquire != type2.acquire or type1.release != type2.release:
 			return False
@@ -423,6 +436,8 @@ def canCoerce(fromType, toType):
 		return True
 	elif fromIsInt and toIsInt:
 		return True
+	elif type1.isCompositeType and type2.isCompositeType:
+		return shapesMatch(type1, type2)
 	else:
 		return False
 

@@ -1,6 +1,6 @@
 from .ast   import ValueExpr, StaticDataType
 from .      import block, deref, valueref, letdecl, field, asgn, address, staticdecl, fndecl, coercion
-from .types import typesMatch, canPromote, getAlignedSize, PtrType, USize
+from .types import typesMatch, canPromote, shapesMatch, getAlignedSize, PtrType, USize
 from .ir    import Swap, Write, Raise, Deref, DerefW, Field, FieldW, DerefField, DerefFieldW, \
                    Fix, Dup, Addr, Imm, Global, Mul, Add, IPTR, FundamentalType
 from .scope import ScopeType
@@ -377,6 +377,8 @@ def _SymbolAccess__analyzeSymbolAccess(state, expr, access, exprs, implicitType=
 	elif type(expr) == valueref.ValueRef:
 		access.symbol = state.lookupSymbol(expr.path)
 		if access.symbol:
+			if implicitType and access.symbol.type.canChangeTo(implicitType):
+				access.symbol.type = implicitType
 			access.type = access.symbol.type
 	elif type(expr) == valueref.Borrow:
 		_SymbolAccess__analyzeSymbolAccess(state, expr.expr, access, exprs, implicitType)

@@ -25,8 +25,8 @@ fn sayHi(entity: &SayHi)
     entity^->sayHi
 
 fn main()
-    let dog = Dog { name: "Lego", breed: "golden retriever" }
-    let man = Man { name: "James", dog: &dog}
+    let dog = { name: "Lego", breed: "golden retriever" }
+    let man = Man { name: "James", dog: &dog }
     
     sayHi(&man)
     sayHi(&dog)

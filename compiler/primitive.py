@@ -155,8 +155,8 @@ class IntLit(ValueExpr):
 		elif lit.suffix == 'usz':
 			lit.type = types.USize
 		elif implicitType and implicitType.isPtrType:
-			lit.type = types.USize
-		elif implicitType and (implicitType.isIntType or implicitType == types.Byte):
+			lit.type = types.ISize if lit.value < 0 else types.USize
+		elif implicitType and implicitType.isIntLikeType and types.canAccommodate(implicitType, lit.value):
 			lit.type = implicitType
 		elif types.canAccommodate(types.Int32, lit.value):
 			lit.type = types.Int32

@@ -9,7 +9,9 @@ class StructDecl(TypeSymbol):
 		self.fields = None
 		self.fieldDict = None
 		self.anon = not self.name
-		if self.anon: self.name = '<anonymous struct>'
+		if self.anon:
+			self.name = '<anonymous struct>'
+			self.isDefinite = False
 	
 	@staticmethod
 	def generateAnonStructDecl(layout):
