@@ -6,7 +6,7 @@ little bit bad after being a jerk, you're probably too much of a jerk and had be
 Also fuck off if you:
 - like offending people a lot
 - get offended too easily
-- feel an affinity towards coporate structures
+- feel an affinity towards corporate structures
 - think C++ is a beautiful language
 - don't think C is a beautiful language
 - are a prude
