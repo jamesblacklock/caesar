@@ -5,6 +5,7 @@ import os
 import argparse
 import uuid
 
+from compiler            import platform
 from compiler.sourcefile import SourceFile
 from compiler.tokenizer  import tokenize
 from compiler.parser     import parse
@@ -195,7 +196,15 @@ def main(args):
 			outfile.close()
 			
 			if args.obj or args.bin or args.lib or args.dylib or args.run:
-				asmExitCode = os.system('nasm -f macho64 {} -o {}'.format(asmFileNames[i], objFileNames[i]))
+				if platform.MacOS:
+					objFormat = 'macho64'
+				elif platform.Linux:
+					objFormat = 'elf64'
+				else:
+					print('assembly not yet implemented for Windows')
+					exit(1)
+				
+				asmExitCode = os.system('nasm -f {} {} -o {}'.format(objFormat, asmFileNames[i], objFileNames[i]))
 				if asmExitCode != 0:
 					exit(1)
 		except Exception as e:

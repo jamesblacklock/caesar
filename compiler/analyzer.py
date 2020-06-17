@@ -13,6 +13,7 @@ from .staticdecl import StaticDecl, ConstDecl
 from .structdecl import StructDecl
 from .alias      import AliasDecl, TypeDecl
 from .access     import SymbolAccess, SymbolRead
+from .           import platform
 
 BUILTIN_TYPES = {
 	Void.name:    Void,
@@ -201,7 +202,8 @@ class AnalyzerState:
 	
 	def mangleName(state, decl):
 		if type(decl) == FnDecl and decl.cconv == CConv.C:
-			return '_{}'.format(decl.name)
+			prefix = '_' if platform.MacOS or platform.Windows else ''
+			return '{}{}'.format(prefix, decl.name)
 		else:
 			letter = None
 			if type(decl) == FnDecl:
