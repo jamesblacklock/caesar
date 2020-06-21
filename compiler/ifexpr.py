@@ -17,9 +17,14 @@ class If(ValueExpr):
 			logError(state, ifExpr.expr.span, 
 				'condition type must be bool (found {})'.format(ifExpr.expr.type))
 		
+		ifExpr.block.scopeContracts = ifExpr.expr.contracts
 		ifExpr.block = state.analyzeNode(ifExpr.block, implicitType)
 		resolvedType = ifExpr.block.type
 		
+		elseContracts = None
+		if ifExpr.expr.contracts:
+			elseContracts = { c.symbol: c.inverted() for c in ifExpr.expr.contracts.values() }
+		ifExpr.elseBlock.scopeContracts = elseContracts
 		ifExpr.elseBlock.ifExpr = ifExpr
 		ifExpr.elseBlock = state.analyzeNode(ifExpr.elseBlock, implicitType)
 		elseResolvedType = ifExpr.elseBlock.type
@@ -51,6 +56,12 @@ class If(ValueExpr):
 			resolvedType = OptionType(resolvedType, elseResolvedType)
 		
 		ifExpr.type = resolvedType
+	
+	def accessSymbols(self, scope):
+		self.expr.accessSymbols(scope)
+		self.block.accessSymbols(scope)
+		self.elseBlock.ifBranchOuterSymbolInfo = self.block.lastIfBranchOuterSymbolInfo
+		self.elseBlock.accessSymbols(scope)
 	
 	def writeIR(ast, state):
 		ast.expr.writeIR(state)

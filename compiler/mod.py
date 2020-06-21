@@ -92,25 +92,32 @@ class Impl(Mod):
 	
 	def analyzeSig(self, state):
 		super().analyzeSig(state)
-		self.type = state.lookupSymbol(self.path, True)
+		self.type = state.lookupSymbol(self.path, inTypePosition=True)
 		if self.traitPath:
-			self.trait = state.lookupSymbol(self.traitPath, True)
+			self.trait = state.lookupSymbol(self.traitPath, inTypePosition=True)
+			if self.trait:
+				if type(self.trait) == TraitDecl:
+					if self.trait in self.type.traitImpls:
+						otherImpl = self.type.traitImpls[self.trait]
+						logError(state, self.traitPath[-1].span, 
+							'trait `{}` already implemented for type `{}`'.format(self.trait.name, self.type.name))
+						logExplain(state, otherImpl.span, 'trait `{}` previously implemented here'.format(self.trait.name))
+					
+					self.type.traitImpls[self.trait] = self
+					
+					if self.trait.name == 'Drop' and 'drop' in self.symbolTable:
+						self.type.dropFn = self.symbolTable['drop']
+				else:
+					logError(state, self.traitPath[-1].span, '`{}` is not a trait'.format(self.trait.name))
+					self.trait = None
 	
 	def analyze(self, state, implicitType):
-		super().analyze(state, implicitType)
 		if not self.type:
 			return
 		
 		if self.trait:
-			if self.trait in self.type.traitImpls:
-				otherImpl = self.type.traitImpls[self.trait]
-				logError(state, self.traitPath[-1].span, 
-					'trait `{}` already implemented for type `{}`'.format(self.trait.name, self.type.name))
-				logExplain(state, otherImpl.span, 'trait `{}` previously implemented here'.format(self.trait.name))
-			
 			traitSymbols = {symbol.name: symbol for symbol in self.trait.symbolTable.values()}
 			symbolTable = {}
-			self.type.traitImpls[self.trait] = self
 		else:
 			traitSymbols = None
 			symbolTable = self.type.symbolTable
@@ -126,14 +133,12 @@ class Impl(Mod):
 				if traitSymbols:
 					if decl.name not in traitSymbols:
 						logError(state, decl.nameTok.span, 'trait `{}` has no symbol `{}`'.format(self.trait.name, decl.name))
-						continue
 					
 					traitSymbol = traitSymbols[decl.name]
 					del traitSymbols[decl.name]
 					if not typesMatch(decl.type, traitSymbol.type, selfType=self.type):
 						logError(state, decl.nameTok.span, ('implementation of `{}` for trait `{}` ' + 
 							'does not match the type defined by the trait').format(decl.name, self.trait.name))
-						continue
 				
 				symbolTable[decl.name] = decl
 		
@@ -142,9 +147,15 @@ class Impl(Mod):
 			logError()
 			return
 		
+		super().analyze(state, implicitType)
+		
 		if self.trait:
 			self.vtbl = []
 			self.vtblName = self.name + '__vtbl'
+			if self.type.dropFn:
+				self.vtbl.append(self.type.dropFn.mangledName)
+			else:
+				self.vtbl.append(0)
 			for symbol in self.trait.mod.decls:
 				implFn = symbolTable[symbol.name]
 				self.vtbl.append(implFn.mangledName)

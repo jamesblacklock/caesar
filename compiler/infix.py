@@ -254,6 +254,10 @@ class InfixOp(ValueExpr):
 		
 		opErr(lType, rType)
 	
+	def accessSymbols(self, scope):
+		self.l.accessSymbols(scope)
+		self.r.accessSymbols(scope)
+	
 	def writeIR(ast, state):
 		if ast.op == InfixOps.PLUS:
 			ast.writeAddIR(state)

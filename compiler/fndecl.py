@@ -60,7 +60,9 @@ class FnDecl(ValueSymbol):
 		decl.body.fnDecl = decl
 		decl.body = state.analyzeNode(decl.body, decl.returnType)
 		
-		assert decl.body.doesReturn
+		if not state.failed:
+			decl.body.accessSymbols(None)
+			assert decl.body.doesReturn
 	
 	def pretty(self, output, indent=0):
 		for attr in self.attrs:

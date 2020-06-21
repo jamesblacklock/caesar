@@ -43,10 +43,9 @@ class SymbolAccess(ValueExpr):
 		self.fieldSpan = None
 		self.type = None
 		self.dropBlock = None
-		self.noAccess = False
 	
 	@staticmethod
-	def analyzeSymbolAccess(state, expr, implicitType=None, rvalueImplicitType=None, noAccess=False):
+	def analyzeSymbolAccess(state, expr, implicitType=None, rvalueImplicitType=None):
 		exprs = []
 		
 		if type(expr) == letdecl.LetDecl:
@@ -85,9 +84,7 @@ class SymbolAccess(ValueExpr):
 		if access.symbol == None:
 			return access
 		
-		access.noAccess = noAccess
 		result = state.analyzeNode(access, implicitType)
-		access.noAccess = False
 		exprBlock = None
 		if type(result) == block.Block:
 			exprBlock = result
@@ -142,8 +139,10 @@ class SymbolAccess(ValueExpr):
 class SymbolRead(SymbolAccess):
 	def __init__(self, span):
 		super().__init__(span)
+		self.lvalueSpan = span
 		self.addr = False
 		self.borrow = False
+		self.scopeLevelDropBlock = None
 	
 	def analyze(access, state, implicitType):
 		if type(access.symbol) == staticdecl.StaticDecl:
@@ -152,10 +151,7 @@ class SymbolRead(SymbolAccess):
 		if access.type == None:
 			access.type = access.symbol.type
 		if access.field and access.field.isUnionField and not state.scope.allowUnsafe:
-			logError(state, fnCall.expr.span, 'reading union fields is unsafe; context is safe')
-		
-		if not access.noAccess:
-			state.scope.accessSymbol(access)
+			logError(state, access.span, 'reading union fields is unsafe; context is safe')
 		
 		access.ref = not access.addr and not access.isFieldAccess
 		
@@ -166,30 +162,28 @@ class SymbolRead(SymbolAccess):
 		
 		exprs = []
 		
-		if access.borrows:
-			access.dropBlock = state.scope.scopeLevelDropBlock
-			exprs.append(expr)
-		else:
-			isCopyableDrop = type(access.symbol) == letdecl.LetDecl and access.symbol.dropFn and \
-				access.type and access.type.isCopyable
+		access.scopeLevelDropBlock = state.scope.scopeLevelDropBlock
+		
+		isCopyableDrop = type(access.symbol) == letdecl.LetDecl and access.symbol.dropFn and \
+			access.type and access.type.isCopyable
+		
+		if isCopyableDrop or access.isFieldAccess:
+			access.dropBlock = block.Block([], access.span, noLower=True)
+			(symbol, write, read) = createTempTriple(expr)
+			symbol.type = expr.type
+			read.ref = True
+			read.scopeLevelDropBlock = state.scope.scopeLevelDropBlock
+			write.type = expr.type
 			
-			if isCopyableDrop or access.isFieldAccess:
-				access.dropBlock = block.Block([], access.span, noLower=True)
-				(symbol, write, read) = createTempTriple(expr)
-				symbol.type = expr.type
-				read.ref = True
-				write.type = expr.type
-				
-				exprs.extend([
-					state.analyzeNode(symbol), 
-					write, 
-					access.dropBlock, 
-					read])
-				
-				state.scope.accessSymbol(write)
-				state.scope.accessSymbol(read)
-			else:
-				exprs.append(expr)
+			exprs.extend([
+				state.analyzeNode(symbol), 
+				write, 
+				access.dropBlock, 
+				read])
+		else:
+			exprs.append(expr)
+		
+		access.contracts = access.symbol.contracts
 		
 		if len(exprs) == 1:
 			return exprs[0]
@@ -197,6 +191,11 @@ class SymbolRead(SymbolAccess):
 		exprBlock = block.Block(exprs, access.span, noLower=True)
 		exprBlock.type = expr.type
 		return exprBlock
+	
+	def accessSymbols(self, scope):
+		scope.accessSymbol(self)
+		if self.borrows:
+			self.dropBlock = self.scopeLevelDropBlock
 	
 	def writeIR(expr, state):
 		stackTop = False
@@ -262,7 +261,10 @@ class SymbolRead(SymbolAccess):
 				
 				fType = FundamentalType.fromResolvedType(expr.type)
 				state.appendInstr(Deref(expr, fType))
-	
+			elif expr.staticOffset:
+				state.appendInstr(Imm(expr, IPTR, expr.staticOffset))
+				state.appendInstr(Add(expr))
+
 class SymbolWrite(SymbolAccess):
 	def __init__(self, rvalue, span, lvalueSpan=None):
 		super().__init__(span)
@@ -279,6 +281,7 @@ class SymbolWrite(SymbolAccess):
 			access.rvalueImplicitType = access.type
 		
 		access.rvalue = state.analyzeNode(access.rvalue, access.rvalueImplicitType)
+		access.symbol.contracts = access.rvalue.contracts
 		if access.symbol.type == None:
 			access.symbol.type = access.rvalue.type
 			access.type = access.rvalue.type
@@ -300,10 +303,11 @@ class SymbolWrite(SymbolAccess):
 		if access.field and access.field.isUnionField and not state.scope.allowUnsafe:
 			logError(state, fnCall.expr.span, 'writing union fields is unsafe; context is safe')
 		
-		if not access.noAccess:
-			state.scope.accessSymbol(access)
-		
 		return block.Block([access, access.dropBlock], access.span, noLower=True)
+	
+	def accessSymbols(self, scope):
+		self.rvalue.accessSymbols(scope)
+		scope.accessSymbol(self)
 	
 	def writeIR(expr, state):
 		assert type(expr.symbol) in (letdecl.LetDecl, letdecl.FnParam, staticdecl.StaticDecl)
@@ -365,7 +369,7 @@ class SymbolWrite(SymbolAccess):
 			else:
 				state.nameTopOperand(expr.symbol)
 				if expr.symbol.fixed:
-					state.appendInstr(Fix(expr))
+					state.appendInstr(Fix(expr, 0))
 			
 			if state.loopInfo:
 				state.loopInfo.droppedSymbols.discard(expr.symbol)
@@ -375,11 +379,21 @@ def _SymbolAccess__analyzeSymbolAccess(state, expr, access, exprs, implicitType=
 		access.symbol = expr
 		access.type = access.symbol.type
 	elif type(expr) == valueref.ValueRef:
-		access.symbol = state.lookupSymbol(expr.path)
+		symbolTable = implicitType.symbolTable if implicitType else None
+		access.symbol = state.lookupSymbol(expr.path, symbolTable, inValuePosition=True)
 		if access.symbol:
-			if implicitType and access.symbol.type.canChangeTo(implicitType):
+			if implicitType and access.symbol.type and access.symbol.type.canChangeTo(implicitType):
 				access.symbol.type = implicitType
-			access.type = access.symbol.type
+			
+			t = access.symbol.type
+			if access.symbol in state.scope.contracts:
+				contract = state.scope.contracts[access.symbol]
+				if len(contract.variants) == 1:
+					t = contract.variants[0].type
+					if contract.indLevel > 0:
+						t = PtrType(t, contract.indLevel, contract.symbol.mut)
+			
+			access.type = t
 	elif type(expr) == valueref.Borrow:
 		_SymbolAccess__analyzeSymbolAccess(state, expr.expr, access, exprs, implicitType)
 		if access.type and not access.type.isOwnedType:
@@ -404,6 +418,8 @@ def _SymbolAccess__analyzeSymbolAccess(state, expr, access, exprs, implicitType=
 		
 		if access.deref:
 			access.deref -= 1
+			access.isFieldAccess = False
+			access.field = None
 		else:
 			assert not access.addr
 			access.addr = True
@@ -427,14 +443,15 @@ def _SymbolAccess__analyzeSymbolAccess(state, expr, access, exprs, implicitType=
 		else:
 			_SymbolAccess__analyzeSymbolAccess(state, expr.expr, access, exprs, implicitType)
 		
+		derefCount = expr.count
 		if access.write:
 			access.deref = 1
-			expr.count -= 1
+			derefCount -= 1
 		else:
-			access.deref = expr.count
-			expr.count = 0
+			access.deref = derefCount
+			derefCount = 0
 		
-		if expr.count > 0:
+		if derefCount > 0:
 			(symbol, write) = createTempSymbol(expr)
 			access.symbol = symbol
 			exprs.append(state.analyzeNode(symbol))
@@ -469,9 +486,16 @@ def _SymbolAccess__analyzeSymbolAccess(state, expr, access, exprs, implicitType=
 		fieldInfo = None
 		t = access.type
 		for tok in expr.path:
+			name = t.name
+			if t.isEnumType:
+				t = t.structType
+				anon = False
+			else:
+				anon = t.anon
+			
 			if t.isStructType:
 				if tok.content not in t.fieldDict:
-					name = 'type `{}`'.format(t.name) if not t.anon else 'struct'
+					name = 'struct' if anon else 'type `{}`'.format(name)
 					logError(state, tok.span, '{} has no field `{}`'.format(name, tok.content))
 					access.type = None
 					return
@@ -480,7 +504,7 @@ def _SymbolAccess__analyzeSymbolAccess(state, expr, access, exprs, implicitType=
 			elif t.isTupleType:
 				fieldIndex = None if tok.type != TokenType.INTEGER else int(tok.content)
 				if fieldIndex == None or fieldIndex not in range(0, len(t.fields)):
-					name = 'type `{}`'.format(t.name) if not t.anon else 'tuple'
+					name = 'tuple' if anon else 'type `{}`'.format(name)
 					logError(state, tok.span, '{} has no field `{}`'.format(name, tok.content))
 					access.type = None
 					return

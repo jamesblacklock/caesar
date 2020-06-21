@@ -47,6 +47,8 @@ class FundamentalType:
 	def fromResolvedType(resolvedType):
 		if resolvedType.isCompositeType:
 			return FundamentalType.fromCompositeType(resolvedType)
+		elif resolvedType.isEnumType:
+			return FundamentalType.fromCompositeType(resolvedType.structType)
 		elif resolvedType.isFloatType:
 			if resolvedType.byteSize == 4:
 				return F32
@@ -61,8 +63,8 @@ class FundamentalType:
 				return I32
 			elif resolvedType.byteSize == 8:
 				return I64
-		
-		assert 0
+		else:
+			assert 0
 
 I8   = FundamentalType(1)
 I16  = FundamentalType(2)
@@ -328,11 +330,12 @@ class Addr(Instr):
 		return 'addr {}'.format(self.offset)
 
 class Fix(Instr):
-	def __init__(self, ast):
+	def __init__(self, ast, offset):
 		self.ast = ast
+		self.offset = offset
 	
 	def __str__(self):
-		return 'fix'
+		return 'fix {}'.format(self.offset)
 
 class Call(Instr):
 	def __init__(self, ast, argCt, retType, cVarArgs):
@@ -747,9 +750,9 @@ class IRState:
 		
 		self.setupLocals(self.paramTypes, inputSymbols)
 		
-		# print('{}({}){}'.format(self.name,
-		# 	', '.join([str(t) for t in self.paramTypes]),
-		# 	' -> {}'.format(self.retType) if self.retType else ''))
+		print('{}({}){}'.format(self.name,
+			', '.join([str(t) for t in self.paramTypes]),
+			' -> {}'.format(self.retType) if self.retType else ''))
 		
 		if not fnDecl.type.returnType.isVoidType:
 			self.retType = FundamentalType.fromResolvedType(fnDecl.type.returnType)
@@ -761,8 +764,8 @@ class IRState:
 		instrText = '{}{}'.format(
 			'   ' if type(instr) != BlockMarker else '', instr.pretty(self))
 		space = ' ' * (72 - len(instrText))
-		# print('{}{}# [{}]'.format(instrText, space, 
-		# 	', '.join([(t.symbol.name + ': ' if t.symbol else '') + str(t.type) for t in self.operandStack])))
+		print('{}{}# [{}]'.format(instrText, space, 
+			', '.join([(t.symbol.name + ': ' if t.symbol else '') + str(t.type) for t in self.operandStack])))
 	
 	def defBlock(self, inputs, hasBackwardsCallers=False):
 		index = len(self.blockDefs)
@@ -854,7 +857,11 @@ class IRState:
 			self.appendInstr(FieldW(init, 2))
 
 	def initStructFields(self, structLit, baseOffset):
-		fieldDict = structLit.type.fieldDict
+		t = structLit.type
+		if t.isEnumType:
+			t = t.structType
+		
+		fieldDict = t.fieldDict
 		for init in structLit.fields:
 			fieldInfo = fieldDict[init.name]
 			if init.expr.type.isCompositeType:
@@ -910,6 +917,11 @@ def beginBlock(state, ast, blockDef):
 
 def fnToIR(fnDecl):
 	state = IRState(fnDecl)
+	
+	for (i, param) in enumerate(reversed(fnDecl.params)):
+		if param.fixed:
+			state.appendInstr(Fix(param, i))
+	
 	fnDecl.body.writeIR(state)
 	
 	lastType = type(state.instr[-1])

@@ -74,9 +74,12 @@ class UnionFields(AST):
 		super().__init__(span)
 		self.fieldDecls = fields
 
-class FieldDecl(ValueSymbol):
+class FieldDecl(AST):
 	def __init__(self, nameTok, typeRef, span):
-		super().__init__(nameTok, typeRef, span)
+		super().__init__(span)
+		self.nameTok = nameTok
+		self.name = nameTok.content
+		self.typeRef = typeRef
 		self.align = None
 		self.offset = None
 		self.unionField = False

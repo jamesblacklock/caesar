@@ -23,6 +23,24 @@ class Attr(AST):
 				arg.pretty(output)
 			output.write(')')
 
+def acquireDefaultAttr(state, decl, params, span):
+	if state.scope.acquireDefaultSet:
+		logError(state, span, '`acquire_default` was already set in this scope')
+		logExplain(state, state.scope.acquireDefault.span, '`acquire_default` was set here')
+		return
+	
+	state.scope.acquireDefaultSet = True
+	state.scope.acquireDefault = decl
+
+def releaseDefaultAttr(state, decl, params, span):
+	if state.scope.releaseDefaultSet:
+		logError(state, span, '`release_default` was already set in this scope')
+		logExplain(state, state.scope.releaseDefault.span, '`release_default` was set here')
+		return
+	
+	state.scope.releaseDefaultSet = True
+	state.scope.releaseDefault = decl
+
 def ffiAttr(state, decl, params, span):
 	if params[0].value != 'C':
 		logError(state, span, '`ffi` currently only supports the "C" convention')
@@ -37,7 +55,10 @@ def alignAttr(state, decl, params, span):
 		decl.align = align
 
 def dropAttr(state, decl, params, span):
-	decl.dropFn = state.lookupSymbol(params[0].path)
+	decl.dropFn = state.lookupSymbol(params[0].path, inValuePosition=True)
+
+def cstrAttr(state, decl, params, span):
+	decl.cstr = True
 
 class AttrInfo:
 	def __init__(self, name, proc, appliesTo, argInfo):
@@ -51,14 +72,20 @@ class AttrArg:
 		self.types = types if type(types) == list else [types]
 		self.optional = optional
 
+AcquireAttr = AttrInfo('acquire_default', acquireDefaultAttr, [FnDecl], [])
+ReleaseAttr = AttrInfo('release_default', releaseDefaultAttr, [FnDecl], [])
 FFIAttr = AttrInfo('ffi', ffiAttr, [FnDecl], [AttrArg(StrLit)])
 AlignAttr = AttrInfo('align', alignAttr, [StructDecl, FieldDecl], [AttrArg(IntLit)])
-DropAttr = AttrInfo('drop', dropAttr, [StructDecl, LetDecl, FnParam], [AttrArg(ValueRef)])
+DropAttr = AttrInfo('drop', dropAttr, [LetDecl, FnParam], [AttrArg(ValueRef)])
+CStrAttr = AttrInfo('cstr', cstrAttr, [StrLit], [])
 
 builtinAttrs = {
-	FFIAttr.name: FFIAttr,
-	AlignAttr.name: AlignAttr,
-	DropAttr.name: DropAttr
+	AcquireAttr.name: AcquireAttr, 
+	ReleaseAttr.name: ReleaseAttr, 
+	FFIAttr.name: FFIAttr, 
+	AlignAttr.name: AlignAttr, 
+	DropAttr.name: DropAttr, 
+	CStrAttr.name: CStrAttr
 }
 
 def invokeAttrs(state, expr):

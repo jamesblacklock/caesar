@@ -47,6 +47,9 @@ class Target:
 		self.operandIndex = None
 		self.fixed = False
 	
+	def refreshOffset(self):
+		pass
+		
 	def setActive(self, set):
 		self.active = set
 	
@@ -124,6 +127,9 @@ class MultiStackTarget(StackTarget):
 	def __init__(self, fType, targets):
 		super().__init__(fType, targets[-1].offset)
 		self.targets = targets
+	
+	def refreshOffset(self):
+		self.offset = self.targets[-1].offset
 	
 	def setActive(self, set):
 		self.active = set
@@ -333,9 +339,16 @@ class GeneratorState:
 		structParts = {}
 		for (i, (t, regs)) in enumerate(zip(self.fnIR.paramTypes, assignments)):
 			if regs == None:
-				target = StackTarget(t, 0)
+				multiTargets = []
+				offset = 0
+				while offset < t.byteSize:
+					multiTargets.append(StackTarget(None, 0))
+					offset += 8
+				
+				# multiTargets.reverse()
+				target = multiTargets[0] if len(multiTargets) == 1 else MultiStackTarget(t, multiTargets)
 				targets[i] = target
-				stackTargets.append(target)
+				stackTargets.extend(reversed(multiTargets))
 			elif len(regs) == 1:
 				r = regs[0]
 				r.type = t
@@ -343,19 +356,10 @@ class GeneratorState:
 			else:
 				structParts[i] = (t, regs)
 		
-		offset = -8
-		for target in stackTargets[:-1]:
-			alignedSize = target.type.byteSize
-			if alignedSize % 8 != 0:
-				alignedSize += alignedSize % 8
-			offset -= alignedSize
-		
+		offset = -8 * len(stackTargets)
 		for target in reversed(stackTargets):
 			target.offset = offset
-			offset += target.type.byteSize
-			if offset % 8 != 0:
-				offset += offset % 8
-			
+			offset += 8
 			self.callStack.append(target)
 		
 		retAddr = StackTarget(I64, 0)
@@ -375,6 +379,7 @@ class GeneratorState:
 		
 		for target in targets:
 			target.setActive(False)
+			target.refreshOffset()
 			self.pushOperand(target)
 	
 	def appendInstr(self, opcode, *operands, isLabel=False, isComment=False):
@@ -401,7 +406,7 @@ class GeneratorState:
 			return reg
 	
 	def findTarget(self, type, alwaysUseStack=False, exclude=[]):
-		if type.byteSize > 16:
+		if type.byteSize not in (1, 2, 4, 8):
 			alwaysUseStack = True
 		
 		if not alwaysUseStack:
@@ -434,10 +439,15 @@ class GeneratorState:
 		if targets == None:
 			targets = self.allocateStack(count)
 		
-		for t in targets:
-			t.type = type
+		if count == 1:
+			target = targets[0]
+			target.type = type
+			return target
 		
-		return targets[0] if count == 1 else MultiStackTarget(type, targets)
+		for t in targets:
+			t.type = None
+		
+		return MultiStackTarget(type, targets)
 	
 	def pushIROperand(self, ir):
 		target = Target.fromIR(ir)
@@ -586,13 +596,13 @@ def irToAsm(state, ir, nextIR):
 		assert 0
 	
 	# state.appendInstr('[{}]'.format(', '.join(str(t.type) for t in state.operandStack)), 
-	# 	isComment=True, isLabel=(type(ir) == BlockMarker))
+		# isComment=True, isLabel=(type(ir) == BlockMarker))
 
 class RestoreRegs:
 	pass
 
 def moveData(state, src, dest, 
-	srcDeref=False, destDeref=False, srcOffset=None, destOffset=None, type=None):
+	srcDeref=False, destDeref=False, srcOffset=None, destOffset=None, type=None, preserveDestType=False):
 	
 	restore = RestoreRegs()
 	restore.r8 = None
@@ -635,8 +645,13 @@ def moveData(state, src, dest,
 	assert type != None
 	assert dest.storage in (Storage.REG, Storage.XMM, Storage.STACK) or destDeref
 	
+	if src.storage == Storage.NONE:
+		newSrc = state.findTarget(src.type)
+		state.moveOperand(src, newSrc)
+		src = newSrc
+	
 	if type.byteSize not in (1, 2, 4, 8):
-		moveStruct(state, src, dest, srcDeref, destDeref, srcOffset, destOffset, type)
+		moveStruct(state, src, dest, srcDeref, destDeref, srcOffset, destOffset, type, preserveDestType)
 		return
 	
 	srcType = IPTR if srcDeref else type
@@ -665,6 +680,7 @@ def moveData(state, src, dest,
 				moveData(state, src, stack)
 				src = stack
 			if srcOffset.storage == Storage.IMM:
+				assert not src.fromTop
 				src = StackTarget(src.type, src.offset - srcOffset.value)
 				srcOffset = None
 	
@@ -679,7 +695,10 @@ def moveData(state, src, dest,
 		else:
 			assert dest.storage == Storage.STACK
 			if destOffset.storage == Storage.IMM:
-				dest = StackTarget(dest.type, dest.offset - destOffset.value)
+				if dest.fromTop:
+					dest = StackTarget(dest.type, dest.offset + destOffset.value, fromTop=True)
+				else:
+					dest = StackTarget(dest.type, dest.offset - destOffset.value)
 				destOffset = None
 	
 	# save source pointer
@@ -750,11 +769,17 @@ def moveData(state, src, dest,
 	if restoreSrc:
 		restoreReg(state, restoreSrc, srcReg)
 	
-	dest.type = destType
+	if not preserveDestType:
+		dest.type = destType
 
-def moveStruct(state, src, dest, srcDeref, destDeref, srcOffset, destOffset, type):
+def moveStruct(state, src, dest, srcDeref, destDeref, srcOffset, destOffset, type, preserveDestType):
 	assert srcDeref or src.storage == Storage.STACK
 	assert destDeref or dest.storage == Storage.STACK
+	
+	if srcOffset == None:
+		srcOffset = ImmTarget(IPTR, 0)
+	if destOffset == None:
+		destOffset = ImmTarget(IPTR, 0)
 	
 	partialDest = dest
 	partialSrc = src
@@ -785,15 +810,12 @@ def moveStruct(state, src, dest, srcDeref, destDeref, srcOffset, destOffset, typ
 		
 		if sizeRemaining > 0:
 			if srcDeref:
-				state.appendInstr('add', 
-					Operand(partialSrc, Usage.DEST, IPTR), 
-					Operand(ImmTarget(IPTR, byteSize), Usage.SRC, IPTR))
+				srcOffset = ImmTarget(IPTR, srcOffset.value + byteSize)
 			if destDeref:
-				state.appendInstr('add', 
-					Operand(partialDest, Usage.DEST, IPTR), 
-					Operand(ImmTarget(IPTR, byteSize), Usage.SRC, IPTR))
+				destOffset = ImmTarget(IPTR, destOffset.value + byteSize)
 	
-	dest.type = IPTR if destDeref else type
+	if not preserveDestType:
+		dest.type = IPTR if destDeref else type
 
 FLOAT_COUNTER = 0
 
@@ -852,7 +874,7 @@ def raise_(state, ir):
 	state.raiseOperand(ir.offset)
 
 def fix(state, ir):
-	src = state.getOperand(0)
+	src = state.getOperand(ir.offset)
 	if src.storage != Storage.STACK:
 		newSrc = state.findTarget(src.type, True)
 		state.moveOperand(src, newSrc)
@@ -928,7 +950,7 @@ def fieldw(state, ir, deref=False):
 		state.moveOperand(structTarget, newStructTarget)
 		structTarget = newStructTarget
 	
-	moveData(state, valueTarget, structTarget, destOffset=offsetTarget, destDeref=deref)
+	moveData(state, valueTarget, structTarget, destOffset=offsetTarget, destDeref=deref, preserveDestType=True)
 	
 	state.popOperand()
 	state.popOperand()
@@ -1438,6 +1460,7 @@ def call(state, ir):
 		retRegs = assignTargets(state, [ir.retType], ret=True)[0]
 		if retRegs == None:
 			retStackTarget = state.findTarget(ir.retType, True)
+			retStackTarget.setActive(True)
 			state.appendInstr('lea', 
 				Operand(state.rdi, Usage.DEST, I64), 
 				Operand(retStackTarget, Usage.ADDR))
@@ -1452,9 +1475,14 @@ def call(state, ir):
 	xmmCount = 0
 	regAssignments = assignTargets(state, [arg.type for arg in args], memStructReturn=retStackTarget != None)
 	stackArgs = []
+	requiredStackSpace = 0
 	for (arg, regs) in zip(args, regAssignments):
 		if regs == None:
 			stackArgs.append(arg)
+			count = arg.type.byteSize // 8
+			if arg.type.byteSize % 8 != 0:
+				count += 1
+			requiredStackSpace += count
 			continue
 		
 		for (i, reg) in enumerate(regs):
@@ -1464,7 +1492,6 @@ def call(state, ir):
 			moveData(state, arg, reg, srcOffset=ImmTarget(I64, i*8) if i else None, type=t)
 	
 	if len(stackArgs) > 0:
-		requiredStackSpace = len(stackArgs)
 		for stackSlot in reversed(state.callStack):
 			if stackSlot.active:
 				break
@@ -1492,6 +1519,7 @@ def call(state, ir):
 	
 	if ir.retType:
 		if retStackTarget:
+			retStackTarget.setActive(False)
 			state.pushOperand(retStackTarget)
 		elif len(retRegs) == 1:
 			retRegs[0].type = ir.retType

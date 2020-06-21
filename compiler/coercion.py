@@ -27,6 +27,9 @@ class Coercion(ValueExpr):
 			logError(state, asExpr.span, 'cannot coerce from {} to {}'
 				.format(asExpr.expr.type, asExpr.type))
 	
+	def accessSymbols(self, scope):
+		self.expr.accessSymbols(scope)
+	
 	def staticEval(self, state):
 		staticValue = self.expr.staticEval(state)
 		if staticValue == None:

@@ -125,7 +125,7 @@ def lexComment(state):
 	def multiLineTest(state, testState):
 		if testState.nest == 0:
 			testState.done = True
-			
+		
 		if testState.lastChar == '#' and state.char == '=':
 			testState.nest += 1
 			testState.lastChar = ''
@@ -179,6 +179,7 @@ def lexOperator(state):
 		('<<', TokenType.LSHIFT),
 		('>>', TokenType.RSHIFT),
 		('::', TokenType.PATH),
+		('^.', TokenType.DEREFDOT),
 		('@', TokenType.AT),
 		('.', TokenType.DOT),
 		('(', TokenType.LPAREN),
@@ -209,7 +210,7 @@ def lexOperator(state):
 			testState.lengthSoFar = 0
 			testState.length = len(op)
 			return lexToken(state, type, test, testState)
-			
+	
 	tok = lexToken(state, TokenType.UNKNOWN)
 	state.error = 'invalid operator'
 	state.errorToken = tok
@@ -330,6 +331,7 @@ def lexNameOrKeyword(state):
 		('trait', TokenType.TRAIT),
 		('unsafe', TokenType.UNSAFE),
 		('as', TokenType.AS),
+		('is', TokenType.IS),
 		('alias', TokenType.ALIAS),
 		('type', TokenType.TYPE),
 		('owned', TokenType.OWNED),

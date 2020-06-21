@@ -3,24 +3,45 @@ from .types import typesMatch, Void, TupleType, ArrayType
 from .      import ir
 
 class TupleLit(ValueExpr):
-	def __init__(self, values, span):
+	def __init__(self, values, span, typeSymbol=None):
 		super().__init__(span)
 		self.values = values
+		self.type = typeSymbol
 	
 	def analyze(tup, state, implicitType):
-		implicitTypes = [None for _ in tup.values]
-		if implicitType and implicitType.isCompositeType:
-			for i in range(0, min(len(implicitType.fields), len(tup.values))):
-				implicitTypes[i] = implicitType.fields[i].type
+		requireTypeMatch = False
+		if tup.type:
+			expectedTypes = [f.type for f in tup.type.fields]
+			requireTypeMatch = True
+		elif implicitType and implicitType.isCompositeType:
+			expectedTypes = [f.type for f in implicitType.fields]
+		else:
+			expectedTypes = [None for _ in tup.values]
+		
+		if requireTypeMatch and len(tup.values) != len(expectedTypes):
+			logError(state, tup.span, 'expected {} initializers for type `{}`, found {}'.format(
+				len(expectedTypes), tup.type.name, len(tup.values)))
+			while len(expectedTypes) < len(tup.values):
+				expectedTypes.append(None)
 		
 		resolvedTypes = []
-		for (i, (expr, t)) in enumerate(zip(tup.values, implicitTypes)):
+		values = []
+		for (expr, t) in zip(tup.values, expectedTypes):
 			expr = state.analyzeNode(expr, t)
-			tup.values[i] = expr
+			if requireTypeMatch:
+				expr = state.typeCheck(expr, t)
+			values.append(expr)
 			resolvedTypes.append(expr.type)
 		
-		layout = state.generateFieldLayout(resolvedTypes)
-		tup.type = TupleType(layout.align, layout.byteSize, layout.fields)
+		tup.values = values
+		
+		if not tup.type:
+			layout = state.generateFieldLayout(resolvedTypes)
+			tup.type = TupleType(layout.align, layout.byteSize, layout.fields)
+	
+	def accessSymbols(self, scope):
+		for value in self.values:
+			value.accessSymbols(scope)
 	
 	def writeIR(ast, state):
 		fType = ir.FundamentalType.fromResolvedType(ast.type)
@@ -66,6 +87,10 @@ class ArrayLit(ValueExpr):
 		arr.values = values
 		count = max(len(arr.values), count)
 		arr.type = ArrayType(resolvedElementType, count)
+	
+	def accessSymbols(self, scope):
+		for value in self.values:
+			value.accessSymbols(scope)
 	
 	def writeIR(ast, state):
 		fType = ir.FundamentalType.fromResolvedType(ast.type)
