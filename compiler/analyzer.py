@@ -6,7 +6,7 @@ from .types      import TypeSymbol, UnknownType, FieldInfo, PtrType, ArrayType, 
 from .log        import logError, logExplain
 from .ast        import ASTPrinter, ValueSymbol
 from .scope      import Scope, ScopeType
-from .attrs      import invokeAttrs
+from .attrs      import invokeAttrs, Attr
 from .mod        import Mod, Impl, TraitDecl
 from .fndecl     import FnDecl, CConv
 from .staticdecl import StaticDecl, ConstDecl
@@ -14,6 +14,7 @@ from .structdecl import StructDecl
 from .alias      import AliasDecl, TypeDecl
 from .enumdecl   import EnumDecl, VariantDecl
 from .access     import SymbolAccess, SymbolRead
+from .importexpr import Import, importMod
 from .           import platform
 
 BUILTIN_TYPES = {
@@ -110,6 +111,13 @@ def finishAnalyzingOwnedType(state, ownedType):
 def buildSymbolTable(state, mod):
 	symbolTable = {}
 	for decl in mod.decls:
+		if type(decl) == Import:
+			mod.imports.append(decl)
+			continue
+		elif type(decl) == Attr:
+			mod.attrs.append(decl)
+			continue
+		
 		if decl.name in symbolTable:
 			otherDecl = symbolTable[decl.name]
 			logError(state, decl.nameTok.span, 'cannot redeclare `{}` as a different symbol'.format(decl.name))
@@ -129,8 +137,6 @@ def buildSymbolTable(state, mod):
 			mod.statics.append(decl)
 		elif type(decl) == ConstDecl:
 			mod.consts.append(decl)
-		# elif type(decl) == ImportDecl:
-		# 	mod.imports.append(decl)
 		elif type(decl) in (Mod, Impl):
 			mod.mods.append(decl)
 			decl.symbolTable = buildSymbolTable(state, decl)
@@ -140,26 +146,44 @@ def buildSymbolTable(state, mod):
 	return symbolTable
 
 def analyze(ast):
-	state = AnalyzerState()
-	
-	ast.symbolTable = buildSymbolTable(state, ast)
-	
-	ast.analyzeSig(state)
-	ast = state.analyzeNode(ast)
-	
-	# p = ASTPrinter()
-	# ast.pretty(p)
-	
-	if state.failed:
-		exit(1)
-	
-	return ast
+	return AnalyzerState.analyze(None, ast)
+
+class T:
+	def __init__(self, content, span):
+		self.content = content
+		self.span = span
 
 class AnalyzerState:
 	def __init__(self):
 		# self.lastIfBranchOuterSymbolInfo = None
 		self.scope = None
 		self.failed = False
+		self.strMod = None
+	
+	def analyze(_, ast):
+		state = AnalyzerState()
+		
+		ast.symbolTable = buildSymbolTable(state, ast)
+		
+		invokeAttrs(state, ast)
+		if ast.isStrMod:
+			state.strMod = ast
+		elif not ast.noStrImport:
+			imp = Import([T('str', ast.span), T('str', ast.span)], ast.span)
+			imp.analyzeSig(state, ast)
+			state.strMod = imp.importedMod
+		
+		ast.analyzeSig(state)
+		ast = state.analyzeNode(ast)
+		
+		# p = ASTPrinter()
+		# ast.pretty(p)
+		
+		if state.failed:
+			exit(0)
+			# exit(1)
+		
+		return ast
 	
 	def analyzeNode(state, ast, implicitType=None):
 		invokeAttrs(state, ast)

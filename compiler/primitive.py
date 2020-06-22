@@ -66,7 +66,7 @@ class StrLit(ValueExpr):
 		self.value = strEsc(value)
 		self.staticValue = None
 		self.structLit = None
-		self.cstr = False
+		self.raw = False
 	
 	def analyze(lit, state, implicitType):
 		from .structlit import StructLit, FieldLit
@@ -77,14 +77,12 @@ class StrLit(ValueExpr):
 		
 		lit.staticValue = StaticData(strBytes(lit.value), StaticDataType.BYTES, ir.IPTR, label)
 		
-		if lit.cstr:
-			lit.type = types.PtrType(types.Byte, 1, False)
+		if implicitType and types.typesMatch(implicitType, types.PtrType(types.Byte, 1, False)):
+			lit.raw = True
+			lit.type = implicitType
 		else:
-			class X: pass
-			tok = X(); tok.content = 'Str'
-			StrType = state.lookupSymbol([tok])
-			tok.content = 'StrData'
-			StrDataType = state.lookupSymbol([tok])
+			StrType = state.strMod.symbolTable['str']
+			StrDataType = state.strMod.symbolTable['StrData']
 			
 			size = IntLit(None, False, lit.span, value=len(lit.staticValue.data), type=types.USize)
 			dataField = FieldLit(None, Label(lit.staticValue.label, types.USize, lit.span), lit.span, name='$Static')
@@ -108,7 +106,7 @@ class StrLit(ValueExpr):
 	def writeIR(ast, state):
 		state.staticDefs.append(ast.staticValue)
 		
-		if ast.cstr:
+		if ast.raw:
 			state.appendInstr(ir.Static(ast, ir.IPTR, ast.staticValue.label))
 		else:
 			ast.structLit.writeIR(state)

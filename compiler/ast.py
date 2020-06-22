@@ -91,7 +91,7 @@ class ASTPrinter:
 
 class AST:
 	def __init__(self, span):
-		self.attrs = None
+		self.attrs = []
 		self.attrsInvoked = False
 		self.span = span
 		self.hasValue = False

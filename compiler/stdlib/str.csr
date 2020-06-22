@@ -1,0 +1,43 @@
+@@str_mod
+
+@ffi("C") @acquire_default
+extern unsafe fn malloc(size: usize) -> owned &mut byte
+
+@ffi("C") @release_default
+extern unsafe fn free(buf: owned &byte)
+
+@ffi("C")
+extern unsafe fn memcpy(dest: &mut byte, src: &byte, size: usize) -> &mut byte
+
+trait Drop fn drop(self: &Drop)
+
+enum StrData
+    Static(&byte)
+    Owned(owned &byte)
+
+impl StrData: Drop fn drop(self: &mut StrData)
+    if self^ is Owned
+        unsafe free(self^.0)
+
+pub struct str
+    pub size: usize
+    data: StrData
+
+impl str
+    pub fn concat(self: &str, other: str) -> str
+        let size = self^.size + other.size - 1
+        let buf
+        
+        unsafe
+            buf = malloc(size)
+            memcpy(buf, (&self^.data as &&byte)^, self^.size - 1)
+            memcpy(buf + self^.size - 1, (&other.data as &&byte)^, other.size)
+        
+        str { size: size, data: Owned(buf) }
+    
+    pub fn data(self: &str) -> #=result:=# &byte
+        # where result borrows self^.data
+        # match self^.data
+        #     case Owned(data)  {data}
+        #     case Static(data) {data}
+        (&self^.data as &&byte)^

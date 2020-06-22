@@ -7,6 +7,7 @@ class TokenType(Enum):
 	NEWLINE    = 'line break'
 	INDENT     = 'indentation'
 	AT         = '`@`'
+	ATAT       = '`@@`'
 	LPAREN     = '`(`'
 	RPAREN     = '`)`'
 	LBRACE     = '`{`'

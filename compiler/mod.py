@@ -17,11 +17,18 @@ class Mod(Symbol):
 		self.imports = []
 		self.mainFn = None
 		self.isImpl = False
+		self.isImport = False
+		self.objCodePath = None
+		self.noStrImport = False
+		self.isStrMod = False
 	
 	def analyzeSig(mod, state):
 		state.pushScope(ScopeType.MOD, mod=mod, name=mod.name)
 		
 		attrs.invokeAttrs(state, mod)
+		
+		for decl in mod.imports:
+			decl.analyzeSig(state, mod)
 		
 		for decl in mod.types:
 			decl.analyzeSig(state)
@@ -36,6 +43,8 @@ class Mod(Symbol):
 			decl.analyzeSig(state)
 		
 		for decl in mod.mods:
+			if decl.isImport:
+				continue
 			decl.analyzeSig(state)
 		
 		state.popScope()
@@ -45,6 +54,8 @@ class Mod(Symbol):
 		
 		decls = []
 		for (i, decl) in enumerate(mod.mods):
+			if decl.isImport:
+				continue
 			decl = state.analyzeNode(decl)
 			mod.mods[i] = decl
 			decls.append(decl)

@@ -5,13 +5,25 @@ import os
 import argparse
 import uuid
 
-from compiler            import platform
 from compiler.sourcefile import SourceFile
 from compiler.tokenizer  import tokenize
 from compiler.parser     import parse
 from compiler.analyzer   import analyze
 from compiler.ir         import generateIR
 from compiler.amd64      import generateAsm
+from compiler.build      import buildObjFile
+
+def getImports(mod, imports=None):
+	if imports == None:
+		imports = []
+	
+	for subMod in mod.mods:
+		if subMod.isImport:
+			imports.append(subMod)
+		else:
+			getImports(subMod, imports)
+	
+	return imports
 
 def main(args):
 	parser = argparse.ArgumentParser(description='Compiler for the Caesar programming language')
@@ -196,16 +208,8 @@ def main(args):
 			outfile.close()
 			
 			if args.obj or args.bin or args.lib or args.dylib or args.run:
-				if platform.MacOS:
-					objFormat = 'macho64'
-				elif platform.Linux:
-					objFormat = 'elf64'
-				else:
-					print('assembly not yet implemented for Windows')
-					exit(1)
-				
-				asmExitCode = os.system('nasm -f {} {} -o {}'.format(objFormat, asmFileNames[i], objFileNames[i]))
-				if asmExitCode != 0:
+				result = buildObjFile(asmFileNames[i], objFileNames[i])
+				if result == False:
 					exit(1)
 		except Exception as e:
 			print(e)
@@ -217,8 +221,15 @@ def main(args):
 				os.remove(f)
 		
 		if args.bin or args.run:
-			os.system('ld -e _start -macosx_version_min 10.8 -arch x86_64 {} -lc -lSystem -no_pie -o {}'
-				.format(' '.join(objFileNames), binFileName))
+			imports = getImports(mod)
+			allObjFileNames = list(objFileNames)
+			for mod in imports:
+				allObjFileNames.append(mod.objCodePath)
+			
+			linkExitCode = os.system('ld -e _start -macosx_version_min 10.8 -arch x86_64 {} -lc -lSystem -no_pie -o {}'
+				.format(' '.join(allObjFileNames), binFileName))
+			if linkExitCode != 0:
+				exit(1)
 		
 		if args.run and not args.obj:
 			for f in objFileNames:

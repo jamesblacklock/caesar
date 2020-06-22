@@ -1652,7 +1652,7 @@ def restoreReg(state, stack, reg):
 		Operand(reg, Usage.DEST), 
 		Operand(stack, Usage.SRC))
 
-def delcareExterns(mod, output):	
+def delcareExterns(mod, output):
 	for decl in mod.mods:
 		delcareExterns(decl, output)
 	

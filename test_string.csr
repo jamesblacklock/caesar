@@ -4,73 +4,6 @@ extern unsafe fn printf(fmt: &byte, ...) -> int
 @ffi("C")
 extern unsafe fn strlen(s: &byte) -> int
 
-@ffi("C") @acquire_default
-extern unsafe fn malloc(size: usize) -> owned &mut byte
-
-@ffi("C") @release_default
-extern unsafe fn free(buf: owned &byte)
-
-@ffi("C")
-extern unsafe fn memcpy(dest: &mut byte, src: &byte, size: usize) -> &mut byte
-
-trait Drop fn drop(self: &Drop)
-
-alias CStr = &byte
-
-enum StrData
-    Static(&byte)
-    Owned(owned &byte)
-
-impl StrData: Drop fn drop(self: &mut StrData)
-    if self^ is Owned
-        unsafe printf(@cstr "dropping owned string data: %s\n", self^.0)
-        unsafe free(self^.0)
-    else
-        unsafe printf(@cstr "dropping static string data (noop): %s\n", self^.0)
-    
-    # lowers to:
-    # match self
-    #     case Owned(data)
-    #         free(data)
-    #     else
-    #         void
-    
-    # jump table:
-    # let tbl = [addr0, addr1]
-    # goto tbl[(self as StrData$mod::StrData$struct).tag]
-    # addr0:
-    #     let data = unsafe (self as StrData$mod::StrData$struct).Owned$field
-    #     free(data)
-    # addr1:
-    #     void
-
-struct Str
-    #=pub=# size: usize
-    union
-        data: StrData
-        p: owned &byte
-
-impl Str
-    fn concat(self: &Str, other: Str) -> Str
-        let size = self^.size + other.size - 1
-        let buf
-        
-        unsafe
-            buf = malloc(size)
-            memcpy(buf, (&self^.data as &&byte)^, self^.size - 1)
-            memcpy(buf + self^.size - 1, (&other.data as &&byte)^, other.size)
-        
-        Str { size: size, data: Owned(buf) }
-    
-    fn cstr(self: &Str) -> #=result:=# CStr
-        # where result borrows self^.data
-        # match self^.data
-        #     case Owned(data)
-        #         borrow data
-        #     case Static(data)
-        #         data
-        (&self^.data as &CStr)^
-
 enum TestEnum
     A { a: int }
     B { b: int }
@@ -112,18 +45,18 @@ enum TwoThings
         h: int8
 
 fn main()
-    let s: Str = "test"
-    let t: Str = s->concat(" owned")
-    let c: CStr = @cstr "a c-string"
+    let s: str = "test"
+    let t: str = s->concat(" owned")
+    let c: &byte = "a c-string"
     
-    # unsafe printf(@cstr "%s: %d\n%s: %d\n", c, strlen(c), t->cstr, t.size)
-    unsafe printf(@cstr "%s: %d\n%s: %d\n", c, strlen(c), Str::cstr(&t), t.size)
+    # unsafe printf("%s: %d\n%s: %d\n", c, strlen(c), t->data, t.size)
+    unsafe printf("%s: %d\n%s: %d\n", c, strlen(c), str::data(&t), t.size)
     
     let twoFloats = TwoThings::TwoFloats { a: 1.2, b: 1.3 }
     let twoInts: TwoThings = TwoInts { g: 12, h: 13 }
     let twoThings = twoInts
     
     if twoThings is TwoInts
-        unsafe printf(@cstr "%d %d\n", twoThings.g, twoThings.h)
+        unsafe printf("%d %d\n", twoThings.g, twoThings.h)
     else
-        unsafe printf(@cstr "%g %g\n", twoThings.a, twoThings.b)
+        unsafe printf("%g %g\n", twoThings.a, twoThings.b)

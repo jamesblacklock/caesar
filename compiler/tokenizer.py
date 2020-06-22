@@ -179,6 +179,7 @@ def lexOperator(state):
 		('<<', TokenType.LSHIFT),
 		('>>', TokenType.RSHIFT),
 		('::', TokenType.PATH),
+		('@@', TokenType.ATAT),
 		('^.', TokenType.DEREFDOT),
 		('@', TokenType.AT),
 		('.', TokenType.DOT),

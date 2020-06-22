@@ -4,6 +4,7 @@ from .primitive  import IntLit, StrLit
 from .structdecl import StructDecl, FieldDecl
 from .fndecl     import FnDecl, CConv
 from .letdecl    import LetDecl, FnParam
+from .mod        import Mod
 from .log        import logError
 
 class Attr(AST):
@@ -57,8 +58,12 @@ def alignAttr(state, decl, params, span):
 def dropAttr(state, decl, params, span):
 	decl.dropFn = state.lookupSymbol(params[0].path, inValuePosition=True)
 
-def cstrAttr(state, decl, params, span):
-	decl.cstr = True
+def noStrAttr(state, decl, params, span):
+	decl.noStrImport = True
+
+def strModAttr(state, decl, params, span):
+	decl.noStrImport = True
+	decl.isStrMod = True
 
 class AttrInfo:
 	def __init__(self, name, proc, appliesTo, argInfo):
@@ -77,7 +82,8 @@ ReleaseAttr = AttrInfo('release_default', releaseDefaultAttr, [FnDecl], [])
 FFIAttr = AttrInfo('ffi', ffiAttr, [FnDecl], [AttrArg(StrLit)])
 AlignAttr = AttrInfo('align', alignAttr, [StructDecl, FieldDecl], [AttrArg(IntLit)])
 DropAttr = AttrInfo('drop', dropAttr, [LetDecl, FnParam], [AttrArg(ValueRef)])
-CStrAttr = AttrInfo('cstr', cstrAttr, [StrLit], [])
+NoStrAttr = AttrInfo('no_str', noStrAttr, [Mod], [])
+StrModAttr = AttrInfo('str_mod', strModAttr, [Mod], [])
 
 builtinAttrs = {
 	AcquireAttr.name: AcquireAttr, 
@@ -85,7 +91,8 @@ builtinAttrs = {
 	FFIAttr.name: FFIAttr, 
 	AlignAttr.name: AlignAttr, 
 	DropAttr.name: DropAttr, 
-	CStrAttr.name: CStrAttr
+	NoStrAttr.name: NoStrAttr, 
+	StrModAttr.name: StrModAttr
 }
 
 def invokeAttrs(state, expr):

@@ -33,6 +33,7 @@ from .alias      import AliasDecl
 from .alias      import TypeDecl
 from .scope      import ScopeType
 from .pattern    import Pattern, IsExpr
+from .importexpr import Import
 
 INFIX_PRECEDENCE = {
 	TokenType.AS:     1000, TokenType.IS:       1000, TokenType.ARROW:   900, TokenType.LSHIFT:    800, 
@@ -208,33 +209,36 @@ def parseAttrs(state):
 	attrs = []
 	
 	while state.tok.type == TokenType.AT:
-		span = state.tok.span
-		state.advance()
-		
-		if expectType(state, TokenType.NAME) == False:
-			break
-		
-		span = Span.merge(span, state.tok.span)
-		name = state.tok.content
-		args = []
-		state.advance()
-		state.skipSpace()
-		
-		if state.tok.type == TokenType.NEWLINE:
-			state.skipEmptyLines()
-			expectIndent(state)
-		
-		if state.tok.type == TokenType.LPAREN:
-			block = parseBlock(state, parseAttrArg, BlockMarkers.PAREN, True)
-			args = block.list
-			span = Span.merge(span, block.span)
-		
-		attrs.append(Attr(name, args, span))
+		attr = parseAttr(state)
+		attrs.append(attr)
 		
 		if state.skipEmptyLines():
 			expectIndent(state)
 	
 	return attrs
+
+def parseAttr(state, forParent=False):
+	span = state.tok.span
+	state.advance()	
+	if expectType(state, TokenType.NAME) == False:
+		return None
+	
+	span = Span.merge(span, state.tok.span)
+	name = state.tok.content
+	args = []
+	state.advance()
+	state.skipSpace()
+	
+	if not forParent and state.tok.type == TokenType.NEWLINE:
+		state.skipEmptyLines()
+		expectIndent(state)
+	
+	if state.tok.type == TokenType.LPAREN:
+		block = parseBlock(state, parseAttrArg, BlockMarkers.PAREN, True)
+		args = block.list
+		span = Span.merge(span, block.span)
+	
+	return Attr(name, args, span)
 
 def parseFnDeclParams(state):
 	def parseFnParam(state):
@@ -302,6 +306,10 @@ def parseFieldDecl(state):
 		unionFields = parseBlock(state, parseFieldDecl)
 		return UnionFields(unionFields.list, Span.merge(span, unionFields.span))
 	
+	if state.tok.type == TokenType.PUB:
+		state.advance()
+		state.skipSpace()
+	
 	if expectType(state, TokenType.NAME) == False:
 		return None
 	
@@ -319,7 +327,11 @@ def parseFieldDecl(state):
 	onOneLine = permitLineBreakIndent(state) == False
 	state.skipSpace()
 	
-	typeRef = parseTypeRef(state)
+	if isStructStart(state):
+		typeRef = parseStructDecl(state, None, True)
+	else:
+		typeRef = parseTypeRef(state)
+	
 	if typeRef:
 		span = Span.merge(span, typeRef.span)
 	
@@ -366,7 +378,7 @@ def parseEnumDecl(state, doccomment):
 		typeRef = None
 		if state.tok.type == TokenType.LPAREN:
 			typeRef = parseTupleTypeRef(state)
-		elif isStructStart(state):#state.tok.type in (TokenType.LBRACE, TokenType.NEWLINE):
+		elif isStructStart(state):
 			typeRef = parseStructDecl(state, None, True)
 		
 		if typeRef:
@@ -1391,6 +1403,17 @@ def parseFnDecl(state, doccomment, extern, traitDecl=False):
 	
 	return FnDecl(nameTok, doccomment, extern, unsafe, params, cVarArgs, returnType, body, span, cVarArgsSpan)
 
+def parseImport(state):
+	span = state.tok.span
+	state.advance()
+	state.skipSpace()
+	
+	path = None
+	if expectType(state, TokenType.NAME):
+		path = parsePath(state)
+	
+	return Import(path.path, Span.merge(span, path.span))
+
 def parseModLevelDecl(state):
 	return parseExpr(state, ExprClass.MOD)
 
@@ -1413,6 +1436,7 @@ class ExprClass(Enum):
 
 MOD_EXPR_TOKS = (
 	TokenType.MOD, 
+	TokenType.IMPORT, 
 	TokenType.FN, 
 	TokenType.UNSAFE, 
 	TokenType.STATIC, 
@@ -1423,7 +1447,9 @@ MOD_EXPR_TOKS = (
 	TokenType.ALIAS, 
 	TokenType.TYPE, 
 	TokenType.IMPL, 
-	TokenType.TRAIT
+	TokenType.TRAIT, 
+	TokenType.PUB, 
+	TokenType.ATAT
 )
 
 IMPL_EXPR_TOKS = (
@@ -1435,7 +1461,8 @@ IMPL_EXPR_TOKS = (
 	TokenType.ENUM, 
 	TokenType.UNION, 
 	TokenType.CONST, 
-	TokenType.TYPE
+	TokenType.TYPE,
+	TokenType.PUB
 )
 
 TRAIT_EXPR_TOKS = (
@@ -1550,9 +1577,17 @@ def parseExpr(state, exprClass, precedence=0, noSkipSpace=False, allowSimpleFnCa
 	else:
 		assert 0
 	
+	if state.tok.type == TokenType.PUB:
+		state.advance()
+		state.skipSpace()
+	
 	decl = None
-	if state.tok.type == TokenType.MOD:
+	if state.tok.type == TokenType.ATAT:
+		decl = parseAttr(state, True)
+	elif state.tok.type == TokenType.MOD:
 		decl = parseModule(state, doccomment)
+	elif state.tok.type == TokenType.IMPORT:
+		decl = parseImport(state)
 	elif state.tok.type == TokenType.IMPL:
 		decl = parseImpl(state, doccomment)
 	elif state.tok.type == TokenType.TRAIT:

@@ -557,7 +557,7 @@ def _SymbolAccess__analyzeSymbolAccess(state, expr, access, exprs, implicitType=
 				t = t.structType
 				anon = False
 			else:
-				anon = t.anon
+				anon = t.isCompositeType and t.anon
 			
 			if t.isStructType:
 				if tok.content not in t.fieldDict:
