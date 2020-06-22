@@ -651,6 +651,11 @@ def moveData(state, src, dest,
 		src = newSrc
 	
 	if type.byteSize not in (1, 2, 4, 8):
+		if src.storage == Storage.REG:
+			src.type = I64
+			stack = saveReg(state, src)
+			state.moveOperand(src, stack)
+			src = stack
 		moveStruct(state, src, dest, srcDeref, destDeref, srcOffset, destOffset, type, preserveDestType)
 		return
 	

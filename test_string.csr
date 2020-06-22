@@ -89,8 +89,7 @@ enum TestEnum
 #         x + 3.5
 
 
-fn testEnum()
-    let x = TestEnum::F { f: 1 }
+fn testEnum(x: TestEnum)
     if x is A
         x.a
     else if x is B
