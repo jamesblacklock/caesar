@@ -180,12 +180,19 @@ class FnCall(ValueExpr):
 		retType = FundamentalType.fromResolvedType(ast.type) if not ast.type.isVoidType else None
 		state.appendInstr(Call(ast, len(ast.args), retType, ast.expr.type.cVarArgs))
 	
+	def prettyArg(self, arg, output, indent):
+		if type(arg) == block.Block:
+			output.write('\n')
+			arg.pretty(output, indent + 1)
+		else:
+			arg.pretty(output)
+	
 	def pretty(self, output, indent=0):
 		self.expr.pretty(output, indent)
 		output.write('(')
 		if len(self.args) > 0:
-			self.args[0].pretty(output)
+			self.prettyArg(self.args[0], output, indent)
 			for arg in self.args[1:]:
 				output.write(', ')
-				arg.pretty(output)
+				self.prettyArg(arg, output, indent)
 		output.write(')')

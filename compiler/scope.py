@@ -170,10 +170,13 @@ class Scope:
 					for (lastUse, loopExpr) in info.lastUses.items():
 						if lastUse.ref:
 							if lastUse.borrows:
-								for borrow in lastUse.borrows:
-									if borrow.symbol == info.symbol:
-										self.dropSymbol(info.symbol, lastUse.dropBlock)
-										break
+								if lastUse.copy:
+									self.dropSymbol(info.symbol, lastUse.dropBlock)
+								else:
+									for borrow in lastUse.borrows:
+										if borrow.symbol == info.symbol:
+											self.dropSymbol(info.symbol, lastUse.dropBlock)
+											break
 							elif loopExpr and loopExpr != self.loopExpr and info.symbol.type.isCopyable:
 								lastUse.copy = True
 								for (br, otherLoopExpr) in info.breaksAfterMove.items():
@@ -350,7 +353,6 @@ class Scope:
 					borrowerInfo = self.symbolInfo[borrower]
 					borrowerInfo.usesOfBorrowsSinceLastUse.add(use)
 			info.borrowedBy = borrowedBy
-					
 		
 		if info.borrows:
 			use.borrows = info.borrows

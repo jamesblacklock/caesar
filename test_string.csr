@@ -117,7 +117,8 @@ fn main()
     let t: Str = s->concat(" owned")
     let c: CStr = @cstr "a c-string"
     
-    unsafe printf(@cstr "%s: %d\n%s: %d\n", c, strlen(c), t->cstr, t.size)
+    # unsafe printf(@cstr "%s: %d\n%s: %d\n", c, strlen(c), t->cstr, t.size)
+    unsafe printf(@cstr "%s: %d\n%s: %d\n", c, strlen(c), Str::cstr(&t), t.size)
     
     let twoFloats = TwoThings::TwoFloats { a: 1.2, b: 1.3 }
     let twoInts: TwoThings = TwoInts { g: 12, h: 13 }

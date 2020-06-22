@@ -750,9 +750,9 @@ class IRState:
 		
 		self.setupLocals(self.paramTypes, inputSymbols)
 		
-		print('{}({}){}'.format(self.name,
-			', '.join([str(t) for t in self.paramTypes]),
-			' -> {}'.format(self.retType) if self.retType else ''))
+		# print('{}({}){}'.format(self.name,
+		# 	', '.join([str(t) for t in self.paramTypes]),
+		# 	' -> {}'.format(self.retType) if self.retType else ''))
 		
 		if not fnDecl.type.returnType.isVoidType:
 			self.retType = FundamentalType.fromResolvedType(fnDecl.type.returnType)
@@ -761,11 +761,11 @@ class IRState:
 		self.instr.append(instr)
 		instr.affectStack(self)
 		
-		instrText = '{}{}'.format(
-			'   ' if type(instr) != BlockMarker else '', instr.pretty(self))
-		space = ' ' * (72 - len(instrText))
-		print('{}{}# [{}]'.format(instrText, space, 
-			', '.join([(t.symbol.name + ': ' if t.symbol else '') + str(t.type) for t in self.operandStack])))
+		# instrText = '{}{}'.format(
+		# 	'   ' if type(instr) != BlockMarker else '', instr.pretty(self))
+		# space = ' ' * (72 - len(instrText))
+		# print('{}{}# [{}]'.format(instrText, space, 
+		# 	', '.join([(t.symbol.name + ': ' if t.symbol else '') + str(t.type) for t in self.operandStack])))
 	
 	def defBlock(self, inputs, hasBackwardsCallers=False):
 		index = len(self.blockDefs)
@@ -818,14 +818,21 @@ class IRState:
 	
 	def swapOperand(self, offset):
 		index = len(self.operandStack) - offset - 1
-		symbol = self.operandStack[index].symbol
+		
+		other = self.operandStack[index]
+		symbol = other.symbol
 		self.removeOperandName(index)
+		other.symbol = None
+		
 		info = self.operandStack.pop()
 		info.index = index
 		info.symbol = symbol
+		
 		if symbol != None:
 			self.operandsBySymbol[symbol] = info
+		
 		self.operandStack[index] = info
+		self.operandStack.append(other)
 	
 	def raiseOperand(self, offset):
 		index = len(self.operandStack) - offset - 1

@@ -147,8 +147,8 @@ def analyze(ast):
 	ast.analyzeSig(state)
 	ast = state.analyzeNode(ast)
 	
-	p = ASTPrinter()
-	ast.pretty(p)
+	# p = ASTPrinter()
+	# ast.pretty(p)
 	
 	if state.failed:
 		exit(1)

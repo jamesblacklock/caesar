@@ -1,7 +1,7 @@
 from .ast   import ValueExpr, StaticDataType
 from .      import block, deref, valueref, letdecl, field, asgn, address, staticdecl, fndecl, coercion
 from .types import typesMatch, canPromote, shapesMatch, getAlignedSize, PtrType, USize
-from .ir    import Swap, Write, Raise, Deref, DerefW, Field, FieldW, DerefField, DerefFieldW, \
+from .ir    import Swap, Pop, Write, Raise, Deref, DerefW, Field, FieldW, DerefField, DerefFieldW, \
                    Fix, Dup, Addr, Imm, Global, Mul, Add, IPTR, FundamentalType
 from .scope import ScopeType
 from .token import TokenType
@@ -130,7 +130,7 @@ class SymbolAccess(ValueExpr):
 			output.write(']')
 		if self.write:
 			output.write(' = ')
-			if type(self.rvalue) == block.Block and len(self.rvalue.exprs) > 1:
+			if type(self.rvalue) == block.Block:# and len(self.rvalue.exprs) > 1:
 				output.write('\n')
 				self.rvalue.pretty(output, indent + 1)
 			else:
@@ -143,6 +143,47 @@ class SymbolRead(SymbolAccess):
 		self.addr = False
 		self.borrow = False
 		self.scopeLevelDropBlock = None
+		self.noop = False
+	
+	def moveToClone(self):
+		other = SymbolRead(self.span)
+		other.symbol = self.symbol
+		other.staticOffset = self.staticOffset
+		other.dynOffsets = self.dynOffsets
+		other.deref = self.deref
+		other.write = self.write
+		other.copy = self.copy
+		other.ref = self.ref
+		other.field = self.field
+		other.isFieldAccess = self.isFieldAccess
+		other.fieldSpan = self.fieldSpan
+		other.type = self.type
+		other.lvalueSpan = self.lvalueSpan
+		other.addr = self.addr
+		other.borrow = self.borrow
+		other.borrows = self.borrows
+		other.contracts = self.contracts
+		
+		self.symbol = None
+		self.staticOffset = 0
+		self.dynOffsets = []
+		self.deref = 0
+		self.write = False
+		self.copy = False
+		self.ref = False
+		self.field = None
+		self.isFieldAccess = False
+		self.fieldSpan = None
+		self.type = None
+		self.addr = False
+		self.borrow = False
+		self.borrows = set()
+		self.contracts = None
+		assert not self.isBorrowed
+		assert not self.dropBlock
+		assert not self.scopeLevelDropBlock
+		
+		return other
 	
 	def analyze(access, state, implicitType):
 		if type(access.symbol) == staticdecl.StaticDecl:
@@ -150,7 +191,7 @@ class SymbolRead(SymbolAccess):
 		
 		if access.type == None:
 			access.type = access.symbol.type
-		if access.field and access.field.isUnionField and not state.scope.allowUnsafe:
+		if access.isFieldAccess and access.field and access.field.isUnionField and not state.scope.allowUnsafe:
 			logError(state, access.span, 'reading union fields is unsafe; context is safe')
 		
 		access.ref = not access.addr and not access.isFieldAccess
@@ -198,6 +239,9 @@ class SymbolRead(SymbolAccess):
 			self.dropBlock = self.scopeLevelDropBlock
 	
 	def writeIR(expr, state):
+		if expr.noop:
+			return
+		
 		stackTop = False
 		if type(expr.symbol) in (staticdecl.StaticDecl, fndecl.FnDecl):
 			assert not expr.addr
@@ -416,20 +460,42 @@ def _SymbolAccess__analyzeSymbolAccess(state, expr, access, exprs, implicitType=
 			state.scope.beforeScopeLevelExpr.append(tempSymbol)
 			exprs.extend(addlExprs[1:])
 		
-		if access.deref:
-			access.deref -= 1
-			access.isFieldAccess = False
-			access.field = None
-		else:
-			assert not access.addr
-			access.addr = True
-			access.borrows = {access}
+		addrExpr = access.moveToClone()
 		
-		if access.type:
-			if access.type.isPtrType:
-				access.type = PtrType(access.type.baseType, access.type.indLevel + 1, expr.mut)
+		if addrExpr.deref:
+			addrExpr.deref -= 1
+			addrExpr.copy = True
+			if addrExpr.isFieldAccess:
+				addrExpr.isFieldAccess = False
+				# addrExpr.field = None
+				addrExpr.borrows = {addrExpr}
+		else:
+			assert not addrExpr.addr
+			addrExpr.addr = True
+			addrExpr.borrows = {addrExpr}
+		
+		if addrExpr.type:
+			if addrExpr.type.isPtrType:
+				addrExpr.type = PtrType(addrExpr.type.baseType, addrExpr.type.indLevel + 1, expr.mut)
 			else:
-				access.type = PtrType(access.type, 1, expr.mut)
+				addrExpr.type = PtrType(addrExpr.type, 1, expr.mut)
+		
+		(tempSymbol, tempWrite) = createTempSymbol(addrExpr)
+		tempSymbol.reserve = True
+		state.scope.beforeScopeLevelExpr.append(state.analyzeNode(tempSymbol))
+		exprs.append(state.analyzeNode(tempWrite))
+		
+		access.symbol = tempSymbol
+		access.type = access.symbol.type
+		access.copy = True
+		
+		lateRef = SymbolRead(access.span)
+		lateRef.symbol = tempSymbol
+		lateRef.type = lateRef.symbol.type
+		lateRef.noop = True
+		lateRef.scopeLevelDropBlock = state.scope.scopeLevelDropBlock
+		lateRef.scopeLevelDropBlock.exprs.append(lateRef)
+			
 	elif type(expr) == deref.Deref:
 		if implicitType:
 			implicitType = PtrType(implicitType, expr.count, False)

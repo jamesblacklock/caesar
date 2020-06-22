@@ -1,6 +1,7 @@
 from .ast   import ValueExpr
 from .types import canPromote, typesMatch, Void, Bool, OptionType
 from .ir    import getInputInfo, beginBlock, Br, BrIf, Ret, BlockMarker
+from .      import block
 
 class If(ValueExpr):
 	def __init__(self, expr, ifBlock, elseBlock, span):
@@ -107,7 +108,11 @@ class If(ValueExpr):
 	
 	def pretty(self, output, indent=0):
 		output.write('if ', indent)
-		self.expr.pretty(output)
+		if type(self.expr) == block.Block:
+			output.write('\n')
+			self.expr.pretty(output, indent + 1)
+		else:
+			self.expr.pretty(output)
 		self.block.pretty(output, indent)
 		output.write('\n')
 		output.write('else', indent)

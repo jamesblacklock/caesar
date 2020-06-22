@@ -152,6 +152,11 @@ class Block(ValueExpr):
 			if scope.didBreak or scope.didReturn:
 				break
 		
+		if len(self.exprs) > 0:
+			lastExpr = self.exprs[-1]
+			if lastExpr.hasValue and lastExpr.borrows:
+				self.borrows = lastExpr.borrows
+		
 		if self.scope:
 			self.propagateSymbolInfo()
 	
