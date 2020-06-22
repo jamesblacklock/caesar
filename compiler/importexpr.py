@@ -27,6 +27,7 @@ def importMod(state, mod, imp):
 			importFileName = testFileName
 			if i + 1 < len(imp.path):
 				symbolPath = imp.path[i + 1:]
+			break
 		
 	if importFileName == None:
 		logError(state, nameTok.span, '`{}`: could not locate the module'.format(name))

@@ -116,7 +116,7 @@ class Impl(Mod):
 					
 					self.type.traitImpls[self.trait] = self
 					
-					if self.trait.name == 'Drop' and 'drop' in self.symbolTable:
+					if self.trait.isDropTrait and 'drop' in self.symbolTable:
 						self.type.dropFn = self.symbolTable['drop']
 				else:
 					logError(state, self.traitPath[-1].span, '`{}` is not a trait'.format(self.trait.name))
@@ -182,8 +182,11 @@ class TraitDecl(TypeSymbol):
 	def __init__(self, nameTok, doccomment, decls, span):
 		super().__init__(nameTok, span, doccomment, isTraitType=True)
 		self.mod = Mod(None, None, decls, span, name='$traitmod__' + self.name)
+		self.isDropTrait = False
 	
 	def analyzeSig(self, state):
+		attrs.invokeAttrs(state, self)
+		
 		self.symbolTable = self.mod.symbolTable
 		self.mod.analyzeSig(state)
 	

@@ -1,5 +1,10 @@
 @@str_mod
 
+import drop::Drop
+
+@ffi("C")
+extern unsafe fn printf(fmt: &byte, ...) -> int
+
 @ffi("C") @acquire_default
 extern unsafe fn malloc(size: usize) -> owned &mut byte
 
@@ -8,8 +13,6 @@ extern unsafe fn free(buf: owned &byte)
 
 @ffi("C")
 extern unsafe fn memcpy(dest: &mut byte, src: &byte, size: usize) -> &mut byte
-
-trait Drop fn drop(self: &Drop)
 
 enum StrData
     Static(&byte)

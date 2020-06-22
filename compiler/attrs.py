@@ -4,7 +4,7 @@ from .primitive  import IntLit, StrLit
 from .structdecl import StructDecl, FieldDecl
 from .fndecl     import FnDecl, CConv
 from .letdecl    import LetDecl, FnParam
-from .mod        import Mod
+from .mod        import Mod, TraitDecl
 from .log        import logError
 
 class Attr(AST):
@@ -65,6 +65,9 @@ def strModAttr(state, decl, params, span):
 	decl.noStrImport = True
 	decl.isStrMod = True
 
+def dropTraitAttr(state, decl, params, span):
+	decl.isDropTrait = True
+
 class AttrInfo:
 	def __init__(self, name, proc, appliesTo, argInfo):
 		self.name = name
@@ -84,6 +87,7 @@ AlignAttr = AttrInfo('align', alignAttr, [StructDecl, FieldDecl], [AttrArg(IntLi
 DropAttr = AttrInfo('drop', dropAttr, [LetDecl, FnParam], [AttrArg(ValueRef)])
 NoStrAttr = AttrInfo('no_str', noStrAttr, [Mod], [])
 StrModAttr = AttrInfo('str_mod', strModAttr, [Mod], [])
+DropTraitAttr = AttrInfo('drop_trait', dropTraitAttr, [TraitDecl], [])
 
 builtinAttrs = {
 	AcquireAttr.name: AcquireAttr, 
@@ -92,7 +96,8 @@ builtinAttrs = {
 	AlignAttr.name: AlignAttr, 
 	DropAttr.name: DropAttr, 
 	NoStrAttr.name: NoStrAttr, 
-	StrModAttr.name: StrModAttr
+	StrModAttr.name: StrModAttr, 
+	DropTraitAttr.name: DropTraitAttr
 }
 
 def invokeAttrs(state, expr):
