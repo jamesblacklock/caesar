@@ -201,7 +201,7 @@ def main(args):
 				elif platform.Linux:
 					objFormat = 'elf64'
 				else:
-					print('assembly not yet implemented for Windows')
+					print('assembly not yet implemented on Windows')
 					exit(1)
 				
 				asmExitCode = os.system('nasm -f {} {} -o {}'.format(objFormat, asmFileNames[i], objFileNames[i]))
@@ -217,8 +217,19 @@ def main(args):
 				os.remove(f)
 		
 		if args.bin or args.run:
-			os.system('ld -e _start -macosx_version_min 10.8 -arch x86_64 {} -lc -lSystem -no_pie -o {}'
-				.format(' '.join(objFileNames), binFileName))
+			if platform.MacOS:
+				linker = ('ld -e _start -macosx_version_min 10.8 -arch x86_64 {} ' + 
+					'-lc -lSystem -no_pie -o {}').format(' '.join(objFileNames), binFileName)
+			elif platform.Linux:
+				linker = ('ld -e _start -dynamic-linker /lib64/ld-linux-x86-64.so.2 {} ' + 
+					'-lc -no_pie -o {}').format(' '.join(objFileNames), binFileName)
+			else:
+				print('linking not yet implemented on Windows')
+				exit(1)
+			
+			linkerExitCode = os.system(linker)
+			if linkerExitCode != 0:
+				exit(1)
 		
 		if args.run and not args.obj:
 			for f in objFileNames:
