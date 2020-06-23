@@ -228,11 +228,11 @@ def main(args):
 				allObjFileNames.append(mod.objCodePath)
 			
 			if platform.MacOS:
-				linker = ('ld -e _start -macosx_version_min 10.8 -arch x86_64 {} ' + 
+				linker = ('ld -e _caesar_start -macosx_version_min 10.8 -arch x86_64 {} ' + 
 					'-lc -lSystem -no_pie -o {}').format(' '.join(allObjFileNames), binFileName)
 			elif platform.Linux:
-				linker = ('ld -no-pie -e _start -A elf64 {} /usr/local/musl/lib/libc.a -o {}').format(
-					' '.join(allObjFileNames), binFileName)
+				linker = ('ld -no-pie -e _start -A elf64 {} /usr/local/musl/lib/libc.a ' + 
+					'/usr/local/musl/lib/crt1.o -o {}').format(' '.join(allObjFileNames), binFileName)
 			else:
 				print('linking not yet implemented on Windows')
 				exit(1)

@@ -8,6 +8,7 @@ from .ir    import Dup, Global, Imm, Static, Deref, DerefW, Add, Sub, Mul, Div, 
                    Br, Swap, Write, Pop, Raise, Neg, Res, Field, FieldW, DerefField, DerefFieldW, Fix, Addr, \
                    I8, I16, I32, I64, IPTR, F32, F64, FundamentalType, BlockMarker
 from .types import U32_RNG, I32_RNG
+from .      import platform
 
 class Storage(Enum):
 	IMM = 'IMM'
@@ -1718,25 +1719,53 @@ class OutputWriter:
 	def getvalue(self):
 		return self.output.getvalue()
 
+
+
+macOSStartup = '''
+	_caesar_start:
+		sub rsp, 8
+		call {}
+		mov rax, 0x02000001
+		mov rdi, 0
+		syscall
+'''
+
+linuxStartup = '''
+	main:
+		endbr64
+		sub rsp, 8
+		call {}
+		ret
+'''
+
 def generateAsm(mod):
 	output = OutputWriter()
+	
+	if mod.mainFn and platform.Linux:
+		output.write('\nextern _start\n')
+		output.write('\nextern __libc_start_main\n')
 	
 	delcareExterns(mod, output)
 	
 	if mod.mainFn:
-		output.write('\nglobal _start\n')
+		if platform.Linux:
+			output.write('\nglobal main\n')
+		else:
+			output.write('\nglobal _caesar_start\n')
 	
 	declareFns(mod, output)
 	
 	output.write('\nsection .text\n')
 	
 	if mod.mainFn:
-		output.write('\t_start:\n')
-		output.write('\t\tsub rsp, 8\n')
-		output.write('\t\tcall {}\n'.format(mod.mainFn.mangledName))
-		output.write('\t\tmov rax, 0x02000001\n')
-		output.write('\t\tmov rdi, 0\n')
-		output.write('\t\tsyscall\n')
+		if platform.MacOS:
+			startup = macOSStartup
+		elif platform.Linux:
+			startup = linuxStartup
+		else:
+			assert 0
+		
+		output.write(startup.format(mod.mainFn.mangledName))
 	
 	defineFns(mod, output)
 	
