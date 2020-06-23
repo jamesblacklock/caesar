@@ -1732,10 +1732,9 @@ macOSStartup = '''
 
 linuxStartup = '''
 	main:
-		endbr64
 		sub rsp, 8
 		call {}
-		hlt
+		add rsp, 8
 		ret
 '''
 
