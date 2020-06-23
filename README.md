@@ -29,12 +29,12 @@ Currently Linux x64 and macOS x64 targets are supported. Cross-compilation is no
 
 macOS dependencies:
 
-	- [NASM](https://www.nasm.us/)
+- [NASM](https://www.nasm.us/)
 
 Linux dependencies:
 
-	- [musl](https://musl.libc.org/)
-	- [NASM](https://www.nasm.us/)
+- [musl](https://musl.libc.org/)
+- [NASM](https://www.nasm.us/)
 
 "Hello world" example:
 
