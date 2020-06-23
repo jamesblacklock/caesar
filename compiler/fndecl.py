@@ -9,7 +9,7 @@ class CConv(Enum):
 	C = 'C'
 
 class FnDecl(ValueSymbol):
-	def __init__(self, nameTok, doccomment, extern, unsafe, 
+	def __init__(self, nameTok, doccomment, pub, extern, unsafe, 
 		params, cVarArgs, returnType, body, span, cVarArgsSpan):
 		super().__init__(nameTok, None, span, doccomment, extern)
 		self.params = params
@@ -21,6 +21,7 @@ class FnDecl(ValueSymbol):
 		self.body = body
 		self.cconv = CConv.CAESAR
 		self.unsafe = unsafe
+		self.pub = pub
 	
 	def analyzeSig(decl, state):
 		attrs.invokeAttrs(state, decl)

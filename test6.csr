@@ -1,0 +1,7 @@
+import str as strmod
+import libc::printf
+
+fn main()
+    let s: str = "test\n"
+    unsafe printf(s->data)
+    

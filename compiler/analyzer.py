@@ -169,7 +169,7 @@ class AnalyzerState:
 		if ast.isStrMod:
 			state.strMod = ast
 		elif not ast.noStrImport:
-			imp = Import([T('str', ast.span), T('str', ast.span)], ast.span)
+			imp = Import([T('str', ast.span), T('str', ast.span)], None, ast.span)
 			imp.analyzeSig(state, ast)
 			state.strMod = imp.importedMod
 		
@@ -365,7 +365,10 @@ class AnalyzerState:
 						symbol = None
 						break
 					
+					parent = symbol
 					symbol = symbol.symbolTable[tok.content]
+					if parent.extern and not symbol.pub:
+						symbol = None
 				else:
 					logError(self, symbolTok.span, '`{}` is not a module'.format(symbol.name))
 					return None

@@ -1659,6 +1659,8 @@ def delcareExterns(mod, output):
 		delcareExterns(decl, output)
 	
 	for decl in mod.fns:
+		if mod.isImport and not decl.pub:
+			continue
 		if decl.extern:
 			output.write('extern {}\n'.format(decl.mangledName))
 
@@ -1667,7 +1669,7 @@ def declareFns(mod, output):
 		declareFns(decl, output)
 	
 	for decl in mod.fns:
-		if not decl.extern:
+		if decl.pub and not decl.extern:
 			output.write('global {}\n'.format(decl.mangledName))
 
 def defineStatics(mod, output):
@@ -1689,7 +1691,7 @@ def defineStatics(mod, output):
 		bytes = ','.join(str(b) for b in decl.staticValue.toBytes())
 		output.write('\t{}: db {}\n'.format(decl.staticValue.label, bytes))
 	
-	if mod.isImpl and mod.vtbl:
+	if not mod.extern and mod.isImpl and mod.vtbl:
 		output.write('\t{}:\n'.format(mod.vtblName))
 		for name in mod.vtbl:
 			output.write('\t\tdq {}\n'.format(name))

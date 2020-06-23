@@ -117,6 +117,7 @@ class Symbol(AST):
 		self.symbolTable = None
 		self.doccomment = doccomment
 		self.extern = extern
+		self.pub = False
 
 class ValueSymbol(Symbol):
 	def __init__(self, nameTok, typeRef, span, doccomment=None, extern=False):

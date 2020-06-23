@@ -306,7 +306,9 @@ def parseFieldDecl(state):
 		unionFields = parseBlock(state, parseFieldDecl)
 		return UnionFields(unionFields.list, Span.merge(span, unionFields.span))
 	
+	pub = False
 	if state.tok.type == TokenType.PUB:
+		pub = True
 		state.advance()
 		state.skipSpace()
 	
@@ -338,11 +340,11 @@ def parseFieldDecl(state):
 	if not onOneLine:
 		state.popIndentLevel()
 	
-	fieldDecl = FieldDecl(nameTok, typeRef, span)
+	fieldDecl = FieldDecl(nameTok, typeRef, pub, span)
 	fieldDecl.attrs = fieldAttrs
 	return fieldDecl
 
-def parseStructOrUnionDecl(state, doccomment, anon, isUnion):
+def parseStructOrUnionDecl(state, doccomment, anon, pub, isUnion):
 	span = state.tok.span
 	if state.tok.type in (TokenType.STRUCT, TokenType.UNION):
 		state.advance()
@@ -358,13 +360,13 @@ def parseStructOrUnionDecl(state, doccomment, anon, isUnion):
 	block = parseBlock(state, parseFieldDecl)
 	span = Span.merge(span, block.span)
 	
-	return StructDecl(nameTok, isUnion, doccomment, block.list, span)
+	return StructDecl(nameTok, isUnion, doccomment, block.list, pub, span)
 
-def parseStructDecl(state, doccomment, anon):
-	return parseStructOrUnionDecl(state, doccomment, anon, False)
+def parseStructDecl(state, doccomment, anon, pub=False):
+	return parseStructOrUnionDecl(state, doccomment, anon, pub, False)
 
-def parseUnionDecl(state, doccomment, anon):
-	return parseStructOrUnionDecl(state, doccomment, anon, True)
+def parseUnionDecl(state, doccomment, anon, pub=False):
+	return parseStructOrUnionDecl(state, doccomment, anon, pub, True)
 
 def parseEnumDecl(state, doccomment):
 	def parseVariantDecl(state):
@@ -1354,7 +1356,7 @@ def parseTypeDecl(state, doccomment):
 	
 	return TypeDecl(nameTok, typeRef, span, doccomment)
 
-def parseFnDecl(state, doccomment, extern, traitDecl=False):
+def parseFnDecl(state, doccomment, pub, extern, traitDecl=False):
 	span = state.tok.span
 	startLine = state.tok.span.startLine
 	onOneLine = True
@@ -1401,7 +1403,7 @@ def parseFnDecl(state, doccomment, extern, traitDecl=False):
 		body = Block.fromInfo(blockInfo, ScopeType.FN)
 		span = Span.merge(span, body.span)
 	
-	return FnDecl(nameTok, doccomment, extern, unsafe, params, cVarArgs, returnType, body, span, cVarArgsSpan)
+	return FnDecl(nameTok, doccomment, pub, extern, unsafe, params, cVarArgs, returnType, body, span, cVarArgsSpan)
 
 def parseImport(state):
 	span = state.tok.span
@@ -1411,8 +1413,21 @@ def parseImport(state):
 	path = None
 	if expectType(state, TokenType.NAME):
 		path = parsePath(state)
+		span = Span.merge(span, path.span)
 	
-	return Import(path.path, Span.merge(span, path.span))
+	nameTok = None
+	state.skipSpace()
+	if state.tok.type == TokenType.AS:
+		span = Span.merge(span, state.tok.span)
+		state.advance()
+		state.skipSpace()
+		if expectType(state, TokenType.NAME):
+			span = Span.merge(span, state.tok.span)
+			nameTok = state.tok
+			state.advance()
+			state.skipSpace()
+			
+	return Import(path.path, nameTok, span)
 
 def parseModLevelDecl(state):
 	return parseExpr(state, ExprClass.MOD)
@@ -1539,6 +1554,13 @@ def parseExpr(state, exprClass, precedence=0, noSkipSpace=False, allowSimpleFnCa
 		attrs = parseAttrs(state)
 		permitLineBreak(state)
 	
+	pub = False
+	if exprClass in (ExprClass.MOD, ExprClass.IMPL) and state.tok.type == TokenType.PUB:
+		pub = True
+		state.advance()
+		state.skipSpace()
+		expectType(state, TokenType.FN, TokenType.STRUCT, TokenType.UNION, TokenType.EXTERN)
+	
 	extern = False
 	if exprClass != ExprClass.FN and state.tok.type == TokenType.EXTERN:
 		if startToken == None:
@@ -1577,10 +1599,6 @@ def parseExpr(state, exprClass, precedence=0, noSkipSpace=False, allowSimpleFnCa
 	else:
 		assert 0
 	
-	if state.tok.type == TokenType.PUB:
-		state.advance()
-		state.skipSpace()
-	
 	decl = None
 	if state.tok.type == TokenType.ATAT:
 		decl = parseAttr(state, True)
@@ -1601,16 +1619,16 @@ def parseExpr(state, exprClass, precedence=0, noSkipSpace=False, allowSimpleFnCa
 			decl = parseTypeDecl(state, doccomment)
 	elif state.tok.type == TokenType.FN or \
 		state.tok.type == TokenType.UNSAFE and exprClass in (ExprClass.MOD, ExprClass.IMPL, ExprClass.TRAIT):
-		decl = parseFnDecl(state, doccomment, extern, exprClass == ExprClass.TRAIT)
+		decl = parseFnDecl(state, doccomment, pub, extern, exprClass == ExprClass.TRAIT)
 	elif state.tok.type == TokenType.STATIC:
 		if exprClass == ExprClass.TRAIT:
 			decl = parseTraitStaticDecl(state, doccomment, extern)
 		else:
 			decl = parseStaticDecl(state, doccomment, extern)
 	elif state.tok.type == TokenType.STRUCT:
-		decl = parseStructDecl(state, doccomment, False)
+		decl = parseStructDecl(state, doccomment, False, pub)
 	elif state.tok.type == TokenType.UNION:
-		decl = parseUnionDecl(state, doccomment, False)
+		decl = parseUnionDecl(state, doccomment, False, pub)
 	elif state.tok.type == TokenType.ENUM:
 		decl = parseEnumDecl(state, doccomment)
 	elif state.tok.type == TokenType.CONST:

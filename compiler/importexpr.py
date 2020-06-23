@@ -9,10 +9,11 @@ from .           import tokenizer, parser, ir, amd64, build
 ALL_IMPORTS = {}
 
 def setExternFlags(state, mod):
+	mod.extern = True
 	for subMod in mod.mods:
 		setExternFlags(state, subMod)
 	
-	for decl in (*mod.fns, *mod.statics):
+	for decl in (*mod.fns, *mod.statics, *mod.types):
 		decl.extern = True
 
 def importMod(state, mod, imp):
@@ -28,7 +29,7 @@ def importMod(state, mod, imp):
 			if i + 1 < len(imp.path):
 				symbolPath = imp.path[i + 1:]
 			break
-		
+	
 	if importFileName == None:
 		logError(state, nameTok.span, '`{}`: could not locate the module'.format(name))
 		return
@@ -78,13 +79,14 @@ def importMod(state, mod, imp):
 			break
 	
 	if symbol:
-		imp.symbolImports.append(SymbolImport(nameTok.content, symbol, nameTok))
+		imp.symbolImports.append(SymbolImport(symbol, imp.nameTok if imp.nameTok else nameTok))
 	
 	imp.importedMod = importedMod
 
 class Import(AST):
-	def __init__(self, path, span):
+	def __init__(self, path, nameTok, span):
 		self.path = path
+		self.nameTok = nameTok
 		self.span = span
 		self.symbolImports = []
 		self.importedMod = None
@@ -94,7 +96,8 @@ class Import(AST):
 		if self.importedMod == None:
 			return
 		
-		mod.mods.append(self.importedMod)
+		if self.importedMod not in mod.mods:
+			mod.mods.append(self.importedMod)
 		
 		for symbolImport in self.symbolImports:
 			if symbolImport.name in mod.symbolTable:
@@ -112,7 +115,7 @@ class Import(AST):
 		pass
 
 class SymbolImport:
-	def __init__(self, name, symbol, nameTok):
-		self.name = name
+	def __init__(self, symbol, nameTok):
+		self.name = nameTok.content
 		self.symbol = symbol
 		self.nameTok = nameTok

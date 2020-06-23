@@ -2,10 +2,11 @@ from .ast   import AST, ValueSymbol
 from .types import TypeSymbol
 
 class StructDecl(TypeSymbol):
-	def __init__(self, nameTok, isUnion, doccomment, fields, span):
+	def __init__(self, nameTok, isUnion, doccomment, fields, pub, span):
 		super().__init__(nameTok, span, doccomment, isStructType=True, isCompositeType=True)
 		self.fieldDecls = fields
 		self.isUnion = isUnion
+		self.pub = pub
 		self.fields = None
 		self.fieldDict = None
 		self.anon = not self.name
@@ -15,7 +16,7 @@ class StructDecl(TypeSymbol):
 	
 	@staticmethod
 	def generateAnonStructDecl(layout):
-		decl = StructDecl(None, False, None, None, None)
+		decl = StructDecl(None, False, None, None, False, None)
 		decl.applyLayout(layout)
 		return decl
 	
@@ -75,7 +76,7 @@ class UnionFields(AST):
 		self.fieldDecls = fields
 
 class FieldDecl(AST):
-	def __init__(self, nameTok, typeRef, span):
+	def __init__(self, nameTok, typeRef, pub, span):
 		super().__init__(span)
 		self.nameTok = nameTok
 		self.name = nameTok.content
@@ -84,6 +85,7 @@ class FieldDecl(AST):
 		self.offset = None
 		self.unionField = False
 		self.noOffset = False
+		self.pub = pub
 	
 	def pretty(self, output, indent=0):
 		output.write(self.name, indent)

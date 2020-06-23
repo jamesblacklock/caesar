@@ -1,0 +1,25 @@
+@@no_str
+
+@ffi("C")
+pub extern unsafe fn printf(fmt: &byte, ...) -> int
+
+@ffi("C")
+pub extern unsafe fn scanf(format: &byte, ...) -> int
+
+@ffi("C")
+pub extern unsafe fn time(ret: &int64) -> int64
+
+@ffi("C")
+pub extern unsafe fn getchar() -> int
+
+@ffi("C")
+pub extern unsafe fn strlen(s: &byte) -> int
+
+@ffi("C")
+pub extern unsafe fn malloc(size: usize) -> owned &mut byte
+
+@ffi("C")
+pub extern unsafe fn free(buf: owned &byte)
+
+@ffi("C")
+pub extern unsafe fn memcpy(dest: &mut byte, src: &byte, size: usize) -> &mut byte

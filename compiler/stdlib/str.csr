@@ -2,9 +2,6 @@
 
 import drop::Drop
 
-@ffi("C")
-extern unsafe fn printf(fmt: &byte, ...) -> int
-
 @ffi("C") @acquire_default
 extern unsafe fn malloc(size: usize) -> owned &mut byte
 

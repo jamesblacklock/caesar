@@ -142,6 +142,8 @@ class Impl(Mod):
 					continue
 				
 				if traitSymbols:
+					decl.pub = True
+					
 					if decl.name not in traitSymbols:
 						logError(state, decl.nameTok.span, 'trait `{}` has no symbol `{}`'.format(self.trait.name, decl.name))
 					
