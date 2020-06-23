@@ -1735,6 +1735,7 @@ linuxStartup = '''
 		endbr64
 		sub rsp, 8
 		call {}
+		hlt
 		ret
 '''
 
