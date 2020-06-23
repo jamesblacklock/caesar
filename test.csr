@@ -14,7 +14,7 @@ extern unsafe fn getchar() -> int
 
 const NULL = 0 as &int64
 
-unsafe fn drop(q: int) { printf("dropping value: %d\n", q) }
+unsafe fn drop(q: &mut int) { printf("dropping value: %d\n", q^) }
 
 unsafe fn doTheThing(n: int16) -> int16 #=hello=#
 	printf("Here is a number: %d\n", n)
@@ -93,7 +93,7 @@ unsafe fn main()
 		printf("%d\n", n-count)
 		count = count+1
 	
-	drop(count)
+	drop(&mut count)
 	
 	printf("%c%c%c%c%c%c%c!!\n",
 			103, 111, 111, 100,

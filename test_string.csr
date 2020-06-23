@@ -1,0 +1,62 @@
+@ffi("C")
+extern unsafe fn printf(fmt: &byte, ...) -> int
+
+@ffi("C")
+extern unsafe fn strlen(s: &byte) -> int
+
+enum TestEnum
+    A { a: int }
+    B { b: int }
+    C { c: int }
+    D { d: int }
+    E { e: int }
+    F { f: int }
+
+# fn testOptional()
+#     let x: int|str|float = 5.5
+#     if x is int
+#         x + 5
+#     else if x is str
+#         str->concat("asdf")
+#     else
+#         x + 3.5
+
+
+fn testEnum(x: TestEnum)
+    if x is A
+        x.a
+    else if x is B
+        x.b
+    else if x is C
+        x.c
+    else if x is D
+        x.d
+    else if x is E
+        x.e
+    else
+        x.f 
+
+enum TwoThings
+    TwoFloats
+        a: float64
+        b: float64
+    TwoInts
+        g: int8
+        h: int8
+
+fn main()
+    let s: str = "test"
+    let t: str = s->concat(" owned")
+    let c: &byte = "a c-string"
+    
+    # unsafe printf("%s: %d\n%s: %d\n", c, strlen(c), t->data, t.size)
+    unsafe printf("%s: %d\n%s: %d\n", c, strlen(c), str::data(&t), t.size)
+    
+    let twoFloats = TwoThings::TwoFloats { a: 1.2, b: 1.3 }
+    let twoInts: TwoThings = TwoInts { g: 12, h: 13 }
+    let twoThings = twoInts
+    
+    if twoThings is TwoInts
+        unsafe printf("%d %d\n", twoThings.g, twoThings.h)
+    else
+        unsafe printf("%g %g\n", twoThings.a, twoThings.b)

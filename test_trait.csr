@@ -5,17 +5,17 @@ trait SayHi
     fn sayHi(self: &SayHi)
 
 struct Man
-    name: &byte
+    name: str
     dog: &Dog
 
 struct Dog
-    name: &byte
-    breed: &byte
+    name: str
+    breed: str
 
 impl Man: SayHi
     fn sayHi(self: &Man)
         unsafe printf("Hello! My name is %s. This is my dog, %s! He's a %s.\n"
-            self^.name, self^.dog^.name, self^.dog^.breed)
+            str::data(&self^.name), str::data(&self^.dog^.name), str::data(&self^.dog^.breed))
 
 impl Dog: SayHi
     fn sayHi(self: &Dog)

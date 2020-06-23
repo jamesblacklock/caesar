@@ -1,6 +1,7 @@
 import ctypes
-from io       import StringIO
-from .        import types
+from io         import StringIO
+from .          import types
+from .primitive import StrLit
 
 class FundamentalType:
 	def __init__(self, byteSize, types=None, isFloatType=False, aligned=True):
@@ -47,6 +48,8 @@ class FundamentalType:
 	def fromResolvedType(resolvedType):
 		if resolvedType.isCompositeType:
 			return FundamentalType.fromCompositeType(resolvedType)
+		elif resolvedType.isEnumType:
+			return FundamentalType.fromCompositeType(resolvedType.structType)
 		elif resolvedType.isFloatType:
 			if resolvedType.byteSize == 4:
 				return F32
@@ -61,8 +64,8 @@ class FundamentalType:
 				return I32
 			elif resolvedType.byteSize == 8:
 				return I64
-		
-		assert 0
+		else:
+			assert 0
 
 I8   = FundamentalType(1)
 I16  = FundamentalType(2)
@@ -328,11 +331,12 @@ class Addr(Instr):
 		return 'addr {}'.format(self.offset)
 
 class Fix(Instr):
-	def __init__(self, ast):
+	def __init__(self, ast, offset):
 		self.ast = ast
+		self.offset = offset
 	
 	def __str__(self):
-		return 'fix'
+		return 'fix {}'.format(self.offset)
 
 class Call(Instr):
 	def __init__(self, ast, argCt, retType, cVarArgs):
@@ -758,9 +762,9 @@ class IRState:
 		self.instr.append(instr)
 		instr.affectStack(self)
 		
-		instrText = '{}{}'.format(
-			'   ' if type(instr) != BlockMarker else '', instr.pretty(self))
-		space = ' ' * (72 - len(instrText))
+		# instrText = '{}{}'.format(
+		# 	'   ' if type(instr) != BlockMarker else '', instr.pretty(self))
+		# space = ' ' * (72 - len(instrText))
 		# print('{}{}# [{}]'.format(instrText, space, 
 		# 	', '.join([(t.symbol.name + ': ' if t.symbol else '') + str(t.type) for t in self.operandStack])))
 	
@@ -815,14 +819,21 @@ class IRState:
 	
 	def swapOperand(self, offset):
 		index = len(self.operandStack) - offset - 1
-		symbol = self.operandStack[index].symbol
+		
+		other = self.operandStack[index]
+		symbol = other.symbol
 		self.removeOperandName(index)
+		other.symbol = None
+		
 		info = self.operandStack.pop()
 		info.index = index
 		info.symbol = symbol
+		
 		if symbol != None:
 			self.operandsBySymbol[symbol] = info
+		
 		self.operandStack[index] = info
+		self.operandStack.append(other)
 	
 	def raiseOperand(self, offset):
 		index = len(self.operandStack) - offset - 1
@@ -854,10 +865,14 @@ class IRState:
 			self.appendInstr(FieldW(init, 2))
 
 	def initStructFields(self, structLit, baseOffset):
-		fieldDict = structLit.type.fieldDict
+		t = structLit.type
+		if t.isEnumType:
+			t = t.structType
+		
+		fieldDict = t.fieldDict
 		for init in structLit.fields:
 			fieldInfo = fieldDict[init.name]
-			if init.expr.type.isCompositeType:
+			if init.expr.type.isCompositeType and type(init.expr) != StrLit:
 				self.initCompositeFields(init.expr, baseOffset + fieldInfo.offset)
 				continue
 			
@@ -910,6 +925,11 @@ def beginBlock(state, ast, blockDef):
 
 def fnToIR(fnDecl):
 	state = IRState(fnDecl)
+	
+	for (i, param) in enumerate(reversed(fnDecl.params)):
+		if param.fixed:
+			state.appendInstr(Fix(param, i))
+	
 	fnDecl.body.writeIR(state)
 	
 	lastType = type(state.instr[-1])

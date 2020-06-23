@@ -1,8 +1,7 @@
 import re
-from .ast import ValueExpr, StaticData, StaticDataType
-from .    import types
-from .    import ir
-from .log import logError
+from .ast       import ValueExpr, StaticData, StaticDataType
+from .          import types, ir
+from .log       import logError
 
 def strEsc(s):
 	result = ''
@@ -51,23 +50,66 @@ def strBytes(s):
 
 STR_COUNTER = 0
 
+class Label(ValueExpr):
+	def __init__(self, label, resolvedType, span):
+		self.label = label
+		self.type = resolvedType
+		self.span = span
+	
+	def writeIR(self, state):
+		fType = ir.FundamentalType.fromResolvedType(self.type)
+		state.appendInstr(ir.Static(self, fType, self.label))
+
 class StrLit(ValueExpr):
 	def __init__(self, value, span):
 		super().__init__(span)
 		self.value = strEsc(value)
 		self.staticValue = None
+		self.structLit = None
+		self.raw = False
 	
 	def analyze(lit, state, implicitType):
+		from .structlit import StructLit, FieldLit
+		
 		global STR_COUNTER
 		label = '{}_str{}'.format(state.scope.fnDecl.mangledName, STR_COUNTER)
 		STR_COUNTER += 1
 		
 		lit.staticValue = StaticData(strBytes(lit.value), StaticDataType.BYTES, ir.IPTR, label)
-		lit.type = types.PtrType(types.Byte, 1, False)
+		
+		if implicitType and types.typesMatch(implicitType, types.PtrType(types.Byte, 1, False)):
+			lit.raw = True
+			lit.type = implicitType
+		else:
+			StrType = state.strMod.symbolTable['str']
+			StrDataType = state.strMod.symbolTable['StrData']
+			
+			size = IntLit(None, False, lit.span, value=len(lit.staticValue.data), type=types.USize)
+			dataField = FieldLit(None, Label(lit.staticValue.label, types.USize, lit.span), lit.span, name='$Static')
+			dataStruct = StructLit(None, True, [dataField], lit.span, typeSymbol=StrDataType.structType.fields[0].type)
+			tagValue = IntLit(None, False, lit.span, value=StrDataType.symbolTable['Static'].tag.data, type=StrDataType.tagType)
+			fields = [
+				FieldLit(None, dataStruct, lit.span, name='$data'), 
+				FieldLit(None, tagValue, lit.span, name='$tag')
+			]
+			data = StructLit(None, False, fields, lit.span, typeSymbol=StrDataType.structType)
+			fields = [
+				FieldLit(None, size, lit.span, name='size'), 
+				FieldLit(None, data, lit.span, name='data')
+			]
+			lit.structLit = StructLit(None, False, fields, lit.span, typeSymbol=StrType)
+			lit.type = lit.structLit.type
+	
+	def accessSymbols(self, scope):
+		pass
 	
 	def writeIR(ast, state):
 		state.staticDefs.append(ast.staticValue)
-		state.appendInstr(ir.Static(ast, ir.IPTR, ast.staticValue.label))
+		
+		if ast.raw:
+			state.appendInstr(ir.Static(ast, ir.IPTR, ast.staticValue.label))
+		else:
+			ast.structLit.writeIR(state)
 	
 	def pretty(self, output, indent=0):
 		output.write('"{}"'.format(strUnesc(self.value)), indent)
@@ -81,6 +123,9 @@ class CharLit(ValueExpr):
 	def analyze(lit, state, implicitType):
 		lit.type = types.Char
 	
+	def accessSymbols(self, scope):
+		pass
+	
 	def writeIR(ast, state):
 		state.appendInstr(ir.Imm(ast, ir.I32, ast.value))
 	
@@ -93,6 +138,9 @@ class VoidLit(ValueExpr):
 	
 	def analyze(lit, state, implicitType):
 		lit.type = types.Void
+	
+	def accessSymbols(self, scope):
+		pass
 	
 	def writeIR(lit, state):
 		pass
@@ -108,6 +156,9 @@ class BoolLit(ValueExpr):
 	def analyze(lit, state, implicitType):
 		lit.type = types.Bool
 	
+	def accessSymbols(self, scope):
+		pass
+	
 	def writeIR(ast, state):
 		state.appendInstr(ir.Imm(ast, ir.I8, 1 if ast.value else 0))
 	
@@ -115,22 +166,34 @@ class BoolLit(ValueExpr):
 		output.write('true' if self.value else 'false', indent)
 
 class IntLit(ValueExpr):
-	def __init__(self, strValue, negate, span):
+	def __init__(self, strValue, negate, span, value=None, type=None):
 		super().__init__(span)
-		matches = re.match(r"^(0b|0x)?(.+?)(i8|u8|i16|u16|i32|u32|i64|u64|sz|usz)?$", strValue)
-		
-		base = 10
-		if matches[1]:
-			base = 2 if matches[1] == '0b' else 16
-		
-		value = int(matches[2].replace('_', ''), base)
-		suffix = matches[3]
+		if value != None:
+			self.type = type
+			base = 10
+			suffix = None
+		else:
+			matches = re.match(r"^(0b|0x)?(.+?)(i8|u8|i16|u16|i32|u32|i64|u64|sz|usz)?$", strValue)
+			
+			base = 10
+			if matches[1]:
+				base = 2 if matches[1] == '0b' else 16
+			
+			value = int(matches[2].replace('_', ''), base)
+			suffix = matches[3]
 		
 		self.base = base
 		self.value = -value if negate else value
 		self.suffix = suffix
 	
+	@staticmethod
+	def const(value, type, span):
+		return IntLit(None, False, span, value=value, type=type)
+	
 	def analyze(lit, state, implicitType):
+		if lit.type:
+			return
+		
 		if not implicitType or not implicitType.isIntLikeType or not types.canAccommodate(implicitType, lit.value):
 			implicitType = None
 		
@@ -167,6 +230,9 @@ class IntLit(ValueExpr):
 		
 		if not types.canAccommodate(lit.type, lit.value):
 			logError(state, lit.span, 'integer value out of range for type {}'.format(lit.type))
+	
+	def accessSymbols(self, scope):
+		pass
 	
 	def staticEval(self, state):
 		fType = ir.FundamentalType.fromResolvedType(self.type)
@@ -210,6 +276,9 @@ class FloatLit(ValueExpr):
 		
 		# if not canAccommodate(lit.type, lit.value):
 		# 	logError(state, lit.span, 'floating point value out of range for type {}'.format(lit.type))
+	
+	def accessSymbols(self, scope):
+		pass
 	
 	def writeIR(ast, state):
 		fType = ir.FundamentalType.fromResolvedType(ast.type)

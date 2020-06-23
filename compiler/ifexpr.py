@@ -1,6 +1,7 @@
 from .ast   import ValueExpr
 from .types import canPromote, typesMatch, Void, Bool, OptionType
 from .ir    import getInputInfo, beginBlock, Br, BrIf, Ret, BlockMarker
+from .      import block
 
 class If(ValueExpr):
 	def __init__(self, expr, ifBlock, elseBlock, span):
@@ -17,9 +18,14 @@ class If(ValueExpr):
 			logError(state, ifExpr.expr.span, 
 				'condition type must be bool (found {})'.format(ifExpr.expr.type))
 		
+		ifExpr.block.scopeContracts = ifExpr.expr.contracts
 		ifExpr.block = state.analyzeNode(ifExpr.block, implicitType)
 		resolvedType = ifExpr.block.type
 		
+		elseContracts = None
+		if ifExpr.expr.contracts:
+			elseContracts = { c.symbol: c.inverted() for c in ifExpr.expr.contracts.values() }
+		ifExpr.elseBlock.scopeContracts = elseContracts
 		ifExpr.elseBlock.ifExpr = ifExpr
 		ifExpr.elseBlock = state.analyzeNode(ifExpr.elseBlock, implicitType)
 		elseResolvedType = ifExpr.elseBlock.type
@@ -51,6 +57,12 @@ class If(ValueExpr):
 			resolvedType = OptionType(resolvedType, elseResolvedType)
 		
 		ifExpr.type = resolvedType
+	
+	def accessSymbols(self, scope):
+		self.expr.accessSymbols(scope)
+		self.block.accessSymbols(scope)
+		self.elseBlock.ifBranchOuterSymbolInfo = self.block.lastIfBranchOuterSymbolInfo
+		self.elseBlock.accessSymbols(scope)
 	
 	def writeIR(ast, state):
 		ast.expr.writeIR(state)
@@ -96,7 +108,11 @@ class If(ValueExpr):
 	
 	def pretty(self, output, indent=0):
 		output.write('if ', indent)
-		self.expr.pretty(output)
+		if type(self.expr) == block.Block:
+			output.write('\n')
+			self.expr.pretty(output, indent + 1)
+		else:
+			self.expr.pretty(output)
 		self.block.pretty(output, indent)
 		output.write('\n')
 		output.write('else', indent)

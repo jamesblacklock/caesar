@@ -1,0 +1,4 @@
+@@no_str
+
+@drop_trait
+trait Drop fn drop(self: &mut Drop)

@@ -18,7 +18,10 @@ class LoopCtlFlow(AST):
 			logError(state, expr.span, '`{}` expression is not inside a loop'
 				.format('break' if type(expr) == Break else 'continue'))
 		else:
-			state.scope.doBreak(expr, isContinue)
+			state.scope.didBreak = True
+	
+	def accessSymbols(self, scope, isContinue=False):
+		scope.doBreak(self, isContinue)
 	
 	def writeIR(ast, state, isContinue=False):
 		state.didBreak = True
@@ -45,6 +48,9 @@ class Continue(LoopCtlFlow):
 	def analyze(expr, state, implicitType):
 		super().analyze(state, implicitType, True)
 	
+	def accessSymbols(self, scope):
+		super().accessSymbols(scope, True)
+	
 	def writeIR(ast, state):
 		super().writeIR(state, True)
 	
@@ -67,8 +73,7 @@ class Return(AST):
 				ret.expr = tempRead
 				ret.block.exprs.extend([
 					state.analyzeNode(tempSymbol), 
-					state.analyzeNode(tempWrite), 
-					ret])
+					state.analyzeNode(tempWrite)])
 			
 			ret.expr = state.analyzeNode(ret.expr)
 			returnType = ret.expr.symbol.type
@@ -81,9 +86,14 @@ class Return(AST):
 			logError(state, span, 'invalid return type (expected {}, found {})'
 				.format(state.scope.fnDecl.returnType, foundType))
 		
-		state.scope.doReturn(ret.expr.symbol if ret.expr else None, ret)
+		state.scope.didReturn = True
 		
 		return ret.block
+	
+	def accessSymbols(self, scope):
+		if self.expr:
+			self.expr.accessSymbols(scope)
+		scope.doReturn(self.expr.symbol if self.expr else None, self)
 	
 	def writeIR(ast, state):
 		state.didBreak = True

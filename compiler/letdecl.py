@@ -14,7 +14,7 @@ class FnParam(ValueSymbol):
 	def __init__(self, nameTok, typeRef, span):
 		super().__init__(nameTok, typeRef, span)
 		self.dropFn = None
-		# self.mut = mut
+		self.mut = False
 		# self.defaultExpr = defaultExpr
 		self.fixed = False
 		self.dropBlock = None
@@ -22,6 +22,7 @@ class FnParam(ValueSymbol):
 	def analyze(param, state, implicitType):
 		param.dropBlock = state.scope.fnDecl.body
 		state.scope.declSymbol(param)
+		LetDecl.checkDropFn(param, state)
 	
 	def pretty(self, output, indent=0):
 		output.write(self.name, indent)
@@ -60,20 +61,18 @@ class LetDecl(ValueSymbol):
 		if letExpr.dropFn == None:
 			return
 		
-		if len(letExpr.dropFn.params) > 1 or letExpr.dropFn.cVarArgs:
-			logError(state, letExpr.nameTok.span, 'drop function must take exactly 0 or 1 arguments')
+		if len(letExpr.dropFn.params) != 1 or letExpr.dropFn.cVarArgs:
+			logError(state, letExpr.nameTok.span, 'drop function must take 1 argument')
 			letExpr.dropFn = None
 			return
 		
-		if len(letExpr.dropFn.params) == 1:
-			t = letExpr.dropFn.params[0].type
-			if not typesMatch(t, letExpr.type) and \
-				not typesMatch(t, PtrType(letExpr.type, 1, False)):
-				logError(state, letExpr.nameTok.span, 
-					'drop function receives the wrong type of argument (expected {}, found {})'.format(
-						t, letExpr.type))
-				letExpr.dropFn = None
-				return
+		t = PtrType(letExpr.type, 1, True)
+		if not typesMatch(t, letExpr.dropFn.params[0].type):
+			logError(state, letExpr.nameTok.span, 
+				'drop function receives the wrong type of argument (expected {}, found {})'.format(
+					t, letExpr.dropFn.params[0].type))
+			letExpr.dropFn = None
+			return
 	
 	def analyze(letExpr, state, implicitType):
 		if letExpr.typeRef:
@@ -90,6 +89,9 @@ class LetDecl(ValueSymbol):
 		
 		return result
 	
+	def accessSymbols(self, scope):
+		pass
+	
 	def writeIR(ast, state):
 		if ast.reserve:
 			assert ast.type
@@ -97,7 +99,7 @@ class LetDecl(ValueSymbol):
 			state.appendInstr(Res(ast, fType))
 			state.nameTopOperand(ast)
 			if ast.fixed:
-				state.appendInstr(Fix(ast))
+				state.appendInstr(Fix(ast, 0))
 	
 	def pretty(self, output, indent=0):
 		output.write('let ', indent)

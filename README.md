@@ -19,7 +19,7 @@ Caesar is:
 
 - a safe language
 
-	- features a memory-safe subset
+	- features a memory-safe subset more than sufficient to serve the needs of most use cases
 	- features powerful analysis constructs for providing safety guarantees, but...
 	- also provides an "unsafe" escape hatch for times when you just need to do something the compiler doesn't like
 
@@ -33,7 +33,7 @@ macOS and relies upon [NASM](https://www.nasm.us/) as a dependency.
 	@ffi("C") extern unsafe fn printf(fmt: &byte, ...) -> int
 	
 	fn main()
-	    unsafe printf("Hello World!\n") # `printf` is unsafe because it uses C variadic paramaters 
+	    unsafe printf("Hello World!\n")
 
 Building a program:
 

@@ -2,7 +2,7 @@ from .ast   import ValueExpr, StaticDataType
 from .log   import logError
 from .types import canCoerce, typesMatch, OwnedType
 from .ir    import FundamentalType
-from .      import ir
+from .      import ir, block
 
 class Coercion(ValueExpr):
 	def __init__(self, expr, typeRef, span, resolvedType=None):
@@ -26,6 +26,11 @@ class Coercion(ValueExpr):
 		if not canCoerce(asExpr.expr.type, asExpr.type):
 			logError(state, asExpr.span, 'cannot coerce from {} to {}'
 				.format(asExpr.expr.type, asExpr.type))
+	
+	def accessSymbols(self, scope):
+		self.expr.accessSymbols(scope)
+		if self.expr.borrows:
+			self.borrows = self.expr.borrows
 	
 	def staticEval(self, state):
 		staticValue = self.expr.staticEval(state)

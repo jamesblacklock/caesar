@@ -56,6 +56,21 @@ class TypeModifiers:
 		modifiers.uninitFields = { f for f in self.uninitFields }
 		return modifiers
 
+class Contract:
+	def __init__(self, symbol, enumType, variants, indLevel):
+		self.symbol = symbol
+		self.enumType = enumType
+		self.variants = variants
+		self.indLevel = indLevel
+	
+	def inverted(self):
+		variants = [v for v in self.enumType.variants if v not in self.variants]
+		return Contract(self.symbol, self.enumType, variants, self.indLevel)
+	
+	def intersect(self, other):
+		variants = [v for v in self.variants if v in other.variants]
+		return Contract(self.symbol, self.enumType, variants, self.indLevel)
+
 class ASTPrinter:
 	def __init__(self):
 		# self.output = StringIO()
@@ -76,12 +91,15 @@ class ASTPrinter:
 
 class AST:
 	def __init__(self, span):
-		self.attrs = None
+		self.attrs = []
 		self.attrsInvoked = False
 		self.span = span
 		self.hasValue = False
 	
 	def analyze(self, state, implicitType):
+		assert 0
+	
+	def accessSymbols(self, scope):
 		assert 0
 	
 	def writeIR(self, state):
@@ -106,15 +124,16 @@ class ValueSymbol(Symbol):
 		self.typeRef = typeRef
 		self.type = None
 		self.typeModifiers = TypeModifiers()
+		self.contracts = None
 
 class ValueExpr(AST):
 	def __init__(self, span):
 		super().__init__(span)
 		self.type = None
 		self.typeModifiers = None
-		self.borrows = None
+		self.borrows = set()
 		self.hasValue = True
-		self.typeModifiers = None
+		self.contracts = None
 	
 	def staticEval(self, state):
 		return None

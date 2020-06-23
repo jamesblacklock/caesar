@@ -23,6 +23,10 @@ class Block(ValueExpr):
 		self.loopExpr = None
 		self.lowered = noLower
 		self.unsafe = False
+		self.scope = None
+		self.scopeContracts = None
+		self.lastIfBranchOuterSymbolInfo = None
+		self.ifBranchOuterSymbolInfo = None
 	
 	@staticmethod
 	def fromInfo(blockInfo, scopeType=None):
@@ -41,6 +45,9 @@ class Block(ValueExpr):
 				fnDecl=block.fnDecl, 
 				allowUnsafe=block.unsafe)
 			state.scope.beforeScopeLevelExpr = []
+			if block.scopeContracts:
+				state.scope.intersectContracts(block.scopeContracts)
+			block.scope = state.scope
 		elif block.unsafe and not state.scope.allowUnsafe:
 			state.scope.allowUnsafe = True
 			resetScopeSafety = True
@@ -132,6 +139,37 @@ class Block(ValueExpr):
 			state.popScope()
 		elif resetScopeSafety:
 			state.scope.allowUnsafe = False
+	
+	def accessSymbols(self, scope):
+		if self.scope:
+			scope = self.scope
+			scope.didBreak = False
+			scope.didReturn = False
+			scope.ifBranchOuterSymbolInfo = self.ifBranchOuterSymbolInfo
+		
+		for expr in self.exprs:
+			expr.accessSymbols(scope)
+			if scope.didBreak or scope.didReturn:
+				break
+		
+		if len(self.exprs) > 0:
+			lastExpr = self.exprs[-1]
+			if lastExpr.hasValue and lastExpr.borrows:
+				self.borrows = lastExpr.borrows
+		
+		if self.scope:
+			self.propagateSymbolInfo()
+	
+	def propagateSymbolInfo(self):
+		outerSymbolInfo = self.scope.finalize()
+		
+		if self.scope.type == ScopeType.IF:
+			self.lastIfBranchOuterSymbolInfo = outerSymbolInfo
+		elif self.scope.type != ScopeType.FN:
+			for info in outerSymbolInfo.values():
+				if info.symbol in self.scope.parent.symbolInfo:
+					info.wasDeclared = self.scope.parent.symbolInfo[info.symbol].wasDeclared
+				self.scope.parent.symbolInfo[info.symbol] = info
 	
 	def writeIR(block, state):
 		state.didBreak = False

@@ -4,6 +4,7 @@ from .primitive  import IntLit, StrLit
 from .structdecl import StructDecl, FieldDecl
 from .fndecl     import FnDecl, CConv
 from .letdecl    import LetDecl, FnParam
+from .mod        import Mod, TraitDecl
 from .log        import logError
 
 class Attr(AST):
@@ -23,6 +24,24 @@ class Attr(AST):
 				arg.pretty(output)
 			output.write(')')
 
+def acquireDefaultAttr(state, decl, params, span):
+	if state.scope.acquireDefaultSet:
+		logError(state, span, '`acquire_default` was already set in this scope')
+		logExplain(state, state.scope.acquireDefault.span, '`acquire_default` was set here')
+		return
+	
+	state.scope.acquireDefaultSet = True
+	state.scope.acquireDefault = decl
+
+def releaseDefaultAttr(state, decl, params, span):
+	if state.scope.releaseDefaultSet:
+		logError(state, span, '`release_default` was already set in this scope')
+		logExplain(state, state.scope.releaseDefault.span, '`release_default` was set here')
+		return
+	
+	state.scope.releaseDefaultSet = True
+	state.scope.releaseDefault = decl
+
 def ffiAttr(state, decl, params, span):
 	if params[0].value != 'C':
 		logError(state, span, '`ffi` currently only supports the "C" convention')
@@ -37,7 +56,17 @@ def alignAttr(state, decl, params, span):
 		decl.align = align
 
 def dropAttr(state, decl, params, span):
-	decl.dropFn = state.lookupSymbol(params[0].path)
+	decl.dropFn = state.lookupSymbol(params[0].path, inValuePosition=True)
+
+def noStrAttr(state, decl, params, span):
+	decl.noStrImport = True
+
+def strModAttr(state, decl, params, span):
+	decl.noStrImport = True
+	decl.isStrMod = True
+
+def dropTraitAttr(state, decl, params, span):
+	decl.isDropTrait = True
 
 class AttrInfo:
 	def __init__(self, name, proc, appliesTo, argInfo):
@@ -51,14 +80,24 @@ class AttrArg:
 		self.types = types if type(types) == list else [types]
 		self.optional = optional
 
+AcquireAttr = AttrInfo('acquire_default', acquireDefaultAttr, [FnDecl], [])
+ReleaseAttr = AttrInfo('release_default', releaseDefaultAttr, [FnDecl], [])
 FFIAttr = AttrInfo('ffi', ffiAttr, [FnDecl], [AttrArg(StrLit)])
 AlignAttr = AttrInfo('align', alignAttr, [StructDecl, FieldDecl], [AttrArg(IntLit)])
-DropAttr = AttrInfo('drop', dropAttr, [StructDecl, LetDecl, FnParam], [AttrArg(ValueRef)])
+DropAttr = AttrInfo('drop', dropAttr, [LetDecl, FnParam], [AttrArg(ValueRef)])
+NoStrAttr = AttrInfo('no_str', noStrAttr, [Mod], [])
+StrModAttr = AttrInfo('str_mod', strModAttr, [Mod], [])
+DropTraitAttr = AttrInfo('drop_trait', dropTraitAttr, [TraitDecl], [])
 
 builtinAttrs = {
-	FFIAttr.name: FFIAttr,
-	AlignAttr.name: AlignAttr,
-	DropAttr.name: DropAttr
+	AcquireAttr.name: AcquireAttr, 
+	ReleaseAttr.name: ReleaseAttr, 
+	FFIAttr.name: FFIAttr, 
+	AlignAttr.name: AlignAttr, 
+	DropAttr.name: DropAttr, 
+	NoStrAttr.name: NoStrAttr, 
+	StrModAttr.name: StrModAttr, 
+	DropTraitAttr.name: DropTraitAttr
 }
 
 def invokeAttrs(state, expr):

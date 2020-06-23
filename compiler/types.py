@@ -6,7 +6,7 @@ PLATFORM_WORD_SIZE = 8
 
 class TypeSymbol(Symbol):
 	def __init__(self, nameTok=None, span=None, doccomment=None, 
-		name=None, byteSize=None, align=None, isDefinite=True, 
+		name=None, byteSize=None, align=None, isDefinite=True, isEnumType=False, 
 		isFnType=False, isPtrType=False, isStructType=False, isTraitType=False, 
 		isIntType=False, isIntLikeType=False, isFloatType=False, isOptionType=False, 
 		isPrimitiveType=False, isSigned=False, isArrayType=False, isOwnedType=False, 
@@ -30,6 +30,7 @@ class TypeSymbol(Symbol):
 		self.isArrayType = isArrayType
 		self.isTupleType = isTupleType
 		self.isCompositeType = isCompositeType
+		self.isEnumType = isEnumType
 		self.isOwnedType = isOwnedType
 		self.isTraitType = isTraitType
 		self.isTypeDef = isTypeDef
@@ -314,12 +315,12 @@ def canAccommodate(type, intValue):
 		assert 0
 
 def typesMatch(type1, type2, selfType=None):
-	if type1 == type2:
+	if type1 == type2 or not (type1 and type2) or type1.isUnknown or type2.isUnknown:
 		return True
 	elif type1.isPtrType and type2.isPtrType:
 		if type1.indLevel != type2.indLevel:
 			return False
-		return typesMatch(type1.baseType, type2.baseType)
+		return type1.mut == type2.mut and typesMatch(type1.baseType, type2.baseType)
 	elif type1.isOptionType and type2.isOptionType:
 		if len(type1.types) != len(type2.types):
 			return False
@@ -348,7 +349,9 @@ def typesMatch(type1, type2, selfType=None):
 			t2 = p2.type
 			if isSelfParam:
 				isSelfParam = False
-				if not (t2.isPtrType and t1.isPtrType and t1.indLevel == 1 and t2.indLevel == 1):
+				if typesMatch(t1, selfType):
+					continue
+				elif not (t2.isPtrType and t1.isPtrType and t1.indLevel == 1 and t2.indLevel == 1):
 					pass
 				elif not (t2.isTraitPtr and t2.baseType in t1.baseType.traitImpls):
 					pass
@@ -386,10 +389,20 @@ def tryPromote(expr, toType):
 		if signsMatch and sizeDoesIncrease:
 			return coercion.Coercion(expr, None, expr.span, resolvedType=toType)
 	
-	if fromType.isPtrType and toType.isPtrType:
-		toDerefType = toType.typeAfterDeref()
-		fromDerefType = fromType.typeAfterDeref()
-		if toDerefType.isTraitType and toDerefType in fromDerefType.traitImpls:
+	fromBaseType = fromType
+	toBaseType = toType
+	if fromBaseType.isOwnedType and toBaseType.isOwnedType and \
+		fromBaseType.release == toBaseType.release and \
+		fromBaseType.acquire == toBaseType.acquire:
+		fromBaseType = fromBaseType.baseType
+		toBaseType = toBaseType.baseType
+	
+	if fromBaseType.isPtrType and toBaseType.isPtrType:
+		toDerefType = toBaseType.typeAfterDeref()
+		fromDerefType = fromBaseType.typeAfterDeref()
+		if typesMatch(fromDerefType, toDerefType) and not toBaseType.mut:
+			return coercion.Coercion(expr, None, expr.span, resolvedType=toType)
+		elif toDerefType.isTraitType and toDerefType in fromDerefType.traitImpls:
 			return coercion.Coercion(expr, None, expr.span, resolvedType=toType)
 	
 	# if type(expr) == SymbolAccess and expr.ref and indefiniteMatch(expr.type, expectedType):
@@ -439,8 +452,8 @@ def canCoerce(fromType, toType):
 		return True
 	elif fromIsInt and toIsInt:
 		return True
-	elif type1.isCompositeType and type2.isCompositeType:
-		return shapesMatch(type1, type2)
+	elif fromType.isCompositeType and toType.isCompositeType:
+		return shapesMatch(fromType, toType)
 	else:
 		return False
 
@@ -454,6 +467,6 @@ def hasDefiniteType(ast):
 def getAlignedSize(t):
 	byteSize = t.byteSize
 	if t.byteSize % t.align > 0:
-		byteSize += t.byteSize - t.byteSize % t.align
+		byteSize += t.align - t.byteSize % t.align
 	
 	return byteSize

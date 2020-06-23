@@ -33,7 +33,7 @@ fn main(argc: int, argv: &&byte) -> int
 		pt^ = c as byte
 		pt += 1
 	
-	unsafe printf("%s, %s\n"; "Hello"; borrow buf)
+	unsafe printf("%s, %s\n"; "Hello" as &byte; borrow buf)
 	
 	unsafe
 		let mut asdf = 4

@@ -1,8 +1,10 @@
-from .ast   import ValueExpr
-from .      import access, block
-from .types import typesMatch, PtrType
-from .ir    import FundamentalType, Imm, Add, Deref, Call, Field, IExtend, Extend, FExtend, IPTR, F64
-from .log   import logError
+from .ast       import ValueExpr
+from .          import access, block, valueref, enumdecl, primitive
+from .structlit import StructLit, FieldLit
+from .tuplelit  import TupleLit
+from .types     import typesMatch, PtrType, TypeSymbol
+from .ir        import FundamentalType, Imm, Add, Deref, Call, Field, IExtend, Extend, FExtend, IPTR, F64
+from .log       import logError
 
 class FnCall(ValueExpr):
 	def __init__(self, expr, args, span):
@@ -17,7 +19,7 @@ class FnCall(ValueExpr):
 		selfExpr = None
 		failed = False
 		if fnCall.isMethodCall:
-			selfExpr = access.SymbolAccess.analyzeSymbolAccess(state, fnCall.args[0], noAccess=True)
+			selfExpr = access.SymbolAccess.analyzeSymbolAccess(state, fnCall.args[0])
 			fnCall.args[0] = selfExpr
 			if not selfExpr.type:
 				failed = True
@@ -35,15 +37,43 @@ class FnCall(ValueExpr):
 					fnCall.expr.symbol = symbol
 					fnCall.expr.type = symbol.type
 					fnCall.expr.ref = True
+		elif type(fnCall.expr) == valueref.ValueRef:
+			symbolTable = implicitType.symbolTable if implicitType and implicitType.isEnumType else None
+			symbol = state.lookupSymbol(fnCall.expr.path, symbolTable)
+			if not symbol:
+				failed = True
+			else:
+				enumType = None
+				variant = None
+				if type(symbol) == enumdecl.VariantDecl and symbol.type:
+					enumType = symbol.enumType
+					variant = symbol
+					symbol = symbol.type
+				if isinstance(symbol, TypeSymbol):
+					if symbol.isTupleType:
+						expr = TupleLit(fnCall.args, fnCall.span, typeSymbol=symbol)
+						if enumType:
+							dataField = FieldLit(None, expr, expr.span, name='$' + variant.name)
+							dataStruct = StructLit(None, True, [dataField], expr.span, typeSymbol=enumType.structType.fields[0].type)
+							tagValue = primitive.IntLit(None, False, expr.span, value=variant.tag.data)
+							fields = [
+								FieldLit(None, dataStruct, expr.span, name='$data'), 
+								FieldLit(None, tagValue, expr.span, name='$tag')
+							]
+							expr = StructLit(None, False, fields, expr.span, typeSymbol=enumType)
+						return state.analyzeNode(expr)
+					else:
+						logError(state, fnCall.expr.span, 'the expression cannot be called as a function')
+						failed = True
 		
 		fnType = None
 		if not failed:
-			fnCall.expr = state.analyzeNode(fnCall.expr)
+			fnCall.expr = state.analyzeNode(fnCall.expr, implicitType)
 			if fnCall.expr.type:
-				fnType = fnCall.expr.type
-				if not fnType.isFnType:
+				if not fnCall.expr.type.isFnType:
 					logError(state, fnCall.expr.span, 'the expression cannot be called as a function')
 				else:
+					fnType = fnCall.expr.type
 					if fnCall.isMethodCall:
 						if len(fnType.params) > 0 and fnType.params[0].type.isPtrType:
 							selfExpr.type = PtrType(selfExpr.type, 1, fnType.params[0].type.mut)
@@ -63,8 +93,6 @@ class FnCall(ValueExpr):
 							selfExpr.dropBlock = state.scope.scopeLevelDropBlock
 						elif type(selfExpr) == block.Block:
 							selfExpr = selfExpr.exprs[-1]
-						
-						state.scope.accessSymbol(selfExpr)
 					
 					fnCall.type = fnType.returnType
 					if fnType.unsafe and not state.scope.allowUnsafe:
@@ -88,7 +116,7 @@ class FnCall(ValueExpr):
 			
 			if not isSelfArg:
 				arg = state.analyzeNode(arg, expectedType)
-				if arg.type and not arg.type.isPrimitiveType:
+				if arg.type and not arg.type.isPrimitiveType and not arg.type.isUnknown:
 					if expectedType == None and cVarArgs:
 						logError(state, arg.span, 
 							'type {} cannot be used as a C variadic argument'.format(arg.type))
@@ -105,6 +133,11 @@ class FnCall(ValueExpr):
 			isSelfArg = False
 		
 		fnCall.args = args
+	
+	def accessSymbols(self, scope):
+		self.expr.accessSymbols(scope)
+		for arg in self.args:
+			arg.accessSymbols(scope)
 	
 	def writeIR(ast, state):
 		normalArgs = ast.args
@@ -135,12 +168,11 @@ class FnCall(ValueExpr):
 					state.appendInstr(Extend(ast, IPTR))
 		
 		if ast.selfExpr:
-			index = ast.selfExpr.type.baseType.mod.decls.index(ast.expr.symbol)
 			state.appendInstr(Imm(ast, IPTR, IPTR.byteSize))
 			state.appendInstr(Field(ast, numParams, IPTR))
-			if index > 0:
-				state.appendInstr(Imm(ast, IPTR, IPTR.byteSize * index))
-				state.appendInstr(Add(ast))
+			index = 1 + ast.selfExpr.type.baseType.mod.decls.index(ast.expr.symbol)
+			state.appendInstr(Imm(ast, IPTR, IPTR.byteSize * index))
+			state.appendInstr(Add(ast))
 			state.appendInstr(Deref(ast, IPTR))
 		else:
 			ast.expr.writeIR(state)
@@ -148,12 +180,19 @@ class FnCall(ValueExpr):
 		retType = FundamentalType.fromResolvedType(ast.type) if not ast.type.isVoidType else None
 		state.appendInstr(Call(ast, len(ast.args), retType, ast.expr.type.cVarArgs))
 	
+	def prettyArg(self, arg, output, indent):
+		if type(arg) == block.Block:
+			output.write('\n')
+			arg.pretty(output, indent + 1)
+		else:
+			arg.pretty(output)
+	
 	def pretty(self, output, indent=0):
 		self.expr.pretty(output, indent)
 		output.write('(')
 		if len(self.args) > 0:
-			self.args[0].pretty(output)
+			self.prettyArg(self.args[0], output, indent)
 			for arg in self.args[1:]:
 				output.write(', ')
-				arg.pretty(output)
+				self.prettyArg(arg, output, indent)
 		output.write(')')

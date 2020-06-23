@@ -1,13 +1,8 @@
 from .ast       import AST
-from .          import valueref, letdecl, block, deref, access
+from .          import block, deref, access
 from .structlit import StructLit
-from .field     import Index, Field
 from .ifexpr    import If
-from .types     import typesMatch
-from .ir        import Swap, DerefW, FieldW, DerefFieldW, Fix, IPTR
 from .token     import TokenType
-from .scope     import ScopeType
-from .log       import logError
 
 class Asgn(AST):
 	def __init__(self, lvalue, rvalue, opTok, span, temp=False):
@@ -15,7 +10,6 @@ class Asgn(AST):
 		self.lvalue = lvalue
 		self.rvalue = rvalue
 		self.opTok = opTok
-		self.dropBlock = None
 	
 	def analyze(asgn, state, ignoredImplicitType):
 		from .infix import InfixOp, InfixOps
