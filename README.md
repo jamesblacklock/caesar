@@ -25,8 +25,16 @@ Caesar is:
 
 Under heavy development. Not yet ready for production use.
 
-Currently the compiler generates assembler targeting 64-bit 
-macOS and relies upon [NASM](https://www.nasm.us/) as a dependency.
+Currently Linux x64 and macOS x64 targets are supported. Cross-compilation is not supported yet.
+
+macOS dependencies:
+
+	- [NASM](https://www.nasm.us/)
+
+Linux dependencies:
+
+	- [musl](https://musl.libc.org/)
+	- [NASM](https://www.nasm.us/)
 
 "Hello world" example:
 
