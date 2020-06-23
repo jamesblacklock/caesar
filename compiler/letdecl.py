@@ -66,11 +66,11 @@ class LetDecl(ValueSymbol):
 			letExpr.dropFn = None
 			return
 		
-		t = PtrType(letExpr.dropFn.params[0].type, 1, False)
-		if not typesMatch(t, letExpr.type):
+		t = PtrType(letExpr.type, 1, True)
+		if not typesMatch(t, letExpr.dropFn.params[0].type):
 			logError(state, letExpr.nameTok.span, 
 				'drop function receives the wrong type of argument (expected {}, found {})'.format(
-					t, letExpr.type))
+					t, letExpr.dropFn.params[0].type))
 			letExpr.dropFn = None
 			return
 	

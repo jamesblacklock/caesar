@@ -389,10 +389,18 @@ def tryPromote(expr, toType):
 		if signsMatch and sizeDoesIncrease:
 			return coercion.Coercion(expr, None, expr.span, resolvedType=toType)
 	
-	if fromType.isPtrType and toType.isPtrType:
-		toDerefType = toType.typeAfterDeref()
-		fromDerefType = fromType.typeAfterDeref()
-		if typesMatch(fromDerefType, toDerefType) and not toType.mut:
+	fromBaseType = fromType
+	toBaseType = toType
+	if fromBaseType.isOwnedType and toBaseType.isOwnedType and \
+		fromBaseType.release == toBaseType.release and \
+		fromBaseType.acquire == toBaseType.acquire:
+		fromBaseType = fromBaseType.baseType
+		toBaseType = toBaseType.baseType
+	
+	if fromBaseType.isPtrType and toBaseType.isPtrType:
+		toDerefType = toBaseType.typeAfterDeref()
+		fromDerefType = fromBaseType.typeAfterDeref()
+		if typesMatch(fromDerefType, toDerefType) and not toBaseType.mut:
 			return coercion.Coercion(expr, None, expr.span, resolvedType=toType)
 		elif toDerefType.isTraitType and toDerefType in fromDerefType.traitImpls:
 			return coercion.Coercion(expr, None, expr.span, resolvedType=toType)

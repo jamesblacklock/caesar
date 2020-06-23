@@ -234,6 +234,8 @@ class SymbolRead(SymbolAccess):
 		return exprBlock
 	
 	def accessSymbols(self, scope):
+		for off in self.dynOffsets:
+			off.expr.accessSymbols(scope)
 		scope.accessSymbol(self)
 		if self.borrows:
 			self.dropBlock = self.scopeLevelDropBlock
@@ -351,6 +353,8 @@ class SymbolWrite(SymbolAccess):
 	
 	def accessSymbols(self, scope):
 		self.rvalue.accessSymbols(scope)
+		for off in self.dynOffsets:
+			off.expr.accessSymbols(scope)
 		scope.accessSymbol(self)
 	
 	def writeIR(expr, state):

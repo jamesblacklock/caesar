@@ -57,6 +57,9 @@ class Loop(AST):
 		
 		state.popLoopInfo()
 	
+	def accessSymbols(self, scope):
+		self.block.accessSymbols(scope)
+	
 	def pretty(self, output, indent=0):
 		output.write('loop', indent)
 		self.block.pretty(output, indent)

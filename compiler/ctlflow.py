@@ -20,8 +20,8 @@ class LoopCtlFlow(AST):
 		else:
 			state.scope.didBreak = True
 	
-	def accessSymbols(self, scope):
-		scope.doBreak(expr, isContinue)
+	def accessSymbols(self, scope, isContinue=False):
+		scope.doBreak(self, isContinue)
 	
 	def writeIR(ast, state, isContinue=False):
 		state.didBreak = True
@@ -47,6 +47,9 @@ class Continue(LoopCtlFlow):
 	
 	def analyze(expr, state, implicitType):
 		super().analyze(state, implicitType, True)
+	
+	def accessSymbols(self, scope):
+		super().accessSymbols(scope, True)
 	
 	def writeIR(ast, state):
 		super().writeIR(state, True)

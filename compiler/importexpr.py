@@ -78,7 +78,7 @@ def importMod(state, mod, imp):
 			break
 	
 	if symbol:
-		imp.symbolImports.append(SymbolImport(nameTok.content, symbol, nameTok.span))
+		imp.symbolImports.append(SymbolImport(nameTok.content, symbol, nameTok))
 	
 	imp.importedMod = importedMod
 
@@ -99,10 +99,10 @@ class Import(AST):
 		for symbolImport in self.symbolImports:
 			if symbolImport.name in mod.symbolTable:
 				otherDecl = mod.symbolTable[symbolImport.name]
-				logError(state, symbolImport.span, 'import name collides with locally defined symbol'.format(symbolImport.name))
+				logError(state, symbolImport.nameTok.span, 'import name collides with locally defined symbol'.format(symbolImport.name))
 				logExplain(state, otherDecl.nameTok.span, '`{}` locally defined declared here'.format(symbolImport.name))
 			else:
-				symbolImport.symbol.nameTok.span = symbolImport.span
+				symbolImport.symbol.nameTok = symbolImport.nameTok
 				mod.symbolTable[symbolImport.name] = symbolImport.symbol
 	
 	def analyze(self, state, implicitType):
@@ -112,7 +112,7 @@ class Import(AST):
 		pass
 
 class SymbolImport:
-	def __init__(self, name, symbol, span):
+	def __init__(self, name, symbol, nameTok):
 		self.name = name
 		self.symbol = symbol
-		self.span = span
+		self.nameTok = nameTok

@@ -346,7 +346,8 @@ class GeneratorState:
 					offset += 8
 				
 				# multiTargets.reverse()
-				target = multiTargets[0] if len(multiTargets) == 1 else MultiStackTarget(t, multiTargets)
+				target = multiTargets[0] if len(multiTargets) == 1 else MultiStackTarget(None, multiTargets)
+				target.type = t
 				targets[i] = target
 				stackTargets.extend(reversed(multiTargets))
 			elif len(regs) == 1:

@@ -1,6 +1,7 @@
 import ctypes
-from io       import StringIO
-from .        import types
+from io         import StringIO
+from .          import types
+from .primitive import StrLit
 
 class FundamentalType:
 	def __init__(self, byteSize, types=None, isFloatType=False, aligned=True):
@@ -871,7 +872,7 @@ class IRState:
 		fieldDict = t.fieldDict
 		for init in structLit.fields:
 			fieldInfo = fieldDict[init.name]
-			if init.expr.type.isCompositeType:
+			if init.expr.type.isCompositeType and type(init.expr) != StrLit:
 				self.initCompositeFields(init.expr, baseOffset + fieldInfo.offset)
 				continue
 			

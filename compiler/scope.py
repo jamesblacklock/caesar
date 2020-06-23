@@ -234,10 +234,7 @@ class Scope:
 					if not self.loopExpr:
 						info.dropInBlock.add(block)
 					
-					if symbol not in self.parent.symbolInfo:
-						self.parent.lookupSymbol(symbol.name)
-					
-					parentInfo = self.parent.symbolInfo[symbol]
+					parentInfo = self.parent.loadAndSaveSymbolInfo(symbol)
 					if parentInfo.moved != info.moved:
 						info.moved = True
 						info.maybeMoved = True
@@ -288,8 +285,8 @@ class Scope:
 				else:
 					info = self.loadSymbolInfo(info.symbol)
 				
-				for loopExpr in info.lastUses.values():
-					if loopExpr == self.loopExpr:
+				for (lastUse, loopExpr) in info.lastUses.items():
+					if loopExpr == self.loopExpr and lastUse.symbol == info.symbol:
 						if info.moved and info.symbol.type.isCopyable:
 							info.breaksAfterMove[expr] = loopExpr
 						elif not info.uninit:
@@ -522,6 +519,8 @@ class Scope:
 			info.typeModifiers.uninit = False
 	
 	def callDropFn(self, dropFn, symbol, field, fieldBase, exprs, span):
+		symbol.fixed = True
+		
 		# create the fn ref for the fn call
 		fnRef = accessmod.SymbolRead(span)
 		fnRef.symbol = dropFn

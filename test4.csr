@@ -49,7 +49,7 @@ fn main()
     unsafe
     {
         printf "%s\n" &buf
-        printf "%s\n" "Hello"
+        printf "%s\n" "Hello" as &byte
         printf "%d\n" -1 as uint
     }
     
