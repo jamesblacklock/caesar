@@ -31,7 +31,7 @@ class FnCall(ValueExpr):
 				if selfExpr.type.extern and not symbol.pub:
 					symbol = None
 				if symbol == None:
-					logError(state, fnCall.expr.span, 'type `{}` has no public method `{}`'.format(selfExpr.type, name))
+					logError(state, fnCall.expr.span, 'cannot resolve the method `{}` for type `{}`'.format(name, selfExpr.type))
 					failed = True
 				else:
 					if selfExpr.type.isTraitType:
