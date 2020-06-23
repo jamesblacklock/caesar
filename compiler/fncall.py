@@ -25,14 +25,17 @@ class FnCall(ValueExpr):
 				failed = True
 			else:
 				name = fnCall.expr.path[0].content
-				if name not in selfExpr.type.symbolTable:
-					logError(state, fnCall.expr.span, 'type `{}` has no method `{}`'.format(selfExpr.type, name))
+				symbol = None
+				if name in selfExpr.type.symbolTable:
+					symbol = selfExpr.type.symbolTable[name]
+				if selfExpr.type.extern and not symbol.pub:
+					symbol = None
+				if symbol == None:
+					logError(state, fnCall.expr.span, 'type `{}` has no public method `{}`'.format(selfExpr.type, name))
 					failed = True
 				else:
 					if selfExpr.type.isTraitType:
 						fnCall.selfExpr = selfExpr
-					
-					symbol = selfExpr.type.symbolTable[name]
 					fnCall.expr = access.SymbolRead(fnCall.expr.span)
 					fnCall.expr.symbol = symbol
 					fnCall.expr.type = symbol.type
