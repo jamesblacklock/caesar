@@ -5,6 +5,7 @@ import os
 import argparse
 import uuid
 
+from compiler            import platform
 from compiler.sourcefile import SourceFile
 from compiler.tokenizer  import tokenize
 from compiler.parser     import parse
@@ -230,10 +231,8 @@ def main(args):
 				linker = ('ld -e _start -macosx_version_min 10.8 -arch x86_64 {} ' + 
 					'-lc -lSystem -no_pie -o {}').format(' '.join(allObjFileNames), binFileName)
 			elif platform.Linux:
-				# linker = ('ld -e _start -dynamic-linker /lib64/ld-linux-x86-64.so.2 {} ' + 
-				# 	'-lc -no_pie -o {}').format(' '.join(allObjFileNames), binFileName)
-				linker = ('ld -e _start -L/usr/local/musl/lib -lc {} ' + 
-					'-no_pie -o {}').format(' '.join(allObjFileNames), binFileName)
+				linker = ('ld -no-pie -e _start -A elf64 {} /usr/local/musl/lib/libc.a -o {}').format(
+					' '.join(allObjFileNames), binFileName)
 			else:
 				print('linking not yet implemented on Windows')
 				exit(1)
