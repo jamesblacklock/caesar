@@ -1584,7 +1584,7 @@ def parseExpr(state, exprClass, precedence=0, noSkipSpace=False, allowSimpleFnCa
 		pub = True
 		state.advance()
 		state.skipSpace()
-		expectType(state, TokenType.FN, TokenType.STRUCT, TokenType.UNION, TokenType.EXTERN)
+		expectType(state, TokenType.FN, TokenType.STRUCT, TokenType.TRAIT, TokenType.UNION, TokenType.EXTERN)
 	
 	extern = False
 	if exprClass != ExprClass.FN and state.tok.type == TokenType.EXTERN:
@@ -1634,7 +1634,7 @@ def parseExpr(state, exprClass, precedence=0, noSkipSpace=False, allowSimpleFnCa
 	elif state.tok.type == TokenType.IMPL:
 		decl = parseImpl(state, doccomment)
 	elif state.tok.type == TokenType.TRAIT:
-		decl = parseTrait(state, doccomment)
+		decl = parseTrait(state, doccomment, pub)
 	elif state.tok.type == TokenType.ALIAS:
 		decl = parseAlias(state, doccomment)
 	elif state.tok.type == TokenType.TYPE:
@@ -1716,7 +1716,7 @@ def parseImpl(state, doccomment):
 	impl = Impl(path, traitPath, doccomment, decls, span)
 	return impl
 
-def parseTrait(state, doccomment):
+def parseTrait(state, doccomment, pub):
 	span = state.tok.span
 	state.advance()
 	state.skipSpace()
@@ -1736,7 +1736,7 @@ def parseTrait(state, doccomment):
 		decls = block.list
 		span = Span.merge(span, block.span)
 	
-	trait = TraitDecl(nameTok, doccomment, decls, span)
+	trait = TraitDecl(nameTok, doccomment, pub, decls, span)
 	return trait
 
 def parseModule(state, doccomment):

@@ -65,17 +65,20 @@ def importMod(state, mod, imp):
 	symbol = importedMod
 	for tok in symbolPath:
 		if tok.content == '_':
-			logError(self, tok.span, '`_` is not a valid symbol name')
+			logError(state, tok.span, '`_` is not a valid symbol name')
 		elif type(symbol) == Mod or isinstance(symbol, TypeSymbol):
 			symbolTok = tok
-			if tok.content not in symbol.symbolTable:
-				logError(self, symbolTok.span, 'cannot resolve the symbol `{}`'.format(symbolTok.content))
+			parent = symbol
+			symbol = None
+			if tok.content in parent.symbolTable:
+				symbol = parent.symbolTable[tok.content]
+			
+			if symbol == None or not symbol.pub:
+				logError(state, symbolTok.span, 'cannot resolve the symbol `{}`'.format(symbolTok.content))
 				symbol = None
 				break
-			
-			symbol = symbol.symbolTable[tok.content]
 		else:
-			logError(self, symbolTok.span, '`{}` is not a module'.format(symbol.name))
+			logError(state, symbolTok.span, '`{}` is not a module'.format(symbol.name))
 			symbol = None
 			break
 	

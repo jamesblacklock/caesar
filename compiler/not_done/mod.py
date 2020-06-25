@@ -170,10 +170,11 @@ class Impl(Mod):
 			output.write('\n\n')
 
 class TraitDecl(TypeSymbol):
-	def __init__(self, nameTok, doccomment, decls, span):
+	def __init__(self, nameTok, doccomment, pub, decls, span):
 		super().__init__(nameTok, span, doccomment, isTraitType=True)
 		self.mod = Mod(None, None, decls, span, name='$traitmod__' + self.name)
 		self.isDropTrait = False
+		self.pub = pub
 	
 	def analyzeSig(self, state):
 		attrs.invokeAttrs(state, self)

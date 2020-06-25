@@ -66,14 +66,14 @@ class InfixOp(ValueExpr):
 			l = state.analyzeNode(infixOp.l, implicitType)
 			r = state.analyzeNode(infixOp.r, l.type if l.type else implicitType)
 		
-		lType = l.type
-		rType = r.type
-		
-		if not (lType and rType):
+		if not (l.type and r.type):
 			return None
 		
-		l = tryPromote(state, l, rType)
-		r = tryPromote(state, r, lType)
+		l = tryPromote(state, l, r.type)
+		r = tryPromote(state, r, l.type)
+		
+		lType = l.type
+		rType = r.type
 		
 		resultType = None
 		if lType == Bool and rType == Bool:

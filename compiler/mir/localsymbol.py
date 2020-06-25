@@ -1,5 +1,6 @@
-from .mir import MIR, TypeModifiers
-from ..ir import FundamentalType, Res
+from .mir    import MIR, TypeModifiers
+from ..ir    import FundamentalType, Res
+from ..types import PtrType, typesMatch
 
 TEMP_COUNTER = 0
 
