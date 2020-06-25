@@ -9,7 +9,7 @@ class VoidLit(ValueExpr):
 		super().__init__(span)
 	
 	def analyze(self, state, implicitType):
-		return VoidValue(self.value, self.span)
+		return VoidValue(self.span)
 
 class BoolLit(ValueExpr):
 	def __init__(self, value, span):

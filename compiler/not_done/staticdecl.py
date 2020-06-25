@@ -2,6 +2,7 @@ from ..ast.ast import ValueSymbol
 from ..types import typesMatch
 from ..log  import logError
 from ..ast      import attrs
+from ..mir.mir import TypeModifiers
 
 class StaticDecl(ValueSymbol):
 	def __init__(self, nameTok, typeRef, doccomment, extern, mut, expr, span):
@@ -10,6 +11,9 @@ class StaticDecl(ValueSymbol):
 		self.mut = mut
 		self.expr = expr
 		self.staticValue = None
+		self.type = None
+		self.typeModifiers = TypeModifiers()
+		self.contracts = None
 		
 	def analyzeSig(decl, state, isConst=False):
 		attrs.invokeAttrs(state, decl)
@@ -29,6 +33,8 @@ class StaticDecl(ValueSymbol):
 		
 		decl.expr = state.analyzeNode(decl.expr, implicitType)
 		if decl.expr.type and decl.expr.type.isCompositeType:
+			if decl.expr.typeModifiers == None:
+				decl.expr.typeModifiers = TypeModifiers()
 			if len(decl.expr.typeModifiers.uninitFields) > 0:
 				logError(state, decl.expr.span, 'global declarations must initialize all fields of composite types')
 			
