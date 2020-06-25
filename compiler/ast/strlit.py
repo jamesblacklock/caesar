@@ -1,5 +1,5 @@
 from .ast               import ValueExpr
-from ..mir.str          import Label
+from ..mir.label        import Label
 from ..mir.createstruct import CreateStruct
 from ..                 import types
 from ..mir.mir          import StaticData, StaticDataType

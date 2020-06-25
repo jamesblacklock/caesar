@@ -12,7 +12,7 @@ from .ast.attrs      import Attr
 from .not_done.typeref import PtrTypeRef, NamedTypeRef, ArrayTypeRef, TupleTypeRef, OwnedTypeRef
 from .not_done.mod     import Mod, Impl, TraitDecl
 from .not_done.fndecl import FnDecl, CConv
-from .AST.staticdecl import StaticDecl, ConstDecl
+from .not_done.staticdecl import StaticDecl, ConstDecl
 from .ast.asexpr     import AsExpr
 from .ast.primitive  import IntLit, FloatLit, BoolLit, VoidLit
 from .ast.strlit     import CharLit, StrLit
