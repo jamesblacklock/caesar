@@ -167,7 +167,7 @@ class Scope:
 					if info.symbol.isParam:
 						self.dropSymbol(info.symbol, info.symbol.dropBlock)
 					else:
-						logWarning(self.state, info.symbol.span, 'unused symbol')
+						logWarning(self.state, info.symbol.span, 'unused symbol: `{}`'.format(info.symbol.name))
 				else:
 					for block in info.dropInBlock:
 						self.dropSymbol(info.symbol, block)
@@ -260,8 +260,6 @@ class Scope:
 		
 		scope = self.parent
 		while True:
-			scope.didReturn = True
-			
 			for info in scope.symbolInfo.values():
 				if not info.wasDeclared or info.symbol == symbol:
 					continue
@@ -284,7 +282,6 @@ class Scope:
 		if self.type == stopAt:
 			return
 		
-		inLoop = True
 		scope = self.parent
 		while True:
 			for info in scope.symbolInfo.values():
@@ -306,11 +303,6 @@ class Scope:
 			
 			if scope.type == stopAt:
 				break
-			
-			if inLoop:
-				scope.didBreak = True
-				if scope.type == ScopeType.LOOP:
-					inLoop = False
 			
 			scope = scope.parent
 	
@@ -465,7 +457,9 @@ class Scope:
 		
 		self.setLastUse(info, expr, isRead=True)
 		
-		if isField:
+		if expr.noop:
+			pass
+		elif isField:
 			if fieldInfo:
 				fieldInfo.moved = not field.type.isCopyable
 		elif isIndex:

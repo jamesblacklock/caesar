@@ -58,6 +58,15 @@ class SymbolAccess(MIR):
 		return tempRead
 	
 	@staticmethod
+	def noop(symbol, dropBlock, span):
+		ref = SymbolRead(span)
+		ref.symbol = symbol
+		ref.type = symbol.type
+		ref.noop = True
+		ref.dropBlock = dropBlock
+		return ref
+	
+	@staticmethod
 	def analyzeSymbolAccess(state, expr, implicitType=None, rvalueImplicitType=None):
 		if type(expr) == asgn.Asgn:
 			access = SymbolWrite(expr.rvalue, expr.span, expr.lvalue.span)

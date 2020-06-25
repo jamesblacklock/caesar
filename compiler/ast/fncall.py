@@ -125,11 +125,7 @@ class FnCall(ValueExpr):
 		mir = FnCallMIR(access, args, cVarArgs, dynDispatch, fnType.returnType, self.span)
 		for arg in args:
 			if arg.borrows:
-				lateRef = SymbolRead(arg.span)
-				lateRef.symbol = arg.symbol
-				lateRef.type = arg.type
-				lateRef.noop = True
-				lateRef.dropBlock = state.scope.dropBlock
-				state.mirBlock.append(lateRef)
+				lateRef = SymbolAccess.noop(arg.symbol, state.scope.dropBlock, arg.span)
+				state.scope.dropBlock.append(lateRef)
 		
 		return mir

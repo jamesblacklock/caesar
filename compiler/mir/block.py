@@ -30,7 +30,7 @@ class Block(MIR):
 			scope = outerScope
 		
 		for expr in self.exprs:
-			assert not expr.hasValue or type(expr) == If
+			assert not expr.hasValue or type(expr) == If or expr.noop
 			expr.checkFlow(scope)
 			if scope.didBreak or scope.didReturn:
 				break
@@ -39,7 +39,8 @@ class Block(MIR):
 			if scope.type != ScopeType.FN:
 				if scope.type != ScopeType.LOOP:
 					outerScope.didBreak = scope.didBreak
-				outerScope.didReturn = scope.didReturn
+				if scope.type not in (ScopeType.IF, ScopeType.ELSE):
+					outerScope.didReturn = scope.didReturn
 		
 			self.propagateSymbolInfo()
 	

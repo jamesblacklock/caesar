@@ -14,6 +14,11 @@ class If(MIR):
 		self.block.checkFlow(scope)
 		self.elseBlock.ifBranchOuterSymbolInfo = self.block.lastIfBranchOuterSymbolInfo
 		self.elseBlock.checkFlow(scope)
+		
+		if self.block.scope.didReturn and self.elseBlock.scope.didReturn:
+			scope.didReturn = True
+		if self.block.scope.didBreak and self.elseBlock.scope.didBreak:
+			scope.didBreak = True
 	
 	def writeIR(self, state):
 		self.access.writeIR(state)

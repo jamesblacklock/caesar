@@ -28,7 +28,7 @@ class BoolValue(MIR):
 		pass
 	
 	def writeIR(self, state):
-		state.appendInstr(Imm(ast, I8, 1 if self.value else 0))
+		state.appendInstr(Imm(self, I8, 1 if self.value else 0))
 	
 	def __str__(self):
 		return 'true' if self.value else 'false'
@@ -47,9 +47,9 @@ class IntValue(MIR):
 		fType = FundamentalType.fromResolvedType(self.type)
 		return StaticData(self.value, StaticDataType.INT, fType)
 	
-	def writeIR(ast, state):
-		fType = FundamentalType.fromResolvedType(ast.type)
-		state.appendInstr(Imm(ast, fType, ast.value))
+	def writeIR(self, state):
+		fType = FundamentalType.fromResolvedType(self.type)
+		state.appendInstr(Imm(self, fType, self.value))
 	
 	def __str__(self):
 		return str(self.value)
@@ -63,9 +63,9 @@ class FloatValue(MIR):
 	def checkFlow(self, scope):
 		pass
 	
-	def writeIR(ast, state):
-		fType = FundamentalType.fromResolvedType(ast.type)
-		state.appendInstr(Imm(ast, fType, ast.value))
+	def writeIR(self, state):
+		fType = FundamentalType.fromResolvedType(self.type)
+		state.appendInstr(Imm(self, fType, self.value))
 	
 	def __str__(self):
 		return str(self.value)
