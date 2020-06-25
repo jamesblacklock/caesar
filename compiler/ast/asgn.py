@@ -1,5 +1,6 @@
-from .ast  import AST
-from ..mir import access
+from .ast   import AST
+from .infix import InfixOp
+from ..mir  import access
 
 class Asgn(AST):
 	def __init__(self, lvalue, rvalue, infixOp, opTok, span):

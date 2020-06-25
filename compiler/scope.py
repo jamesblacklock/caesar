@@ -260,6 +260,8 @@ class Scope:
 		
 		scope = self.parent
 		while True:
+			scope.didReturn = True
+			
 			for info in scope.symbolInfo.values():
 				if not info.wasDeclared or info.symbol == symbol:
 					continue
@@ -304,6 +306,11 @@ class Scope:
 			
 			if scope.type == stopAt:
 				break
+			
+			if inLoop:
+				scope.didBreak = True
+				if scope.type == ScopeType.LOOP:
+					inLoop = False
 			
 			scope = scope.parent
 	
@@ -576,7 +583,7 @@ class Scope:
 		exprs = []
 		
 		if symbol.type.isOwnedType:
-			logError(self.state, symbol.nameTok.span, 'owned value was not discarded')
+			logError(self.state, symbol.span, 'owned value was not discarded')
 			logExplain(self.state, block.span, 'value goes out of scope here')
 		
 		if symbol.dropFn:

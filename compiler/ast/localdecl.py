@@ -17,7 +17,7 @@ class LocalDecl(ValueSymbol):
 			type = state.resolveTypeRef(self.typeRef)
 		
 		name = None if self.name == '_' else self.name
-		symbol = LocalSymbol(name, type, self.mut, isParam, self.span)
+		symbol = LocalSymbol(name, type, self.mut, isParam, self.nameTok.span)
 		symbol.dropBlock = dropBlock
 		state.scope.declSymbol(symbol)
 		

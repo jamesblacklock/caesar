@@ -20,12 +20,14 @@ class Block(MIR):
 		self.exprs.append(mir)
 		# print(mir)
 	
-	def checkFlow(self, scope):
+	def checkFlow(self, outerScope):
 		if self.scope:
 			scope = self.scope
 			scope.didBreak = False
 			scope.didReturn = False
 			scope.ifBranchOuterSymbolInfo = self.ifBranchOuterSymbolInfo
+		else:
+			scope = outerScope
 		
 		for expr in self.exprs:
 			assert not expr.hasValue or type(expr) == If
@@ -34,6 +36,11 @@ class Block(MIR):
 				break
 		
 		if self.scope:
+			if scope.type != ScopeType.FN:
+				if scope.type != ScopeType.LOOP:
+					outerScope.didBreak = scope.didBreak
+				outerScope.didReturn = scope.didReturn
+		
 			self.propagateSymbolInfo()
 	
 	def propagateSymbolInfo(self):

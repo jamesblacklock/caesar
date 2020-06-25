@@ -65,6 +65,7 @@ class If(ValueExpr):
 		if type != Void:
 			assert not (ifAccess and elseAccess) or typesMatch(ifAccess.type, elseAccess.type)
 			
+			tempSymbol = None
 			if ifAccess and elseAccess:
 				(tempSymbol, ifWrite, elseWrite) = accessmod.createTempSymbol(ifAccess, elseAccess)
 				state.analyzeNode(tempSymbol)
@@ -80,18 +81,18 @@ class If(ValueExpr):
 				state.pushMIR(block)
 				state.analyzeNode(ifWrite)
 				block = state.popMIR()
-			else:
-				assert elseAccess
+			elif elseAccess:
 				(tempSymbol, elseWrite) = accessmod.createTempSymbol(elseAccess)
 				state.analyzeNode(tempSymbol)
 				state.pushMIR(elseBlock)
 				state.analyzeNode(elseWrite)
 				elseBlock = state.popMIR()
 			
-			result = accessmod.SymbolRead(self.span)
-			result.symbol = tempSymbol
-			result.type = tempSymbol.type
-			result.ref = True
+			if tempSymbol:
+				result = accessmod.SymbolRead(self.span)
+				result.symbol = tempSymbol
+				result.type = tempSymbol.type
+				result.ref = True
 		
 		state.mirBlock.append(IfMIR(access, block, elseBlock, type, self.span))
 		return result

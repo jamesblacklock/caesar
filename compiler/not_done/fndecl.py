@@ -62,6 +62,7 @@ class FnDecl(ValueSymbol):
 		state.pushScope(scope.ScopeType.FN, fnDecl=self, allowUnsafe=self.unsafe)
 		
 		self.paramDropBlock = createDropBlock(self)
+		state.mirBlock.append(self.paramDropBlock)
 		for param in self.params:
 			state.analyzeNode(param)
 		
@@ -72,11 +73,11 @@ class FnDecl(ValueSymbol):
 		state.analyzeNode(self.body, self.returnType)
 		self.mirBody = state.popScope()
 		
-		print(self)
-		
 		if not state.failed:
 			self.mirBody.checkFlow(None)
 			assert self.mirBody.scope.didReturn
+		
+		print(self)
 	
 	def __str__(self):
 		fnStr = 'extern fn' if self.extern else 'fn'

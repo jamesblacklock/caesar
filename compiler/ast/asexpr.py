@@ -11,7 +11,7 @@ class AsExpr(ValueExpr):
 	
 	def analyze(self, state, implicitType):
 		type = state.resolveTypeRef(self.typeRef)
-		access = state.analyzeNode(self.expr, self.type)
+		access = state.analyzeNode(self.expr, type)
 		
 		if not type or typesMatch(type, access.type):
 			return access
