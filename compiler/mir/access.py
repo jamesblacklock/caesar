@@ -413,10 +413,6 @@ class SymbolWrite(SymbolAccess):
 				state.loopInfo.droppedSymbols.discard(expr.symbol)
 
 def _SymbolAccess__analyzeSymbolAccess(state, expr, access, implicitType=None):
-	# if type(expr) == localdecl.LetDecl:
-	# 	access.symbol = expr
-	# 	access.type = access.symbol.type
-	# el
 	if type(expr) == valueref.ValueRef:
 		symbolTable = implicitType.symbolTable if implicitType else None
 		access.symbol = state.lookupSymbol(expr.path, symbolTable, inValuePosition=True)
@@ -451,11 +447,12 @@ def _SymbolAccess__analyzeSymbolAccess(state, expr, access, implicitType=None):
 		
 		if addrExpr.deref:
 			addrExpr.deref -= 1
-			addrExpr.copy = True
 			if addrExpr.isFieldAccess:
 				addrExpr.isFieldAccess = False
-				# addrExpr.field = None
 				addrExpr.borrows = {addrExpr}
+				addrExpr.copy = True
+			else:
+				addrExpr.copy = addrExpr.deref > 0
 		else:
 			assert not addrExpr.addr
 			addrExpr.addr = True
@@ -474,7 +471,6 @@ def _SymbolAccess__analyzeSymbolAccess(state, expr, access, implicitType=None):
 		
 		access.symbol = tempSymbol
 		access.type = access.symbol.type
-		access.copy = True
 			
 	elif type(expr) == deref.Deref:
 		if implicitType:
