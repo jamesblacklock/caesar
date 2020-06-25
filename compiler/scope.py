@@ -1,9 +1,11 @@
-from enum    import Enum
-from .drop   import DropSymbol
-from .log    import logError, logWarning, logExplain
-from .       import fndecl, staticdecl, letdecl, enumdecl, access as accessmod
-from .fncall import FnCall
-from .types  import typesMatch, PtrType
+from enum             import Enum
+from .mir.drop        import DropSymbol
+from .log             import logError, logWarning, logExplain
+from .not_done        import fndecl, staticdecl, enumdecl
+from .mir             import access as accessmod
+from .mir.localsymbol import LocalSymbol
+from .mir.fncall      import FnCall
+from .types           import PtrType
 
 class ScopeType(Enum):
 	MOD = "MOD"
@@ -61,10 +63,10 @@ class SymbolInfo:
 		# 		if field.resolvedSymbolType.isStructType:
 		# 			addFieldInfo(field.resolvedSymbolType.fields, fieldExpr)
 		
-		if type(symbol) in (staticdecl.StaticDecl, letdecl.FnParam):
+		if type(symbol) == staticdecl.StaticDecl or symbol.isParam:
 			self.typeModifiers.uninit = False
 			self.maybeUninit = False
-		elif type(symbol) == letdecl.LetDecl:
+		elif type(symbol) == LocalSymbol:
 			self.typeModifiers.uninit = True
 			self.maybeUninit = False
 			# if symbol.resolvedSymbolType.isCompositeType:
@@ -114,8 +116,7 @@ class Scope:
 		self.ifExpr = ifExpr
 		self.loopExpr = loopExpr
 		self.ifBranchOuterSymbolInfo = ifBranchOuterSymbolInfo
-		self.scopeLevelDropBlock = None
-		self.beforeScopeLevelExpr = None
+		self.dropBlock = None
 		self.allowUnsafe = allowUnsafe
 		self.acquireDefault = None
 		self.releaseDefault = None
@@ -141,6 +142,9 @@ class Scope:
 			self.loopDepth += 1
 	
 	def intersectContracts(self, contracts):
+		if contracts == None:
+			return
+		
 		for contract in contracts.values():
 			if contract.symbol in self.contracts:
 				self.contracts[contract.symbol] = self.contracts[contract.symbol].intersect(contract)
@@ -160,10 +164,10 @@ class Scope:
 				if info.symbol.type == None:
 					continue
 				elif info.symbol.unused:
-					if type(info.symbol) == letdecl.LetDecl:
-						logWarning(self.state, info.symbol.span, 'unused symbol')
-					elif type(info.symbol) == letdecl.FnParam:
+					if info.symbol.isParam:
 						self.dropSymbol(info.symbol, info.symbol.dropBlock)
+					else:
+						logWarning(self.state, info.symbol.span, 'unused symbol')
 				else:
 					for block in info.dropInBlock:
 						self.dropSymbol(info.symbol, block)
@@ -539,10 +543,7 @@ class Scope:
 			ptr.type = PtrType(symbol.type, 1, True)
 		
 		# use the fn ref and call the drop fn
-		fnCall = FnCall(fnRef, [ptr], span)
-		fnCall.isDrop = True
-		fnCall.type = fnRef.type.returnType
-		
+		fnCall = FnCall(fnRef, [ptr], [], False, fnRef.type.returnType, span, isDrop=True)
 		exprs.append(fnCall)
 	
 	def dropFields(self, symbol, field, fieldBase, exprs, span):
@@ -578,7 +579,7 @@ class Scope:
 		
 		self.dropFields(symbol, None, 0, exprs, block.span)
 		
-		exprs.append(DropSymbol(symbol))
+		exprs.append(DropSymbol(symbol, block.span))
 		block.exprs[:0] = exprs
 	
 	def lookupSymbol(self, name):
@@ -594,7 +595,7 @@ class Scope:
 		return symbol
 	
 	def loadSymbolInfo(self, symbol, clone=False):
-		assert type(symbol) in (letdecl.LetDecl, letdecl.FnParam, staticdecl.StaticDecl)
+		assert type(symbol) in (LocalSymbol, staticdecl.StaticDecl)
 		scope = self
 		while scope != None:
 			if symbol in scope.symbolInfo:
@@ -608,7 +609,7 @@ class Scope:
 		return info
 	
 	def loadAndSaveSymbolInfo(self, symbol):
-		if type(symbol) not in (letdecl.LetDecl, letdecl.FnParam, staticdecl.StaticDecl):
+		if type(symbol) not in (LocalSymbol, staticdecl.StaticDecl):
 			return None
 		
 		if symbol in self.symbolInfo:

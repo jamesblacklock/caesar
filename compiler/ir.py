@@ -1,7 +1,5 @@
 import ctypes
-from io         import StringIO
-from .          import types
-from .primitive import StrLit
+from io       import StringIO
 
 class FundamentalType:
 	def __init__(self, byteSize, types=None, isFloatType=False, aligned=True):
@@ -22,8 +20,6 @@ class FundamentalType:
 	@staticmethod
 	def fromCompositeType(resolvedType):
 		types = []
-		# t = None
-		# offset = 0
 		aligned = True
 		for field in resolvedType.fields:
 			if field.offset % field.type.align != 0:
@@ -742,11 +738,11 @@ class IRState:
 		
 		inputSymbols = []
 		for param in fnDecl.params:
-			if param.type.isVoidType:
+			if param.symbol.type.isVoidType:
 				continue
 			
-			fType = FundamentalType.fromResolvedType(param.type)
-			inputSymbols.append(param)
+			fType = FundamentalType.fromResolvedType(param.symbol.type)
+			inputSymbols.append(param.symbol)
 			self.paramTypes.append(fType)
 		
 		self.setupLocals(self.paramTypes, inputSymbols)
@@ -872,7 +868,7 @@ class IRState:
 		fieldDict = t.fieldDict
 		for init in structLit.fields:
 			fieldInfo = fieldDict[init.name]
-			if init.expr.type.isCompositeType and type(init.expr) != StrLit:
+			if init.expr.type.isCompositeType:
 				self.initCompositeFields(init.expr, baseOffset + fieldInfo.offset)
 				continue
 			
@@ -924,13 +920,15 @@ def beginBlock(state, ast, blockDef):
 	state.appendInstr(BlockMarker(ast, blockDef.index))
 
 def fnToIR(fnDecl):
+	# print(fnDecl)
+	
 	state = IRState(fnDecl)
 	
 	for (i, param) in enumerate(reversed(fnDecl.params)):
-		if param.fixed:
+		if param.symbol.fixed:
 			state.appendInstr(Fix(param, i))
 	
-	fnDecl.body.writeIR(state)
+	fnDecl.mirBody.writeIR(state)
 	
 	lastType = type(state.instr[-1])
 	assert lastType != Br and lastType != BrIf

@@ -18,6 +18,9 @@ class Span:
 	@staticmethod
 	def cursor(span):
 		return Span(span.source, span.startLine, span.startColumn, span.startLine, span.startColumn)
+	
+	def clone(self):
+		return Span(self.source, self.startLine, self.startColumn, self.endLine, self.endColumn)
 
 class AnsiColor:
 	BLACK = '30'

@@ -1,14 +1,14 @@
 import ctypes
-from io     import StringIO
-from enum   import Enum
-from .ast   import StaticData, StaticDataType
-from .ir    import Dup, Global, Imm, Static, Deref, DerefW, Add, Sub, Mul, Div, Mod, Eq, NEq, Less, LessEq, \
-                   Greater, GreaterEq, FAdd, FSub, FMul, FDiv, FEq, FNEq, FLess, FLessEq, FGreater, FGreaterEq, \
-                   Call, Extend, IExtend, Truncate, FExtend, FTruncate, IToF, UToF, FToI, FToU, Ret, BrIf, \
-                   Br, Swap, Write, Pop, Raise, Neg, Res, Field, FieldW, DerefField, DerefFieldW, Fix, Addr, \
-                   I8, I16, I32, I64, IPTR, F32, F64, FundamentalType, BlockMarker
-from .types import U32_RNG, I32_RNG
-from .      import platform
+from io       import StringIO
+from enum     import Enum
+from .mir.mir import StaticData, StaticDataType
+from .ir      import Dup, Global, Imm, Static, Deref, DerefW, Add, Sub, Mul, Div, Mod, Eq, NEq, Less, LessEq, \
+                     Greater, GreaterEq, FAdd, FSub, FMul, FDiv, FEq, FNEq, FLess, FLessEq, FGreater, FGreaterEq, \
+                     Call, Extend, IExtend, Truncate, FExtend, FTruncate, IToF, UToF, FToI, FToU, Ret, BrIf, \
+                     Br, Swap, Write, Pop, Raise, Neg, Res, Field, FieldW, DerefField, DerefFieldW, Fix, Addr, \
+                     I8, I16, I32, I64, IPTR, F32, F64, FundamentalType, BlockMarker
+from .types   import U32_RNG, I32_RNG
+from .        import platform
 
 class Storage(Enum):
 	IMM = 'IMM'

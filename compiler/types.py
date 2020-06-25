@@ -1,6 +1,7 @@
-from enum import Enum
-from .    import primitive
-from .ast import Symbol, TypeModifiers
+from enum        import Enum
+from .ast.ast    import Symbol
+from .mir.mir    import TypeModifiers
+from .mir.coerce import Coerce
 
 PLATFORM_WORD_SIZE = 8
 
@@ -374,12 +375,10 @@ def shapesMatch(type1, type2):
 	
 	return True
 
-def tryPromote(expr, toType):
-	from . import coercion
-	
-	fromType = expr.type
+def tryPromote(state, access, toType):
+	fromType = access.type
 	if not fromType or not toType or fromType == toType:
-		return expr
+		return access
 	
 	intToInt = fromType.isIntType and toType.isIntType
 	intOrFloatToFloat = (fromType.isIntType or fromType.isFloatType) and toType.isFloatType
@@ -387,7 +386,7 @@ def tryPromote(expr, toType):
 		signsMatch = fromType.isSigned == toType.isSigned
 		sizeDoesIncrease = fromType.byteSize < toType.byteSize
 		if signsMatch and sizeDoesIncrease:
-			return coercion.Coercion(expr, None, expr.span, resolvedType=toType)
+			return state.analyzeNode(Coerce(access, toType, access.span))
 	
 	fromBaseType = fromType
 	toBaseType = toType
@@ -401,29 +400,22 @@ def tryPromote(expr, toType):
 		toDerefType = toBaseType.typeAfterDeref()
 		fromDerefType = fromBaseType.typeAfterDeref()
 		if typesMatch(fromDerefType, toDerefType) and not toBaseType.mut:
-			return coercion.Coercion(expr, None, expr.span, resolvedType=toType)
+			access.type = toType
+			return access
 		elif toDerefType.isTraitType and toDerefType in fromDerefType.traitImpls:
-			return coercion.Coercion(expr, None, expr.span, resolvedType=toType)
+			return state.analyzeNode(Coerce(access, toType, access.span))
 	
-	# if type(expr) == SymbolAccess and expr.ref and indefiniteMatch(expr.type, expectedType):
-	# 	expr.symbol.type = expectedType
-	# 	expr.type = expectedType
-	# 	return expr
+	# if type(access) == SymbolAccess and access.ref and indefiniteMatch(access.type, expectedType):
+	# 	access.symbol.type = expectedType
+	# 	access.type = expectedType
+	# 	return access
 	
 	# if toType.isOptionType:
 	# 	for t in toType.types:
 	# 		if typesMatch(fromType, t):
-	# 			return constructOptionInstance(expr)
+	# 			return constructOptionInstance(access)
 	
-	return expr
-
-def canPromote(fromType, toType):
-	if not (fromType and toType):
-		return False
-	elif fromType.isIntType and toType.isIntType and fromType.isSigned == toType.isSigned:
-		return fromType.byteSize < toType.byteSize
-	elif (fromType.isFloatType or fromType.isIntType) and toType.isFloatType:
-		return fromType.byteSize < toType.byteSize
+	return access
 
 def canCoerce(fromType, toType):
 	if fromType.isOwnedType or toType.isOwnedType:
@@ -458,6 +450,7 @@ def canCoerce(fromType, toType):
 		return False
 
 def hasDefiniteType(ast):
+	from .ast import primitive
 	if type(ast) == primitive.IntLit and (ast.suffix == None) and \
 		(ast.value >= I32_MIN or ast.value <= I64_MAX):
 		return False

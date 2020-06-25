@@ -1,39 +1,39 @@
 import re
-from os          import path
-from enum        import Enum
-from .token      import TokenType
-from .span       import Span
-from .log        import logError
-from .ast        import ValueExpr
-from .sign       import Sign
-from .structdecl import FieldDecl, StructDecl, UnionFields
-from .enumdecl   import EnumDecl, VariantDecl
-from .attrs      import Attr
-from .typeref    import PtrTypeRef, NamedTypeRef, ArrayTypeRef, TupleTypeRef, OwnedTypeRef
-from .mod        import Mod, Impl, TraitDecl
-from .fndecl     import FnDecl, CConv
-from .staticdecl import StaticDecl, ConstDecl
-from .coercion   import Coercion
-from .primitive  import IntLit, FloatLit, BoolLit, CharLit, StrLit, VoidLit
-from .block      import BlockInfo, Block
-from .fncall     import FnCall
-from .ctlflow    import Return, Break, Continue
-from .loop       import While, Loop
-from .letdecl    import LetDecl, FnParam, CVarArgsParam
-from .asgn       import Asgn
-from .ifexpr     import If
-from .infix      import InfixOp, InfixOps
-from .valueref   import ValueRef, Borrow
-from .field      import Index, Field
-from .deref      import Deref
-from .structlit  import StructLit, FieldLit
-from .tuplelit   import TupleLit, ArrayLit
-from .address    import Address
-from .alias      import AliasDecl
-from .alias      import TypeDecl
-from .scope      import ScopeType
-from .pattern    import Pattern, IsExpr
-from .importexpr import Import
+from os              import path
+from enum            import Enum
+from .token          import TokenType
+from .span           import Span
+from .log            import logError
+from .ast.ast        import ValueExpr, InfixOps
+from .ast.sign       import Sign
+from .not_done.structdecl import FieldDecl, StructDecl, UnionFields
+from .not_done.enumdecl   import EnumDecl, VariantDecl
+from .ast.attrs      import Attr
+from .not_done.typeref import PtrTypeRef, NamedTypeRef, ArrayTypeRef, TupleTypeRef, OwnedTypeRef
+from .not_done.mod     import Mod, Impl, TraitDecl
+from .not_done.fndecl import FnDecl, CConv
+from .AST.staticdecl import StaticDecl, ConstDecl
+from .ast.asexpr     import AsExpr
+from .ast.primitive  import IntLit, FloatLit, BoolLit, VoidLit
+from .ast.strlit     import CharLit, StrLit
+from .ast.block      import Block
+from .ast.fncall     import FnCall
+from .ast.ctlflow    import Return, Break, Continue
+from .ast.loop       import While, Loop
+from .ast.localdecl  import LetDecl, FnParam, CVarArgsParam
+from .ast.asgn       import Asgn
+from .ast.ifexpr     import If
+from .ast.infix      import InfixOp
+from .ast.valueref   import ValueRef, Borrow
+from .ast.field      import Index, Field
+from .ast.deref      import Deref
+from .ast.structlit  import StructLit, FieldLit
+from .ast.tuplelit   import TupleLit, ArrayLit
+from .ast.address    import Address
+from .not_done.alias import AliasDecl, TypeDecl
+from .scope          import ScopeType
+from .ast.isexpr     import Pattern, IsExpr
+from .ast.importexpr import Import
 
 INFIX_PRECEDENCE = {
 	TokenType.AS:     1000, TokenType.IS:       1000, TokenType.ARROW:   900, TokenType.LSHIFT:    800, 
@@ -45,6 +45,12 @@ INFIX_PRECEDENCE = {
 }
 
 UNARY_PRECEDENCE = 9000
+
+class BlockInfo:
+	def __init__(self, list, span, trailingSeparator=False):
+		self.list = list
+		self.span = span
+		self.trailingSeparator = trailingSeparator
 
 class ParserState:
 	def __init__(self, source, tokens):
@@ -408,7 +414,7 @@ def parseAsExpr(state, expr):
 	if typeRef == None:
 		return None
 	
-	return Coercion(expr, typeRef, Span.merge(expr.span, typeRef.span))
+	return AsExpr(expr, typeRef, Span.merge(expr.span, typeRef.span))
 
 def parsePattern(state):
 	def parseName(state):
@@ -1031,7 +1037,11 @@ def parseField(state, expr):
 	path = []
 	span = expr.span
 	onOneLine = True
+	derefSpan = None
 	deref = state.tok.type == TokenType.DEREFDOT
+	if deref:
+		derefSpan = span.clone()
+		derefSpan.endColumn += 1
 	
 	while True:
 		span = Span.merge(span, state.tok.span)
@@ -1056,7 +1066,7 @@ def parseField(state, expr):
 		state.popIndentLevel()
 	
 	if deref:
-		expr = Deref(expr, 1, span)
+		expr = Deref(expr, 1, derefSpan)
 	
 	return Field(expr, path, span)
 
@@ -1129,7 +1139,7 @@ def parseValueExprImpl(state, precedence, noSkipSpace, allowSimpleFnCall):
 	elif state.tok.type in (TokenType.STRUCT, TokenType.UNION):
 		state.advance()
 		state.skipSpace()
-		expr = parseStructLit(state, typeRef)
+		expr = parseStructLit(state, None)
 	elif state.tok.type == TokenType.NAME:
 		path = parsePath(state)
 		if isStructStart(state):
@@ -1215,6 +1225,21 @@ def parseValueExprOrAsgn(state):
 	state.skipSpace()
 	if state.tok.type in ASGN_OPER_TOKS:
 		opTok = state.tok
+		infixOp = None
+		if opTok.type != TokenType.ASGN:
+			if opTok.type == TokenType.TIMESASGN:
+				infixOp = InfixOps.TIMES
+			elif opTok.type == TokenType.DIVASGN:
+				infixOp = InfixOps.DIV
+			elif opTok.type == TokenType.MODULOASGN:
+				infixOp = InfixOps.MODULO
+			elif opTok.type == TokenType.PLUSASGN:
+				infixOp = InfixOps.PLUS
+			elif opTok.type == TokenType.MINUSASGN:
+				infixOp = InfixOps.MINUS
+			else:
+				assert 0
+		
 		if type(expr) not in (ValueRef, Index, Deref, Field):
 			logError(state, state.tok.span, "invalid assignment target in assignment")
 		
@@ -1224,7 +1249,7 @@ def parseValueExprOrAsgn(state):
 		lvalue = expr
 		rvalue = parseValueExpr(state)
 		
-		expr = Asgn(lvalue, rvalue, opTok, Span.merge(lvalue.span, rvalue.span))
+		expr = Asgn(lvalue, rvalue, infixOp, opTok, Span.merge(lvalue.span, rvalue.span))
 	
 	return expr
 

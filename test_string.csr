@@ -49,8 +49,7 @@ fn main()
     let t: str = s->concat(" owned")
     let c: &byte = "a c-string"
     
-    # unsafe printf("%s: %d\n%s: %d\n", c, strlen(c), t->data, t.size)
-    unsafe printf("%s: %d\n%s: %d\n", c, strlen(c), str::data(&t), t.size)
+    unsafe printf("%s: %d\n%s: %d\n", c, strlen(c), t->data, t.size)
     
     let twoFloats = TwoThings::TwoFloats { a: 1.2, b: 1.3 }
     let twoInts: TwoThings = TwoInts { g: 12, h: 13 }

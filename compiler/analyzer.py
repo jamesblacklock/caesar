@@ -1,21 +1,24 @@
 import ctypes
-from .typeref    import NamedTypeRef, PtrTypeRef, ArrayTypeRef, TupleTypeRef, OwnedTypeRef
-from .types      import TypeSymbol, UnknownType, FieldInfo, PtrType, ArrayType, TupleType, OwnedType, \
+from .not_done.typeref import NamedTypeRef, PtrTypeRef, ArrayTypeRef, TupleTypeRef, OwnedTypeRef
+from .types     import TypeSymbol, UnknownType, FieldInfo, PtrType, ArrayType, TupleType, OwnedType, \
                         Void, Bool, Byte, Char, Int8, UInt8, Int16, UInt16, Int32, UInt32, \
                         Int64, UInt64, ISize, USize, Float32, Float64, typesMatch, canCoerce, tryPromote
-from .log        import logError, logExplain
-from .ast        import ASTPrinter, ValueSymbol
+from .log       import logError, logExplain
+from .ast.ast    import ValueSymbol
 from .scope      import Scope, ScopeType
-from .attrs      import invokeAttrs, Attr
-from .mod        import Mod, Impl, TraitDecl
-from .fndecl     import FnDecl, CConv
-from .staticdecl import StaticDecl, ConstDecl
-from .structdecl import StructDecl
-from .alias      import AliasDecl, TypeDecl
-from .enumdecl   import EnumDecl, VariantDecl
-from .access     import SymbolAccess, SymbolRead
-from .importexpr import Import, importMod
+from .ast.attrs  import invokeAttrs, Attr
+from .not_done.mod        import Mod, Impl, TraitDecl
+from .not_done.fndecl     import FnDecl, CConv
+from .not_done.staticdecl import StaticDecl, ConstDecl
+from .not_done.structdecl import StructDecl
+from .not_done.alias      import AliasDecl, TypeDecl
+from .not_done.enumdecl   import EnumDecl, VariantDecl
+from .mir.access import SymbolAccess, SymbolRead
+from .ast.importexpr import Import, importMod
 from .           import platform
+from .mir.block  import Block
+from .mir.localsymbol import LocalSymbol
+from .mir.mir import printMIR
 
 BUILTIN_TYPES = {
 	Void.name:    Void,
@@ -159,9 +162,16 @@ class AnalyzerState:
 		self.scope = None
 		self.failed = False
 		self.strMod = None
+		self.mirBlockStack = []
+		self.ast = None
+	
+	@property
+	def mirBlock(self):
+		return self.mirBlockStack[-1]
 	
 	def analyze(_, ast):
 		state = AnalyzerState()
+		state.ast = ast
 		
 		ast.symbolTable = buildSymbolTable(state, ast)
 		
@@ -174,10 +184,10 @@ class AnalyzerState:
 			state.strMod = imp.importedMod
 		
 		ast.analyzeSig(state)
-		ast = state.analyzeNode(ast)
+		# ast = state.analyzeNode(ast)
+		ast.analyze(state)
 		
-		# p = ASTPrinter()
-		# ast.pretty(p)
+		# printMIR(ast)
 		
 		if state.failed:
 			exit(0)
@@ -185,10 +195,28 @@ class AnalyzerState:
 		
 		return ast
 	
-	def analyzeNode(state, ast, implicitType=None):
-		invokeAttrs(state, ast)
-		newAST = ast.analyze(state, implicitType)
-		return newAST if newAST else ast
+	def analyzeNode(self, ast, implicitType=None, isWrite=False, discard=False):
+		assert not ast.analyzed
+		
+		if discard:
+			self.pushMIR(Block(None))
+		
+		invokeAttrs(self, ast)
+		mir = ast.analyze(self, implicitType)
+		if mir:
+			if mir.hasValue:
+				if not isWrite and type(mir) != SymbolRead:
+					mir = SymbolAccess.read(self, mir)
+			else:
+				self.mirBlock.append(mir)
+				mir = None
+		
+		if discard:
+			self.popMIR()
+		else:
+			ast.setAnalyzed()
+		
+		return mir
 	
 	def resolveTypeRefSig(state, typeRef):
 		if type(typeRef) == NamedTypeRef:
@@ -232,7 +260,7 @@ class AnalyzerState:
 		if not (expr.type and expectedType):
 			return expr
 		
-		expr = tryPromote(expr, expectedType)
+		expr = tryPromote(state, expr, expectedType)
 		if not typesMatch(expr.type, expectedType):
 			logError(state, expr.span, 'expected type {}, found {}'.format(expectedType, expr.type))
 		
@@ -304,6 +332,12 @@ class AnalyzerState:
 		
 		return FieldLayout(maxAlign, offset, fields)
 	
+	def pushMIR(self, block):
+		self.mirBlockStack.append(block)
+	
+	def popMIR(self):
+		return self.mirBlockStack.pop()
+	
 	def pushScope(self, scopeType, name=None, mod=None, 
 		fnDecl=None, ifExpr=None, loopExpr=None, allowUnsafe=False,
 		ifBranchOuterSymbolInfo=None):
@@ -319,7 +353,8 @@ class AnalyzerState:
 			ifBranchOuterSymbolInfo=ifBranchOuterSymbolInfo, 
 			allowUnsafe=allowUnsafe)
 		
-		self.lastIfBranchOuterSymbolInfo = None
+		# self.lastIfBranchOuterSymbolInfo = None
+		self.pushMIR(Block(self.scope, allowUnsafe))
 	
 	def popScope(self):
 		self.scope = self.scope.parent
@@ -338,6 +373,7 @@ class AnalyzerState:
 	# 				# info = info.clone()
 	# 				info.wasDeclared = self.scope.symbolInfo[info.symbol].wasDeclared
 	# 			self.scope.symbolInfo[info.symbol] = info
+		return self.popMIR()
 	
 	def lookupSymbol(self, path, symbolTable=None, inTypePosition=False, inValuePosition=False):
 		symbolTok = path[0]
@@ -384,7 +420,7 @@ class AnalyzerState:
 				logError(self, symbolTok.span, '`{}` is not a type'.format(symbolTok.content))
 				symbol = None
 		elif inValuePosition and not inTypePosition:
-			if not isinstance(symbol, ValueSymbol) and type(symbol) != VariantDecl:
+			if not isinstance(symbol, ValueSymbol) and type(symbol) != VariantDecl and type(symbol) != LocalSymbol:
 				if isinstance(symbol, TypeSymbol):
 					found = 'type reference'
 				elif type(symbol) == Mod:

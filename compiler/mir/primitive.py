@@ -1,0 +1,71 @@
+from .mir    import MIR, StaticData, StaticDataType
+from ..ir    import FundamentalType, Imm, I8
+from ..types import Bool, Void
+
+class VoidValue(MIR):
+	def __init__(self, span):
+		super().__init__(span)
+		self.type = Void
+		self.hasValue = True
+	
+	def checkFlow(self, scope):
+		pass
+	
+	def writeIR(lit, state):
+		pass
+	
+	def __str__(self):
+		return 'void'
+
+class BoolValue(MIR):
+	def __init__(self, value, span):
+		super().__init__(span)
+		self.value = value
+		self.type = Bool
+		self.hasValue = True
+	
+	def checkFlow(self, scope):
+		pass
+	
+	def writeIR(self, state):
+		state.appendInstr(Imm(ast, I8, 1 if self.value else 0))
+	
+	def __str__(self):
+		return 'true' if self.value else 'false'
+
+class IntValue(MIR):
+	def __init__(self, value, type, span):
+		super().__init__(span)
+		self.value = value
+		self.type = type
+		self.hasValue = True
+	
+	def checkFlow(self, scope):
+		pass
+	
+	def staticEval(self, state):
+		fType = FundamentalType.fromResolvedType(self.type)
+		return StaticData(self.value, StaticDataType.INT, fType)
+	
+	def writeIR(ast, state):
+		fType = FundamentalType.fromResolvedType(ast.type)
+		state.appendInstr(Imm(ast, fType, ast.value))
+	
+	def __str__(self):
+		return str(self.value)
+
+class FloatValue(MIR):
+	def __init__(self, value, type, span):
+		super().__init__(span, True)
+		self.value = value
+		self.type = type
+	
+	def checkFlow(self, scope):
+		pass
+	
+	def writeIR(ast, state):
+		fType = FundamentalType.fromResolvedType(ast.type)
+		state.appendInstr(Imm(ast, fType, ast.value))
+	
+	def __str__(self):
+		return str(self.value)
