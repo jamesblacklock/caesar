@@ -12,6 +12,7 @@ class LocalSymbol(MIR):
 			name = '$temp{}'.format(TEMP_COUNTER)
 			TEMP_COUNTER += 1
 		self.name = name
+		self.unused = True
 		self.isParam = isParam
 		self.type = type
 		self.mut = mut

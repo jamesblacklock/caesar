@@ -2,9 +2,10 @@ from .mir import MIR
 from ..ir import Ret, Br, Raise
 
 class LoopCtl(MIR):
-	def __init__(self, isContinue, span):
+	def __init__(self, isContinue, dropBlock, span):
 		super().__init__(span)
 		self.isContinue = isContinue
+		self.dropBlock = dropBlock
 	
 	def checkFlow(self, scope):
 		scope.doBreak(self, self.isContinue)
@@ -24,9 +25,10 @@ class LoopCtl(MIR):
 		return 'continue' if self.isContinue else 'break'
 
 class Return(MIR):
-	def __init__(self, access, span):
+	def __init__(self, access, dropBlock, span):
 		super().__init__(span)
 		self.access = access
+		self.dropBlock = dropBlock
 	
 	def checkFlow(self, scope):
 		if self.access:

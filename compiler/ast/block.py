@@ -1,11 +1,10 @@
 from .ast            import ValueExpr
 from ..types         import Void
-from .               import ctlflow, asgn, ifexpr, localdecl
-from ..mir           import access
+from .               import ifexpr
+from ..mir           import access as accessmod, ctlflow
 from ..scope         import ScopeType
-from ..log           import logError, logWarning
+from ..log           import logWarning
 from ..span          import Span
-from ..mir           import access as accessmod
 from ..mir.primitive import VoidValue
 from ..mir.block     import createDropBlock
 
@@ -56,9 +55,9 @@ class Block(ValueExpr):
 					(tempSymbol, tempWrite) = accessmod.createTempSymbol(expr)
 					state.analyzeNode(tempSymbol)
 					state.analyzeNode(tempWrite)
-					continue
+				else:
+					state.analyzeNode(expr, Void)
 				
-				state.analyzeNode(expr, Void)
 				state.mirBlock.append(state.scope.dropBlock)
 				state.scope.dropBlock = createDropBlock(self)
 			
@@ -70,18 +69,19 @@ class Block(ValueExpr):
 		if state.scope.type == ScopeType.FN:
 			if access and implicitType != Void:
 				assert not state.scope.didReturn
-				ret = ctlflow.Return(access, access.span)
+				ret = ctlflow.Return(access, lastDropBlock, access.span)
 				state.mirBlock.append(lastDropBlock)
 				state.analyzeNode(ret)
 				access.dropBlock = lastDropBlock
 			elif not state.scope.didReturn:
-				ret = ctlflow.Return(None, self.span)
+				ret = ctlflow.Return(None, lastDropBlock, self.span)
 				state.mirBlock.append(lastDropBlock)
 				state.analyzeNode(ret)
 			
 			lastDropBlock = None
-			assert state.mirBlock.scope.didReturn
-		elif access == None and implicitType != Void and state.scope.type in (ScopeType.IF, ScopeType.ELSE):
+			state.mirBlock.scope.didReturn = True
+		elif access == None and implicitType != Void and state.scope.type in (ScopeType.IF, ScopeType.ELSE) and \
+			not (state.scope.didReturn or state.scope.didBreak):
 			(tempSymbol, tempWrite, tempRead) = accessmod.createTempTriple(VoidValue(self.span))
 			state.analyzeNode(tempSymbol)
 			state.analyzeNode(tempWrite)

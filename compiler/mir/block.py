@@ -1,12 +1,6 @@
 from .mir    import MIR, indent
-from ..types import Void
-from ..ast       import ctlflow, localdecl, asgn, ifexpr
-from .        import access
-from ..scope  import ScopeType
-from ..log   import logError, logWarning
-from ..span   import Span
+from ..scope import ScopeType
 from .ifexpr import If
-from .  import access
 
 def createDropBlock(block):
 	return Block(None, False, block.span, True)
@@ -47,7 +41,7 @@ class Block(MIR):
 		
 		if self.scope.type == ScopeType.IF:
 			self.lastIfBranchOuterSymbolInfo = outerSymbolInfo
-		elif self.scope.type != ScopeType.FN:
+		elif outerSymbolInfo and self.scope.type != ScopeType.FN:
 			for info in outerSymbolInfo.values():
 				if info.symbol in self.scope.parent.symbolInfo:
 					info.wasDeclared = self.scope.parent.symbolInfo[info.symbol].wasDeclared

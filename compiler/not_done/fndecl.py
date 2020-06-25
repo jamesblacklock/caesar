@@ -4,6 +4,7 @@ from ..log    import logError
 from ..types  import FnType, Void
 from ..ast        import attrs
 from ..   import scope
+from ..mir.block import createDropBlock
 
 class CConv(Enum):
 	CAESAR = 'CAESAR'
@@ -24,6 +25,7 @@ class FnDecl(ValueSymbol):
 		self.unsafe = unsafe
 		self.pub = pub
 		self.mirBody = None
+		self.paramDropBlock = None
 	
 	def analyzeSig(self, state):
 		attrs.invokeAttrs(state, self)
@@ -57,8 +59,9 @@ class FnDecl(ValueSymbol):
 		for param in self.params:
 			param.type = state.finishResolvingType(param.type)
 		
-		state.pushScope(scope.ScopeType.FN, fnDecl=self)
+		state.pushScope(scope.ScopeType.FN, fnDecl=self, allowUnsafe=self.unsafe)
 		
+		self.paramDropBlock = createDropBlock(self)
 		for param in self.params:
 			state.analyzeNode(param)
 		
@@ -69,7 +72,7 @@ class FnDecl(ValueSymbol):
 		state.analyzeNode(self.body, self.returnType)
 		self.mirBody = state.popScope()
 		
-		# print(self)
+		print(self)
 		
 		if not state.failed:
 			self.mirBody.checkFlow(None)

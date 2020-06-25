@@ -9,18 +9,18 @@ class AsExpr(ValueExpr):
 		self.expr = expr
 		self.typeRef = typeRef
 	
-	def analyze(asExpr, state, implicitType):
-		type = state.resolveTypeRef(asExpr.typeRef)
-		access = state.analyzeNode(asExpr.expr, asExpr.type)
+	def analyze(self, state, implicitType):
+		type = state.resolveTypeRef(self.typeRef)
+		access = state.analyzeNode(self.expr, self.type)
 		
 		if not type or typesMatch(type, access.type):
 			return access
 		elif access.type.isOwnedType and not type.isOwnedType:
-			t = asExpr.expr.type
+			t = access.type
 			type = OwnedType(type, t.acquire, t.release, t.acquireSpan, t.releaseSpan)
 		
 		if not canCoerce(access.type, type):
-			logError(state, asExpr.span, 'cannot coerce from {} to {}'.format(access.type, type))
+			logError(state, self.span, 'cannot coerce from {} to {}'.format(access.type, type))
 		
 		if access.type.byteSize == type.byteSize and access.type.isFloatType == type.isFloatType:
 			access.type = type

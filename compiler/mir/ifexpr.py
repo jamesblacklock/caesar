@@ -1,5 +1,5 @@
-from .mir   import MIR, indent
-from ..ir   import getInputInfo, beginBlock, Br, BrIf, Ret, BlockMarker
+from .mir import MIR, indent
+from ..ir import getInputInfo, beginBlock, Br, BrIf, Ret, BlockMarker
 
 class If(MIR):
 	def __init__(self, access, ifBlock, elseBlock, type, span):

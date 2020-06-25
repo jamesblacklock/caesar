@@ -11,10 +11,9 @@ class Loop(AST):
 		super().__init__(span)
 		self.block = block
 	
-	def analyze(loop, state, implicitType):
-		# loop.block.loopExpr = loop
+	def analyze(self, state, implicitType):
 		state.pushScope(ScopeType.LOOP, loopExpr=self)
-		state.analyzeNode(loop.block, Void)
+		state.analyzeNode(self.block, Void)
 		block = state.popScope()
 		return LoopMIR(block, self.span)
 

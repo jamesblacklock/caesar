@@ -2,6 +2,7 @@ from .ast         import ValueExpr
 from ..types      import tryPromote, typesMatch, Void, Bool, OptionType
 from ..scope      import ScopeType
 from ..mir.ifexpr import If as IfMIR
+from ..mir        import access as accessmod
 
 class If(ValueExpr):
 	def __init__(self, expr, ifBlock, elseBlock, span):
@@ -22,14 +23,14 @@ class If(ValueExpr):
 		state.pushScope(ScopeType.IF, ifExpr=self)
 		state.scope.intersectContracts(contracts)
 		ifAccess = state.analyzeNode(self.block, implicitType)
-		ifType = Void if implicitType == Void else ifAccess.type if ifAccess.type else Void
+		ifType = Void if implicitType == Void else ifAccess.type if ifAccess and ifAccess.type else Void
 		block = state.popScope()
 		
 		state.pushScope(ScopeType.ELSE, ifExpr=self)
 		contracts = { c.symbol: c.inverted() for c in contracts.values() } if contracts else None
 		state.scope.intersectContracts(contracts)
 		elseAccess = state.analyzeNode(self.elseBlock, implicitType)
-		elseType = Void if implicitType == Void else elseAccess.type if elseAccess.type else Void
+		elseType = Void if implicitType == Void else elseAccess.type if elseAccess and elseAccess.type else Void
 		elseBlock = state.popScope()
 		
 		didReturn = block.scope.didReturn and elseBlock.scope.didReturn
@@ -42,9 +43,11 @@ class If(ValueExpr):
 			type = Void
 		elif didReturn:
 			type = implicitType if implicitType else Void
-		elif block.didReturn:
+		elif block.scope.didReturn:
 			type = elseType
-		elif elseBlock.didReturn or typesMatch(ifType, elseType):
+		elif elseBlock.scope.didReturn:
+			type = ifType
+		elif typesMatch(ifType, elseType):
 			type = ifType
 		else:
 			ifAccess = tryPromote(state, ifAccess, elseType)
@@ -60,18 +63,32 @@ class If(ValueExpr):
 		
 		result = None
 		if type != Void:
-			assert typesMatch(ifAccess.type, elseAccess.type)
+			assert not (ifAccess and elseAccess) or typesMatch(ifAccess.type, elseAccess.type)
 			
-			(tempSymbol, ifWrite, elseWrite) = SymbolAccess.createTempSymbol(ifAccess, elseAccess)
-			state.analyzeNode(tempSymbol)
-			state.pushMIR(block)
-			state.analyzeNode(ifWrite)
-			block = state.popMIR()
-			state.pushMIR(elseBlock)
-			state.analyzeNode(elseWrite)
-			elseBlock = state.popMIR()
+			if ifAccess and elseAccess:
+				(tempSymbol, ifWrite, elseWrite) = accessmod.createTempSymbol(ifAccess, elseAccess)
+				state.analyzeNode(tempSymbol)
+				state.pushMIR(block)
+				state.analyzeNode(ifWrite)
+				block = state.popMIR()
+				state.pushMIR(elseBlock)
+				state.analyzeNode(elseWrite)
+				elseBlock = state.popMIR()
+			elif ifAccess:
+				(tempSymbol, ifWrite) = accessmod.createTempSymbol(ifAccess)
+				state.analyzeNode(tempSymbol)
+				state.pushMIR(block)
+				state.analyzeNode(ifWrite)
+				block = state.popMIR()
+			else:
+				assert elseAccess
+				(tempSymbol, elseWrite) = accessmod.createTempSymbol(elseAccess)
+				state.analyzeNode(tempSymbol)
+				state.pushMIR(elseBlock)
+				state.analyzeNode(elseWrite)
+				elseBlock = state.popMIR()
 			
-			result = SymbolRead(self.span)
+			result = accessmod.SymbolRead(self.span)
 			result.symbol = tempSymbol
 			result.type = tempSymbol.type
 			result.ref = True

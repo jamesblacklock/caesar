@@ -1,5 +1,5 @@
-from .mir     import MIR, indent
-from ..ir      import Br, BrIf, Ret, BlockMarker, Raise, getInputInfo, beginBlock
+from .mir import MIR, indent
+from ..ir import Br, BrIf, Ret, BlockMarker, Raise, getInputInfo, beginBlock
 
 class Loop(MIR):
 	def __init__(self, block, span):

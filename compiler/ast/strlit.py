@@ -41,7 +41,7 @@ class CharLit(ValueExpr):
 		self.value = ord(bytes)
 	
 	def analyze(self, state, implicitType):
-		self.type = types.Char
+		return IntValue(self.value, types.Char, self.span)
 
 STR_COUNTER = 0
 
@@ -76,4 +76,4 @@ class StrLit(ValueExpr):
 			])
 		])
 		
-		return structValue#Str(self.value, structValue, StrType, self.span)
+		return structValue

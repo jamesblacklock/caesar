@@ -1,5 +1,5 @@
 from .mir import MIR, StaticDataType
-from ..ir import FundamentalType, Pop
+from ..   import ir
 
 class Coerce(MIR):
 	def __init__(self, access, type, span):
@@ -30,14 +30,14 @@ class Coerce(MIR):
 				logWarning(state, self.access.span, 'value out of range for type `{}` and will be clamped'
 					.format(self.type))
 			
-			staticValue.fType = FundamentalType.fromResolvedType(self.type)
+			staticValue.fType = ir.FundamentalType.fromResolvedType(self.type)
 			return staticValue
 		else:
 			return None
 	
 	def writeTraitCoercionIR(self, state):
 		vtblName = self.access.type.baseType.traitImpls[self.type.baseType].vtblName
-		fType = FundamentalType.fromResolvedType(self.type)
+		fType = ir.FundamentalType.fromResolvedType(self.type)
 		
 		state.appendInstr(ir.Res(self, fType))
 		
@@ -61,13 +61,13 @@ class Coerce(MIR):
 		self.access.writeIR(state)
 		
 		if self.type.isVoidType:
-			state.appendInstr(Pop(self))
+			state.appendInstr(ir.Pop(self))
 			return
 		
 		fromSigned = self.access.type.isSigned
 		toSigned = self.type.isSigned
-		fromType = FundamentalType.fromResolvedType(fromType)
-		toType = FundamentalType.fromResolvedType(toType)
+		fromType = ir.FundamentalType.fromResolvedType(fromType)
+		toType = ir.FundamentalType.fromResolvedType(toType)
 		
 		if fromType.byteSize == toType.byteSize and fromType.isFloatType == toType.isFloatType:
 			assert 0
@@ -98,3 +98,6 @@ class Coerce(MIR):
 				instr = ir.Truncate(self, toType)
 		
 		state.appendInstr(instr)
+	
+	def __str__(self):
+		return '{} as {}'.format(str(self.access), str(self.type))

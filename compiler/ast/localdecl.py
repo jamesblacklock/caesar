@@ -30,7 +30,7 @@ class FnParam(LocalDecl):
 		self.symbol = None
 	
 	def analyze(self, state, implicitType):
-		self.symbol = super().analyze(state, implicitType, state.scope.fnDecl.body, True)
+		self.symbol = super().analyze(state, implicitType, state.scope.fnDecl.paramDropBlock, True)
 
 class LetDecl(LocalDecl):
 	def __init__(self, nameTok, typeRef, mut, expr, span):

@@ -1,8 +1,6 @@
 from .ast          import AST
 from ..types       import typesMatch, Void
-from .             import valueref, block
-from ..mir         import access
-from ..scope       import ScopeType
+from ..mir.block   import createDropBlock
 from ..log         import logError
 from ..mir.ctlflow import LoopCtl, Return as ReturnMIR
 
@@ -19,7 +17,9 @@ class Break(AST):
 	
 	def analyze(self, state, implicitType):
 		analyzeBreakOrContinue(state, self, False)
-		return LoopCtl(False, self.span)
+		dropBlock = createDropBlock(self)
+		state.mirBlock.append(dropBlock)
+		return LoopCtl(False, dropBlock, self.span)
 
 class Continue(AST):
 	def __init__(self, span):
@@ -27,7 +27,9 @@ class Continue(AST):
 	
 	def analyze(self, state, implicitType):
 		analyzeBreakOrContinue(state, self, True)
-		return LoopCtl(True, self.span)
+		dropBlock = createDropBlock(self)
+		state.mirBlock.append(dropBlock)
+		return LoopCtl(True, dropBlock, self.span)
 
 class Return(AST):
 	def __init__(self, expr, span):
@@ -51,4 +53,6 @@ class Return(AST):
 		
 		state.scope.didReturn = True
 		
-		return ReturnMIR(access, self.span)
+		dropBlock = createDropBlock(self)
+		state.mirBlock.append(dropBlock)
+		return ReturnMIR(access, dropBlock, self.span)

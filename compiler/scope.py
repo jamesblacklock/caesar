@@ -1,7 +1,7 @@
 from enum             import Enum
 from .mir.drop        import DropSymbol
 from .log             import logError, logWarning, logExplain
-from .not_done        import fndecl, staticdecl, enumdecl
+from .not_done        import staticdecl, enumdecl
 from .mir             import access as accessmod
 from .mir.localsymbol import LocalSymbol
 from .mir.fncall      import FnCall
@@ -185,7 +185,7 @@ class Scope:
 								lastUse.copy = True
 								for (br, otherLoopExpr) in info.breaksAfterMove.items():
 									if loopExpr == otherLoopExpr:
-										self.dropSymbol(info.symbol, br.block)
+										self.dropSymbol(info.symbol, br.dropBlock)
 							elif info.symbol.dropFn and info.symbol.type.isCopyable:
 								lastUse.copy = True
 								self.dropSymbol(info.symbol, lastUse.dropBlock)
@@ -193,58 +193,63 @@ class Scope:
 							if loopExpr and loopExpr != self.loopExpr:
 								for (br, otherLoopExpr) in info.breaksSinceLastUse.items():
 									if loopExpr == otherLoopExpr:
-										self.dropSymbol(info.symbol, br.block)
+										self.dropSymbol(info.symbol, br.dropBlock)
 							else:
 								self.dropSymbol(info.symbol, lastUse.dropBlock)
 			elif not self.didReturn:
 				outerSymbolInfo[info.symbol] = info
 		
-		if self.type == ScopeType.ELSE:
-			ifInfo = self.ifBranchOuterSymbolInfo
-			elseInfo = outerSymbolInfo
-			symbols = set(ifInfo.keys())
-			symbols.update(elseInfo.keys())
-			for symbol in symbols:
-				if symbol in ifInfo and symbol in elseInfo:
-					info1 = ifInfo[symbol]
-					info2 = elseInfo[symbol]
-					info1.lastUses.update(info2.lastUses)
-					info1.returnsAfterMove.update(info2.returnsAfterMove)
-					info1.returnsSinceLastUse.update(info2.returnsSinceLastUse)
-					info1.breaksAfterMove.update(info2.breaksAfterMove)
-					info1.breaksSinceLastUse.update(info2.breaksSinceLastUse)
-					info1.dropInBlock.update(info2.dropInBlock)
-					info1.borrows.update(info2.borrows)
-					# info.fieldInfo = { k: v.clone() for (k, v) in self.fieldInfo.items() }
-					info1.borrowedBy.update(info2.borrowedBy)
-					info1.usesOfBorrowsSinceLastUse.update(info2.usesOfBorrowsSinceLastUse)
-					
-					if info2.maybeMoved or info1.moved != info2.moved:
-						info1.moved = True
-						info1.maybeMoved = True
-					if info2.maybeUninit or info1.uninit != info2.uninit:
-						info1.typeModifiers.uninit = True
-						info1.maybeUninit = True
-					outerSymbolInfo[symbol] = info1
-				else:
-					if symbol in ifInfo:
-						info = ifInfo[symbol]
-						block = self.ifExpr.elseBlock
-						outerSymbolInfo[symbol] = info
+		if self.type == ScopeType.IF and self.didReturn:
+			outerSymbolInfo = None
+		elif self.type == ScopeType.ELSE:
+			if self.didReturn:
+				outerSymbolInfo = self.ifBranchOuterSymbolInfo
+			elif self.ifBranchOuterSymbolInfo:
+				ifInfo = self.ifBranchOuterSymbolInfo
+				elseInfo = outerSymbolInfo
+				symbols = set(ifInfo.keys())
+				symbols.update(elseInfo.keys())
+				for symbol in symbols:
+					if symbol in ifInfo and symbol in elseInfo:
+						info1 = ifInfo[symbol]
+						info2 = elseInfo[symbol]
+						info1.lastUses.update(info2.lastUses)
+						info1.returnsAfterMove.update(info2.returnsAfterMove)
+						info1.returnsSinceLastUse.update(info2.returnsSinceLastUse)
+						info1.breaksAfterMove.update(info2.breaksAfterMove)
+						info1.breaksSinceLastUse.update(info2.breaksSinceLastUse)
+						info1.dropInBlock.update(info2.dropInBlock)
+						info1.borrows.update(info2.borrows)
+						# info.fieldInfo = { k: v.clone() for (k, v) in self.fieldInfo.items() }
+						info1.borrowedBy.update(info2.borrowedBy)
+						info1.usesOfBorrowsSinceLastUse.update(info2.usesOfBorrowsSinceLastUse)
+						
+						if info2.maybeMoved or info1.moved != info2.moved:
+							info1.moved = True
+							info1.maybeMoved = True
+						if info2.maybeUninit or info1.uninit != info2.uninit:
+							info1.typeModifiers.uninit = True
+							info1.maybeUninit = True
+						outerSymbolInfo[symbol] = info1
 					else:
-						info = elseInfo[symbol]
-						block = self.ifExpr.block
-					
-					if not self.loopExpr:
-						info.dropInBlock.add(block)
-					
-					parentInfo = self.parent.loadAndSaveSymbolInfo(symbol)
-					if parentInfo.moved != info.moved:
-						info.moved = True
-						info.maybeMoved = True
-					if parentInfo.uninit != info.uninit:
-						info.typeModifiers.uninit = True
-						info.maybeUninit = True
+						if symbol in ifInfo:
+							info = ifInfo[symbol]
+							block = self.ifExpr.elseBlock
+							outerSymbolInfo[symbol] = info
+						else:
+							info = elseInfo[symbol]
+							block = self.ifExpr.block
+						
+						if not self.loopExpr:
+							info.dropInBlock.add(block)
+						
+						parentInfo = self.parent.loadAndSaveSymbolInfo(symbol)
+						if parentInfo.moved != info.moved:
+							info.moved = True
+							info.maybeMoved = True
+						if parentInfo.uninit != info.uninit:
+							info.typeModifiers.uninit = True
+							info.maybeUninit = True
 		
 		return outerSymbolInfo
 	
@@ -311,13 +316,13 @@ class Scope:
 			
 			if info.returnsAfterMove:
 				for ret in info.returnsAfterMove:
-					self.dropSymbol(info.symbol, ret.block)
+					self.dropSymbol(info.symbol, ret.dropBlock)
 				info.returnsAfterMove = set()
 				
 			if info.breaksAfterMove:
 				for (br, loopExpr) in info.breaksAfterMove.items():
 					if self.loopExpr == loopExpr:
-						self.dropSymbol(info.symbol, br.block)
+						self.dropSymbol(info.symbol, br.dropBlock)
 				info.breaksAfterMove = {}
 			
 			info.moved = False
@@ -329,13 +334,13 @@ class Scope:
 		
 		if info.returnsSinceLastUse:
 			for ret in info.returnsSinceLastUse:
-				self.dropSymbol(info.symbol, ret.block)
+				self.dropSymbol(info.symbol, ret.dropBlock)
 			info.returnsSinceLastUse = set()
 		
 		if info.breaksSinceLastUse:
 			for (br, loopExpr) in info.breaksSinceLastUse.items():
 				if self.loopExpr == loopExpr:
-					self.dropSymbol(info.symbol, br.block)
+					self.dropSymbol(info.symbol, br.dropBlock)
 			info.breaksSinceLastUse = {}
 		
 		if info.dropInBlock:

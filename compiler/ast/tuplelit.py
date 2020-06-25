@@ -1,5 +1,5 @@
 from .ast               import ValueExpr
-from ..types            import Void, TupleType, ArrayType
+from ..types            import Void, TupleType, ArrayType, getAlignedSize
 from ..mir.createstruct import CreateStruct, FieldInit
 
 class TupleLit(ValueExpr):
@@ -46,7 +46,7 @@ class ArrayLit(ValueExpr):
 	
 	def analyze(self, state, implicitType):
 		implicitElementType = Void
-		count = len(arr.values)
+		count = len(self.values)
 		if implicitType and implicitType.isArrayType:
 			implicitElementType = implicitType.baseType
 			count = max(count, implicitType.count)
@@ -64,6 +64,6 @@ class ArrayLit(ValueExpr):
 		
 		elementType = implicitElementType
 		type = ArrayType(elementType, count)
-		alignedSize = types.getAlignedSize(elementType)
+		alignedSize = getAlignedSize(elementType)
 		inits = [FieldInit(access, alignedSize * i) for (i, access) in enumerate(accesses)]
 		return CreateStruct(inits, type, self.span)
