@@ -1672,6 +1672,21 @@ def declareFns(mod, output):
 		if decl.pub and not decl.extern:
 			output.write('global {}\n'.format(decl.mangledName))
 
+def bytesDef(bytes):
+	strs = [str(b) for b in bytes]
+	lines = []
+	i = 0
+	while i < len(strs):
+		lineLen = 0
+		j = i
+		while i < len(strs) and lineLen < 64:
+			lineLen += len(strs[i])
+			i += 1
+		lines.append(','.join(strs[j:i]))
+	
+	s = '\n\t\tdb ' + '\n\t\tdb '.join(lines) + '\n'
+	return s
+
 def defineStatics(mod, output):
 	for decl in mod.mods:
 		defineStatics(decl, output)
@@ -1681,14 +1696,14 @@ def defineStatics(mod, output):
 			continue
 		
 		for staticDef in decl.ir.staticDefs:
-			bytes = ','.join(str(b) for b in staticDef.toBytes())
-			output.write('\t{}: db {}\n'.format(staticDef.label, bytes))
+			bytes = bytesDef(staticDef.toBytes())
+			output.write('\t{}:{}'.format(staticDef.label, bytes))
 	
 	for decl in mod.statics:
 		if decl.extern:
 			continue
 		
-		bytes = ','.join(str(b) for b in decl.staticValue.toBytes())
+		bytes = bytesDef(decl.staticValue.toBytes())
 		output.write('\t{}: db {}\n'.format(decl.staticValue.label, bytes))
 	
 	if not mod.extern and mod.isImpl and mod.vtbl:

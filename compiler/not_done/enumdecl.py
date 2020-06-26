@@ -46,14 +46,14 @@ class EnumDecl(TypeSymbol):
 		self.byteSize = self.structType.byteSize
 		self.align = self.structType.align
 	
-	def pretty(self, output, indent=0):
-		output.write('enum ' + self.name, indent)
-		output.write('\n')
-		for variant in self.variants[:-1]:
-			variant.pretty(output, indent + 1)
-			output.write('\n')
-		if len(self.variants) > 0:
-			self.variants[-1].pretty(output, indent + 1)
+	# def pretty(self, output, indent=0):
+	# 	output.write('enum ' + self.name, indent)
+	# 	output.write('\n')
+	# 	for variant in self.variants[:-1]:
+	# 		variant.pretty(output, indent + 1)
+	# 		output.write('\n')
+	# 	if len(self.variants) > 0:
+	# 		self.variants[-1].pretty(output, indent + 1)
 
 class VariantDecl(AST):
 	def __init__(self, nameTok, typeRef, span):
@@ -65,9 +65,9 @@ class VariantDecl(AST):
 		self.type = None
 		self.tag = None
 	
-	def pretty(self, output, indent=0):
-		output.write(self.name, indent)
-		if self.type:
-			self.type.pretty(output)
-		elif self.typeRef:
-			self.typeRef.pretty(output)
+	# def pretty(self, output, indent=0):
+	# 	output.write(self.name, indent)
+	# 	if self.type:
+	# 		self.type.pretty(output)
+	# 	elif self.typeRef:
+	# 		self.typeRef.pretty(output)

@@ -162,12 +162,12 @@ class Impl(Mod):
 				implFn = symbolTable[symbol.name]
 				self.vtbl.append(implFn.mangledName)
 	
-	def pretty(self, output, indent=0):
-		path = '::'.join(tok.content for tok in self.path)
-		output.write('impl {}\n'.format(path), indent)
-		for decl in self.decls:
-			decl.pretty(output, indent + 1)
-			output.write('\n\n')
+	# def pretty(self, output, indent=0):
+	# 	path = '::'.join(tok.content for tok in self.path)
+	# 	output.write('impl {}\n'.format(path), indent)
+	# 	for decl in self.decls:
+	# 		decl.pretty(output, indent + 1)
+	# 		output.write('\n\n')
 
 class TraitDecl(TypeSymbol):
 	def __init__(self, nameTok, doccomment, pub, decls, span):
@@ -185,8 +185,8 @@ class TraitDecl(TypeSymbol):
 	def analyze(self, state):
 		self.mod.analyze(state)
 	
-	def pretty(self, output, indent=0):
-		output.write('trait {}\n'.format(self.name), indent)
-		for decl in self.decls:
-			decl.pretty(output, indent + 1)
-			output.write('\n\n')
+	# def pretty(self, output, indent=0):
+	# 	output.write('trait {}\n'.format(self.name), indent)
+	# 	for decl in self.decls:
+	# 		decl.pretty(output, indent + 1)
+	# 		output.write('\n\n')

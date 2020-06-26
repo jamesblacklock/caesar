@@ -11,14 +11,14 @@ class AliasDecl(Symbol):
 	def analyze(self, state, implicitType):
 		self.symbol = state.finishResolvingType(self.type)
 	
-	def pretty(self, output, indent=0):
-		output.write('alias ', indent)
-		output.write(self.name)
-		output.write(' = ')
-		if self.type:
-			output.write(self.type.name)
-		else:
-			output.write(self.typeRef.name)
+	# def pretty(self, output, indent=0):
+	# 	output.write('alias ', indent)
+	# 	output.write(self.name)
+	# 	output.write(' = ')
+	# 	if self.type:
+	# 		output.write(self.type.name)
+	# 	else:
+	# 		output.write(self.typeRef.name)
 
 class TypeDecl(TypeSymbol):
 	def __init__(self, nameTok, typeRef, span, doccomment):
@@ -31,11 +31,11 @@ class TypeDecl(TypeSymbol):
 		self.byteSize = self.baseType.byteSize
 		self.align = self.baseType.align
 	
-	def pretty(self, output, indent=0):
-		output.write('type ', indent)
-		output.write(self.name)
-		output.write(' = ')
-		if self.baseType:
-			output.write(self.baseType.name)
-		else:
-			output.write(self.typeRef.name)
+	# def pretty(self, output, indent=0):
+	# 	output.write('type ', indent)
+	# 	output.write(self.name)
+	# 	output.write(' = ')
+	# 	if self.baseType:
+	# 		output.write(self.baseType.name)
+	# 	else:
+	# 		output.write(self.typeRef.name)
