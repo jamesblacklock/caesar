@@ -1,4 +1,4 @@
-from .ast            import ValueExpr
+from .ast            import AST
 from ..types         import Void
 from .               import ifexpr
 from ..mir           import access as accessmod, ctlflow
@@ -8,9 +8,9 @@ from ..span          import Span
 from ..mir.primitive import VoidValue
 from ..mir.block     import createDropBlock
 
-class Block(ValueExpr):
+class Block(AST):
 	def __init__(self, exprs, span, scopeType=None):
-		super().__init__(span)
+		super().__init__(span, True)
 		self.exprs = exprs
 		self.scopeType = scopeType
 		self.blockScope = scopeType == ScopeType.BLOCK
@@ -77,14 +77,15 @@ class Block(ValueExpr):
 				ret = ctlflow.Return(None, lastDropBlock, self.span)
 				state.mirBlock.append(lastDropBlock)
 				state.analyzeNode(ret)
+				access = None
 			
 			lastDropBlock = None
-			state.mirBlock.scope.didReturn = True
 		elif access == None and implicitType != Void and state.scope.type in (ScopeType.IF, ScopeType.ELSE) and \
 			not (state.scope.didReturn or state.scope.didBreak):
 			(tempSymbol, tempWrite, tempRead) = accessmod.createTempTriple(VoidValue(self.span))
 			state.analyzeNode(tempSymbol)
 			state.analyzeNode(tempWrite)
+			tempRead.type = tempSymbol.type
 			access = tempRead
 		elif self.blockScope:
 			mirBlock = state.popScope()
@@ -95,6 +96,7 @@ class Block(ValueExpr):
 					state.pushMIR(mirBlock)
 					state.analyzeNode(tempWrite)
 					mirBlock = state.popMIR()
+					tempRead.type = tempSymbol.type
 					access = tempRead
 				else:
 					access = None

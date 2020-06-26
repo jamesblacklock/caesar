@@ -1,11 +1,12 @@
 from .mir    import MIR, TypeModifiers
 from ..ir    import FundamentalType, Res
 from ..types import PtrType, typesMatch
+from ..log   import logError
 
 TEMP_COUNTER = 0
 
 class LocalSymbol(MIR):
-	def __init__(self, name, type, mut, isParam, span):
+	def __init__(self, name, type, mut, isParam, attrDropFn, span):
 		super().__init__(span)
 		if name == None:
 			self.temp = True
@@ -17,6 +18,7 @@ class LocalSymbol(MIR):
 		self.isParam = isParam
 		self.type = type
 		self.mut = mut
+		self.attrDropFn = attrDropFn
 		self.dropFn = None
 		self.fixed = False
 		self.reserve = False
@@ -24,7 +26,7 @@ class LocalSymbol(MIR):
 	
 	@staticmethod
 	def createTemp(span):
-		return LocalSymbol(None, None, False, False, span)
+		return LocalSymbol(None, None, False, False, None, span)
 	
 	def analyze(self, state, implicitType):
 		if self.temp:
@@ -32,11 +34,14 @@ class LocalSymbol(MIR):
 		return self
 	
 	def checkDropFn(self, state):
-		if self.dropFn == None:
+		if self.type and self.type.dropFn:
+			if self.attrDropFn:
+				logError(state, self.span, 'cannot use @drop on a type that already has a drop function')
 			self.dropFn = self.type.dropFn
-		elif self.type.dropFn:
-			logError(state, self.span, 'cannot use @drop on a type that already has a drop function')
-			self.dropFn = self.type.dropFn
+		elif self.dropFn: # this happens when the type of the symbol gets changed (search canChange) and dropFn is re-checked
+			return
+		else:
+			self.dropFn = self.attrDropFn
 		
 		if self.dropFn == None:
 			return
@@ -44,6 +49,9 @@ class LocalSymbol(MIR):
 		if len(self.dropFn.params) != 1 or self.dropFn.cVarArgs:
 			logError(state, self.span, 'drop function must take 1 argument')
 			self.dropFn = None
+			return
+		
+		if not self.type:
 			return
 		
 		t = PtrType(self.type, 1, True)

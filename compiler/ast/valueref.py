@@ -1,17 +1,17 @@
-from .ast         import ValueExpr
+from .ast         import AST
 from ..mir.access import SymbolAccess
 
-class ValueRef(ValueExpr):
+class ValueRef(AST):
 	def __init__(self, path, span):
-		super().__init__(span)
+		super().__init__(span, True)
 		self.path = path
 	
 	def analyze(valueRef, state, implicitType):
 		return SymbolAccess.analyzeSymbolAccess(state, valueRef, implicitType)
 
-class Borrow(ValueExpr):
+class Borrow(AST):
 	def __init__(self, expr, span):
-		super().__init__(span)
+		super().__init__(span, True)
 		self.expr = expr
 	
 	def analyze(self, state, implicitType):

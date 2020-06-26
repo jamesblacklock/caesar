@@ -1,11 +1,11 @@
-from .ast         import ValueExpr
+from .ast         import AST
 from ..log        import logError
 from ..types      import canCoerce, typesMatch, OwnedType
 from ..mir.coerce import Coerce
 
-class AsExpr(ValueExpr):
+class AsExpr(AST):
 	def __init__(self, expr, typeRef, span):
-		super().__init__(span)
+		super().__init__(span, True)
 		self.expr = expr
 		self.typeRef = typeRef
 	

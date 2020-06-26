@@ -1,6 +1,6 @@
 from enum        import Enum
 from ..token     import TokenType
-from .ast        import ValueExpr, InfixOps,ARITHMETIC_OPS, BITWISE_OPS, BITSHIFT_OPS, CMP_OPS, \
+from .ast        import AST, InfixOps,ARITHMETIC_OPS, BITWISE_OPS, BITSHIFT_OPS, CMP_OPS, \
                         LOGIC_OPS, PTR_PTR_OPS, PTR_INT_OPS, INT_PTR_OPS, RNG_OPS
 from .primitive  import IntLit
 from .block      import Block
@@ -10,9 +10,9 @@ from ..types     import tryPromote, typesMatch, canAccommodate, hasDefiniteType,
 from ..log       import logError
 from ..mir.infix import InfixOp as InfixOpMIR
 
-class InfixOp(ValueExpr):
+class InfixOp(AST):
 	def __init__(self, l, r, op, opTok, span):
-		super().__init__(span)
+		super().__init__(span, True)
 		self.l = l
 		self.r = r
 		self.op = op
@@ -44,7 +44,7 @@ class InfixOp(ValueExpr):
 				assert 0
 		elif rIndefinite and type(infixOp.l) not in (Block, If):
 			l = state.analyzeNode(infixOp.l, implicitType)
-			if type(infixOp.r) == IntLit and infixOp.l.type and infixOp.l.type.isPtrType:
+			if type(infixOp.r) == IntLit and l.type and l.type.isPtrType:
 				# if infixOp.op in PTR_INT_OPS:
 					r = state.analyzeNode(infixOp.r, ISize if infixOp.r.value < 0 else USize)
 				# else:
@@ -54,7 +54,7 @@ class InfixOp(ValueExpr):
 				r = state.analyzeNode(infixOp.r, l.type)
 		elif lIndefinite or type(infixOp.l) in (Block, If):
 			r = state.analyzeNode(infixOp.r, implicitType)
-			if type(infixOp.l) == IntLit and infixOp.r.type and infixOp.r.type.isPtrType:
+			if type(infixOp.l) == IntLit and r.type and r.type.isPtrType:
 				# if infixOp.op in PTR_INT_OPS:
 					l = state.analyzeNode(infixOp.l, ISize if infixOp.l.value < 0 else USize)
 				# else:

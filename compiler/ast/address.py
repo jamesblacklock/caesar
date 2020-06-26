@@ -1,9 +1,9 @@
-from .ast  import ValueExpr
+from .ast  import AST
 from ..mir import access
 
-class Address(ValueExpr):
+class Address(AST):
 	def __init__(self, expr, mut, span):
-		super().__init__(span)
+		super().__init__(span, True)
 		self.expr = expr
 		self.mut = mut
 	

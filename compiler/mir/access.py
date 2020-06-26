@@ -1,4 +1,3 @@
-from ..ast.ast    import ValueExpr
 from .mir         import MIR, StaticDataType
 from ..ast        import block, deref, valueref, localdecl, field, asgn, address
 from ..not_done   import staticdecl, fndecl
@@ -9,10 +8,10 @@ from ..scope      import ScopeType
 from ..token      import TokenType
 from ..log        import logError
 from .localsymbol import LocalSymbol
+from .block       import createDropBlock
 
 def createTempSymbol(*exprs):
 	symbol = LocalSymbol.createTemp(exprs[0].span)
-	symbol.type = exprs[0].type
 	writes = []
 	for expr in exprs:
 		write = SymbolWrite(expr, expr.span)
@@ -24,7 +23,6 @@ def createTempTriple(expr):
 	(symbol, write) = createTempSymbol(expr)
 	read = SymbolRead(expr.span)
 	read.symbol = symbol
-	read.type = symbol.type
 	read.ref = True
 	return (symbol, write, read)
 
@@ -55,6 +53,7 @@ class SymbolAccess(MIR):
 		(tempSymbol, tempWrite, tempRead) = createTempTriple(expr)
 		state.analyzeNode(tempSymbol)
 		state.analyzeNode(tempWrite)
+		tempRead.type = tempSymbol.type
 		return tempRead
 	
 	@staticmethod
@@ -82,17 +81,12 @@ class SymbolAccess(MIR):
 		if access.write and access.symbol and access.symbol.dropFn:
 			(tempSymbol, tempWrite, tempRead) = createTempTriple(access.rvalue)
 			
-			access.dropBeforeAssignBlock = block.Block([], access.rvalue.span, noLower=True)
-			
-			access.rvalue = block.Block([
-					tempSymbol, 
-					tempWrite, 
-					access.dropBeforeAssignBlock, 
-					tempRead
-				], 
-				access.rvalue.span, 
-				ScopeType.BLOCK, 
-				noLower=True)
+			access.dropBeforeAssignBlock = createDropBlock(access)
+			state.analyzeNode(tempSymbol)
+			state.analyzeNode(tempWrite)
+			state.mirBlock.append(access.dropBeforeAssignBlock)
+			tempRead.type = tempSymbol.type
+			access.rvalue = tempRead
 		
 		if access.symbol == None:
 			return access
@@ -195,30 +189,24 @@ class SymbolRead(SymbolAccess):
 		
 		access.ref = not access.addr and not access.isFieldAccess
 		
-		# if canPromote(access.type, implicitType):
-		# 	expr = coercion.AsExpr(access, None, access.span, resolvedType=implicitType)
-		# else:
-		# 	expr = access
+		access.dropBlock = state.scope.dropBlock
 		access = tryPromote(state, access, implicitType)
-		
+		access.dropBlock = state.scope.dropBlock
 		
 		isCopyableDrop = type(access.symbol) == LocalSymbol and access.symbol.dropFn and \
 			access.type and access.type.isCopyable
 		
 		if isCopyableDrop or access.isFieldAccess:
-			access.dropBlock = state.scope.dropBlock
 			(symbol, write, read) = createTempTriple(access)
-			symbol.type = access.type
-			read.ref = True
-			write.type = access.type
 			write.analyzeRValue = False
 			
 			state.analyzeNode(symbol)
 			state.analyzeNode(write)
+			read.type = write.type
 			access = read
+			access.dropBlock = state.scope.dropBlock
 		
 		access.contracts = access.symbol.contracts
-		access.dropBlock = state.scope.dropBlock
 		return access
 	
 	def checkFlow(self, scope):
@@ -318,10 +306,13 @@ class SymbolWrite(SymbolAccess):
 		if access.symbol.type == None:
 			access.symbol.type = access.rvalue.type
 			access.type = access.rvalue.type
+			access.symbol.checkDropFn(state)
 		elif access.type and access.rvalue.type:
 			# if canPromote(access.rvalue.type, access.type):
 			# 	access.rvalue = coercion.AsExpr(access.rvalue, None, access.span, resolvedType=access.type)
+			rvalueDropBlock = access.rvalue.dropBlock
 			access.rvalue = tryPromote(state, access.rvalue, access.rvalueImplicitType)
+			access.rvalue.dropBlock = rvalueDropBlock
 			
 			if not typesMatch(access.type, access.rvalue.type):
 				logError(state, access.rvalue.span, 
@@ -419,6 +410,7 @@ def _SymbolAccess__analyzeSymbolAccess(state, expr, access, implicitType=None):
 		if access.symbol:
 			if implicitType and access.symbol.type and access.symbol.type.canChangeTo(implicitType):
 				access.symbol.type = implicitType
+				access.symbol.checkDropFn(state)
 			
 			t = access.symbol.type
 			if access.symbol in state.scope.contracts:

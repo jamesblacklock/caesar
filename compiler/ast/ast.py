@@ -17,11 +17,11 @@ class Contract:
 		return Contract(self.symbol, self.enumType, variants, self.indLevel)
 
 class AST:
-	def __init__(self, span):
+	def __init__(self, span, hasValue=False):
 		self.attrs = []
 		self.attrsInvoked = False
 		self.span = span
-		self.hasValue = False
+		self.hasValue = hasValue
 		self.analyzed = False
 	
 	def setAnalyzed(self):
@@ -48,14 +48,6 @@ class ValueSymbol(Symbol):
 		# self.type = None
 		# self.typeModifiers = TypeModifiers()
 		# self.contracts = None
-
-class ValueExpr(AST):
-	def __init__(self, span):
-		super().__init__(span)
-		self.type = None
-		self.typeModifiers = None
-		self.hasValue = True
-		self.contracts = None
 
 class InfixOps(Enum):
 	ARROW = '->'

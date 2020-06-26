@@ -1,4 +1,4 @@
-from .ast               import ValueExpr
+from .ast               import AST
 from ..mir.label        import Label
 from ..mir.createstruct import CreateStruct
 from ..                 import types
@@ -34,9 +34,9 @@ def strBytes(s):
 	b.append(0)
 	return b
 
-class CharLit(ValueExpr):
+class CharLit(AST):
 	def __init__(self, value, span):
-		super().__init__(span)
+		super().__init__(span, True)
 		bytes = strEsc(value)
 		self.value = ord(bytes)
 	
@@ -45,9 +45,9 @@ class CharLit(ValueExpr):
 
 STR_COUNTER = 0
 
-class StrLit(ValueExpr):
+class StrLit(AST):
 	def __init__(self, value, span):
-		super().__init__(span)
+		super().__init__(span, True)
 		self.value = value
 	
 	def analyze(self, state, implicitType):

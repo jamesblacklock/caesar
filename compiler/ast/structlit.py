@@ -1,4 +1,4 @@
-from .ast               import AST, ValueExpr
+from .ast               import AST
 from ..not_done.typeref import NamedTypeRef
 from ..not_done.structdecl import StructDecl
 from ..not_done         import enumdecl
@@ -24,9 +24,9 @@ class UnionLitFieldInfo:
 		self.noOffset = True
 		self.unionField = True
 
-class StructLit(ValueExpr):
+class StructLit(AST):
 	def __init__(self, typeRef, isUnion, fields, span):
-		super().__init__(span)
+		super().__init__(span, True)
 		self.typeRef = typeRef
 		self.isUnion = isUnion
 		self.anon = typeRef == None

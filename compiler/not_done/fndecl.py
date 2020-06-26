@@ -77,7 +77,7 @@ class FnDecl(ValueSymbol):
 			self.mirBody.checkFlow(None)
 			assert self.mirBody.scope.didReturn
 		
-		print(self)
+		# print(self)
 	
 	def __str__(self):
 		fnStr = 'extern fn' if self.extern else 'fn'

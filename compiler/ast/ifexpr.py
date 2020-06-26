@@ -1,12 +1,13 @@
-from .ast         import ValueExpr
+from .ast         import AST
 from ..types      import tryPromote, typesMatch, Void, Bool, OptionType
 from ..scope      import ScopeType
 from ..mir.ifexpr import If as IfMIR
 from ..mir        import access as accessmod
+from ..log        import logError
 
-class If(ValueExpr):
+class If(AST):
 	def __init__(self, expr, ifBlock, elseBlock, span):
-		super().__init__(span)
+		super().__init__(span, True)
 		self.expr = expr
 		self.block = ifBlock
 		self.elseBlock = elseBlock
@@ -20,13 +21,13 @@ class If(ValueExpr):
 				logError(state, self.expr.span, 
 					'condition type must be bool (found {})'.format(access.type))
 		
-		state.pushScope(ScopeType.IF, ifExpr=self)
+		state.pushScope(ScopeType.IF)
 		state.scope.intersectContracts(contracts)
 		ifAccess = state.analyzeNode(self.block, implicitType)
 		ifType = Void if implicitType == Void else ifAccess.type if ifAccess and ifAccess.type else Void
 		block = state.popScope()
 		
-		state.pushScope(ScopeType.ELSE, ifExpr=self)
+		state.pushScope(ScopeType.ELSE)
 		contracts = { c.symbol: c.inverted() for c in contracts.values() } if contracts else None
 		state.scope.intersectContracts(contracts)
 		elseAccess = state.analyzeNode(self.elseBlock, implicitType)
@@ -94,5 +95,8 @@ class If(ValueExpr):
 				result.type = tempSymbol.type
 				result.ref = True
 		
-		state.mirBlock.append(IfMIR(access, block, elseBlock, type, self.span))
+		mir = IfMIR(access, block, elseBlock, type, self.span)
+		block.scope.ifExpr = mir
+		elseBlock.scope.ifExpr = mir
+		state.mirBlock.append(mir)
 		return result

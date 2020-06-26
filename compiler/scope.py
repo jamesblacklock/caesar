@@ -48,6 +48,7 @@ class SymbolInfo:
 		self.borrows = set()
 		self.borrowedBy = set()
 		self.usesOfBorrowsSinceLastUse = set()
+		self.didDropInBlock = False
 		
 		
 		# def addFieldInfo(fields, expr):
@@ -101,7 +102,7 @@ class SymbolInfo:
 class Scope:
 	def __init__(self, state, parent, scopeType, 
 		name=None, mod=None, fnDecl=None, loopExpr=None, 
-		ifExpr=None, ifBranchOuterSymbolInfo=None, allowUnsafe=False):
+		ifBranchOuterSymbolInfo=None, allowUnsafe=False):
 		self.state = state
 		self.parent = parent
 		self.type = scopeType
@@ -113,7 +114,7 @@ class Scope:
 		self.didReturn = False
 		self.fnDecl = fnDecl
 		self.loopDepth = 0
-		self.ifExpr = ifExpr
+		self.ifExpr = None
 		self.loopExpr = loopExpr
 		self.ifBranchOuterSymbolInfo = ifBranchOuterSymbolInfo
 		self.dropBlock = None
@@ -196,8 +197,13 @@ class Scope:
 										self.dropSymbol(info.symbol, br.dropBlock)
 							else:
 								self.dropSymbol(info.symbol, lastUse.dropBlock)
-			elif not self.didReturn:
+			elif not self.didReturn or info.didDropInBlock:
 				outerSymbolInfo[info.symbol] = info
+		
+		if self.type in (ScopeType.IF, ScopeType.ELSE):
+			for info in self.symbolInfo.values():
+				if info.didDropInBlock:
+					info.dropInBlock.add(self.ifExpr.block if ScopeType.IF else self.ifExpr.elseBlock)
 		
 		if self.type == ScopeType.IF and self.didReturn:
 			outerSymbolInfo = None
@@ -242,6 +248,7 @@ class Scope:
 						
 						if not self.loopExpr:
 							info.dropInBlock.add(block)
+							info.didDropInBlock = True
 						
 						parentInfo = self.parent.loadAndSaveSymbolInfo(symbol)
 						if parentInfo.moved != info.moved:
@@ -307,7 +314,11 @@ class Scope:
 			scope = scope.parent
 	
 	def setLastUse(self, info, use, isRead):
-		if info.moved and info.symbol.type.isCopyable and \
+		if not isRead and not use.isFieldAccess and (not info.uninit or info.maybeUninit):
+			for (lastUse, loopExpr) in info.lastUses.items():
+				if lastUse.write and not lastUse.isFieldAccess and not lastUse.deref:
+					self.dropSymbol(info.symbol, lastUse.dropBlock)
+		elif info.moved and info.symbol.type.isCopyable and \
 			(isRead or info.symbol.dropFn):
 			for lastUse in info.lastUses:
 				if lastUse.ref:
@@ -391,6 +402,8 @@ class Scope:
 		info = self.loadAndSaveSymbolInfo(access.symbol)
 		if info == None:
 			return
+		
+		info.didDropInBlock = False
 		
 		if access.write:
 			if access.deref:
@@ -508,10 +521,6 @@ class Scope:
 		
 		if not info.uninit and symbol.dropFn:
 			self.dropSymbol(symbol, expr.dropBeforeAssignBlock)
-		elif not info.uninit or info.maybeUninit:
-			for (lastUse, loopExpr) in info.lastUses.items():
-				if lastUse.write and not lastUse.isFieldAccess and not lastUse.deref:
-					self.dropSymbol(symbol, lastUse.dropBlock)
 		
 		if typeModifiers:
 			info.typeModifiers = typeModifiers.clone()

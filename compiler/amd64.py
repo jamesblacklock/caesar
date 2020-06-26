@@ -1190,17 +1190,17 @@ def cmp(state, ir):
 	if l.storage == Storage.IMM and r.storage == Storage.IMM:
 		state.popOperand()
 		if type(ir) == Eq:
-			l.value = l.value == r.value
+			l.value = 1 if l.value == r.value else 0
 		elif type(ir) == NEq:
-			l.value = l.value == r.value
+			l.value = 1 if l.value == r.value else 0
 		elif type(ir) == Less:
-			l.value = l.value == r.value
+			l.value = 1 if l.value == r.value else 0
 		elif type(ir) == LessEq:
-			l.value = l.value == r.value
+			l.value = 1 if l.value == r.value else 0
 		elif type(ir) == Greater:
-			l.value = l.value == r.value
+			l.value = 1 if l.value == r.value else 0
 		elif type(ir) == GreaterEq:
-			l.value = l.value == r.value
+			l.value = 1 if l.value == r.value else 0
 		else:
 			assert 0
 		l.type = I8

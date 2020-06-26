@@ -1,9 +1,9 @@
-from .ast      import ValueExpr
+from .ast      import AST
 from ..mir.neg import Neg
 
-class Sign(ValueExpr):
+class Sign(AST):
 	def __init__(self, expr, negate, span):
-		super().__init__(span)
+		super().__init__(span, True)
 		self.expr = expr
 		self.negate = negate
 

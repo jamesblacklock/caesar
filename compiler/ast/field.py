@@ -1,9 +1,9 @@
-from .ast  import ValueExpr
+from .ast  import AST
 from ..mir import access
 
-class Index(ValueExpr):
+class Index(AST):
 	def __init__(self, expr, index, span):
-		super().__init__(span)
+		super().__init__(span, True)
 		self.expr = expr
 		self.index = index
 
@@ -18,9 +18,9 @@ class Index(ValueExpr):
 		self.index.pretty(output)
 		output.write(']')
 
-class Field(ValueExpr):
+class Field(AST):
 	def __init__(self, expr, path, span):
-		super().__init__(span)
+		super().__init__(span, True)
 		self.expr = expr
 		self.path = path
 	

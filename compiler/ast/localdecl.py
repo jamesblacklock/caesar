@@ -10,6 +10,7 @@ class LocalDecl(ValueSymbol):
 	def __init__(self, nameTok, typeRef, mut, span):
 		super().__init__(nameTok, typeRef, span)
 		self.mut = mut
+		self.dropFn = None
 	
 	def analyze(self, state, implicitType, dropBlock, isParam):
 		type = None
@@ -17,7 +18,7 @@ class LocalDecl(ValueSymbol):
 			type = state.resolveTypeRef(self.typeRef)
 		
 		name = None if self.name == '_' else self.name
-		symbol = LocalSymbol(name, type, self.mut, isParam, self.nameTok.span)
+		symbol = LocalSymbol(name, type, self.mut, isParam, self.dropFn, self.nameTok.span)
 		symbol.dropBlock = dropBlock
 		state.scope.declSymbol(symbol)
 		
@@ -47,5 +48,5 @@ class LetDecl(LocalDecl):
 			access.rvalueImplicitType = symbol.type
 			state.analyzeNode(access)
 		
-		if symbol.type:
+		if symbol.type or symbol.dropFn:
 			symbol.checkDropFn(state)

@@ -18,7 +18,6 @@ from .ast.importexpr import Import, importMod
 from .           import platform
 from .mir.block  import Block
 from .mir.localsymbol import LocalSymbol
-from .mir.mir import printMIR
 
 BUILTIN_TYPES = {
 	Void.name:    Void,
@@ -204,7 +203,9 @@ class AnalyzerState:
 		invokeAttrs(self, ast)
 		mir = ast.analyze(self, implicitType)
 		if mir:
-			if mir.hasValue:
+			if self.scope.fnDecl == None:
+				assert mir.hasValue
+			elif mir.hasValue:
 				if not isWrite and type(mir) != SymbolRead:
 					mir = SymbolAccess.read(self, mir)
 			else:
@@ -339,7 +340,7 @@ class AnalyzerState:
 		return self.mirBlockStack.pop()
 	
 	def pushScope(self, scopeType, name=None, mod=None, 
-		fnDecl=None, ifExpr=None, loopExpr=None, allowUnsafe=False,
+		fnDecl=None, loopExpr=None, allowUnsafe=False,
 		ifBranchOuterSymbolInfo=None):
 		self.scope = Scope(
 			self, 
@@ -349,7 +350,6 @@ class AnalyzerState:
 			fnDecl=fnDecl, 
 			mod=mod, 
 			loopExpr=loopExpr, 
-			ifExpr=ifExpr, 
 			ifBranchOuterSymbolInfo=ifBranchOuterSymbolInfo, 
 			allowUnsafe=allowUnsafe)
 		

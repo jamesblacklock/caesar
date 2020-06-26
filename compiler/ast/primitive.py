@@ -1,27 +1,27 @@
 import re
-from .ast            import ValueExpr
+from .ast            import AST
 from ..log           import logError
 from ..mir.primitive import VoidValue, BoolValue, IntValue, FloatValue
 from ..              import types
 
-class VoidLit(ValueExpr):
+class VoidLit(AST):
 	def __init__(self, span):
-		super().__init__(span)
+		super().__init__(span, True)
 	
 	def analyze(self, state, implicitType):
 		return VoidValue(self.span)
 
-class BoolLit(ValueExpr):
+class BoolLit(AST):
 	def __init__(self, value, span):
-		super().__init__(span)
+		super().__init__(span, True)
 		self.value = value
 	
 	def analyze(self, state, implicitType):
 		return BoolValue(self.value, self.span)
 
-class IntLit(ValueExpr):
+class IntLit(AST):
 	def __init__(self, strValue, negate, span, value=None, type=None):
-		super().__init__(span)
+		super().__init__(span, True)
 		if value != None:
 			self.type = type
 			base = 10
@@ -80,9 +80,9 @@ class IntLit(ValueExpr):
 		
 		return IntValue(self.value, type, self.span)
 
-class FloatLit(ValueExpr):
+class FloatLit(AST):
 	def __init__(self, strValue, negate, span):
-		super().__init__(span)
+		super().__init__(span, True)
 		matches = re.match(r"^(0x)?(.+?)(f32|f64)?$", strValue)
 		valueStr = matches[2].replace('_', '').lower()
 		

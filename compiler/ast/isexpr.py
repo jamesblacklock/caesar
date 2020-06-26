@@ -1,4 +1,4 @@
-from .ast            import AST, ValueExpr, Contract, InfixOps
+from .ast            import AST, Contract, InfixOps
 from ..not_done.enumdecl  import VariantDecl
 from ..log           import logError
 from ..mir.access    import SymbolRead
@@ -8,9 +8,9 @@ from .block          import Block
 from ..token         import Token, TokenType
 from .field          import Field
 
-class IsExpr(ValueExpr):
+class IsExpr(AST):
 	def __init__(self, expr, pattern, span):
-		super().__init__(span)
+		super().__init__(span, True)
 		self.expr = expr
 		self.pattern = pattern
 	

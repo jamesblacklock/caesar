@@ -4,7 +4,7 @@ from enum            import Enum
 from .token          import TokenType
 from .span           import Span
 from .log            import logError
-from .ast.ast        import ValueExpr, InfixOps
+from .ast.ast        import InfixOps
 from .ast.sign       import Sign
 from .not_done.structdecl import FieldDecl, StructDecl, UnionFields
 from .not_done.enumdecl   import EnumDecl, VariantDecl

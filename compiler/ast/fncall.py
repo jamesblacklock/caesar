@@ -1,10 +1,10 @@
-from .ast               import ValueExpr
+from .ast               import AST
 from .                  import block, valueref, primitive
 from ..not_done         import enumdecl
 from ..mir              import access as accessmod
 from .structlit         import StructLit, FieldLit
 from .tuplelit          import TupleLit
-from ..types            import PtrType, TypeSymbol
+from ..types            import PtrType, TypeSymbol, Void
 from ..log              import logError, logWarning
 from ..mir.fncall       import FnCall as FnCallMIR
 from ..mir.createstruct import CreateStruct
@@ -12,9 +12,9 @@ from ..mir.primitive    import IntValue
 from ..mir.access       import SymbolAccess
 from .address           import Address
 
-class FnCall(ValueExpr):
+class FnCall(AST):
 	def __init__(self, expr, args, span):
-		super().__init__(span)
+		super().__init__(span, True)
 		self.isMethodCall = False
 		self.expr = expr
 		self.args = args
@@ -122,7 +122,8 @@ class FnCall(ValueExpr):
 			cVarArgs = args[len(fnType.params):]
 			args = args[:len(fnType.params)]
 		
-		mir = FnCallMIR(access, args, cVarArgs, dynDispatch, fnType.returnType, self.span)
+		returnType = fnType.returnType if fnType else Void
+		mir = FnCallMIR(access, args, cVarArgs, dynDispatch, returnType, self.span)
 		for arg in args:
 			if arg.borrows:
 				lateRef = SymbolAccess.noop(arg.symbol, state.scope.dropBlock, arg.span)

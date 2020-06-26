@@ -1,5 +1,5 @@
 from ..ast.ast import ValueSymbol
-from ..types import typesMatch
+from ..types import typesMatch, Void
 from ..log  import logError
 from ..ast      import attrs
 from ..mir.mir import TypeModifiers
@@ -9,71 +9,69 @@ class StaticDecl(ValueSymbol):
 		super().__init__(nameTok, typeRef, span, doccomment, extern)
 		self.mangledName = None
 		self.mut = mut
-		self.expr = expr
+		self.exprAST = expr
 		self.staticValue = None
 		self.type = None
 		self.typeModifiers = TypeModifiers()
 		self.contracts = None
+		self.expr = None
 		
-	def analyzeSig(decl, state, isConst=False):
-		attrs.invokeAttrs(state, decl)
+	def analyzeSig(self, state, isConst=False):
+		attrs.invokeAttrs(state, self)
 		
-		if decl.typeRef:
-			decl.type = state.resolveTypeRef(decl.typeRef)
+		if self.typeRef:
+			self.type = state.resolveTypeRef(self.typeRef)
 		
-		if decl.name == '_':
-			logError(state, decl.expr.span, '`_` is not a valid symbol name')
+		if self.name == '_':
+			logError(state, self.exprAST.span, '`_` is not a valid symbol name')
 		elif not isConst:
-			decl.mangledName = state.mangleName(decl)
+			self.mangledName = state.mangleName(self)
 	
-	def analyze(decl, state):
+	def analyze(self, state):
 		implicitType = None
-		if decl.type:
-			implicitType = decl.type
+		if self.type:
+			implicitType = self.type
 		
-		decl.expr = state.analyzeNode(decl.expr, implicitType)
-		if decl.expr.type and decl.expr.type.isCompositeType:
-			if decl.expr.typeModifiers == None:
-				decl.expr.typeModifiers = TypeModifiers()
-			if len(decl.expr.typeModifiers.uninitFields) > 0:
-				logError(state, decl.expr.span, 'global declarations must initialize all fields of composite types')
+		self.expr = state.analyzeNode(self.exprAST, implicitType)
+		if self.expr == None or self.expr.type == None:
+			return
+		
+		if False and self.expr.type and self.expr.type.isCompositeType:
+			assert 0
+			if self.expr.typeModifiers == None:
+				self.expr.typeModifiers = TypeModifiers()
+			if len(self.expr.typeModifiers.uninitFields) > 0:
+				logError(state, self.exprAST.span, 'global declarations must initialize all fields of composite types')
 			
-			decl.typeModifiers.uninit = decl.expr.typeModifiers.clone()
+			self.typeModifiers = self.expr.typeModifiers.clone()
 		else:
-			decl.typeModifiers.uninit = False
+			self.typeModifiers.uninit = False
 		
 		# tryPromote???
 		
-		if decl.type:
-			if not typesMatch(decl.type, decl.expr.type):
-				logError(state, decl.expr.span, 'expected type {}, found {}'
-					.format(decl.type, decl.expr.type))
+		if self.type:
+			if not typesMatch(self.type, self.expr.type):
+				logError(state, self.exprAST.span, 'expected type {}, found {}'
+					.format(self.type, self.expr.type))
 		else:
-			decl.type = decl.expr.type
+			self.type = self.expr.type
 		
-		decl.staticValue = decl.expr.staticEval(state)
-		if decl.staticValue == None:
-			logError(state, decl.expr.span, 'expression cannot be statically evaluated')
+		self.staticValue = self.expr.staticEval(state)
+		if self.staticValue == None:
+			logError(state, self.exprAST.span, 'expression cannot be statically evaluated')
 		else:
-			decl.staticValue.label = decl.mangledName
+			self.staticValue.label = self.mangledName
 	
-	def __pretty(self, output, indent, s):
-		output.write('{} {}'.format(s, self.name), indent)
-		if self.typeRef:
-			output.write(': ')
-			self.typeRef.pretty(output)
-		output.write(' = ')
-		self.expr.pretty(output)
-	
-	def pretty(self, output, indent=0):
-		self._StaticDecl__pretty(output, indent, 'static')
+	def __str__(self, storageClass='static'):
+		return '{} {}: {} = {}'.format(
+			storageClass, self.name, self.type.name, str(self.mirExpr))
 
 class ConstDecl(StaticDecl):
 	def __init__(self, nameTok, typeRef, doccomment, expr, span):
 		super().__init__(nameTok, typeRef, doccomment, False, False, expr, span)
 		
-	def analyzeSig(decl, state):
+	def analyzeSig(self, state):
 		super().analyzeSig(state, isConst=True)
 	
-	def pretty(self, output, indent=0):
-		self._StaticDecl__pretty(output, indent, 'const')
+	def __str__(self):
+		return super().__str__('const')
