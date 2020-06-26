@@ -191,7 +191,6 @@ class SymbolRead(SymbolAccess):
 		
 		access.dropBlock = state.scope.dropBlock
 		access = tryPromote(state, access, implicitType)
-		access.dropBlock = state.scope.dropBlock
 		
 		isCopyableDrop = type(access.symbol) == LocalSymbol and access.symbol.dropFn and \
 			access.type and access.type.isCopyable
@@ -308,11 +307,7 @@ class SymbolWrite(SymbolAccess):
 			access.type = access.rvalue.type
 			access.symbol.checkDropFn(state)
 		elif access.type and access.rvalue.type:
-			# if canPromote(access.rvalue.type, access.type):
-			# 	access.rvalue = coercion.AsExpr(access.rvalue, None, access.span, resolvedType=access.type)
-			rvalueDropBlock = access.rvalue.dropBlock
 			access.rvalue = tryPromote(state, access.rvalue, access.rvalueImplicitType)
-			access.rvalue.dropBlock = rvalueDropBlock
 			
 			if not typesMatch(access.type, access.rvalue.type):
 				logError(state, access.rvalue.span, 

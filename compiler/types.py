@@ -386,7 +386,9 @@ def tryPromote(state, access, toType):
 		signsMatch = fromType.isSigned == toType.isSigned
 		sizeDoesIncrease = fromType.byteSize < toType.byteSize
 		if signsMatch and sizeDoesIncrease:
-			return state.analyzeNode(Coerce(access, toType, access.span))
+			access = state.analyzeNode(Coerce(access, toType, access.span))
+			access.dropBlock = state.scope.dropBlock
+			return access
 	
 	fromBaseType = fromType
 	toBaseType = toType
@@ -403,7 +405,9 @@ def tryPromote(state, access, toType):
 			access.type = toType
 			return access
 		elif toDerefType.isTraitType and toDerefType in fromDerefType.traitImpls:
-			return state.analyzeNode(Coerce(access, toType, access.span))
+			access = state.analyzeNode(Coerce(access, toType, access.span))
+			access.dropBlock = state.scope.dropBlock
+			return access
 	
 	# if type(access) == SymbolAccess and access.ref and indefiniteMatch(access.type, expectedType):
 	# 	access.symbol.type = expectedType
