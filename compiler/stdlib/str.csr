@@ -1,6 +1,7 @@
 @@str_mod
 
 import drop::Drop
+# import libc::{ malloc, free, memcpy }
 
 @ffi("C") @acquire_default
 extern unsafe fn malloc(size: usize) -> owned &mut byte
@@ -30,8 +31,8 @@ impl str
         
         unsafe
             buf = malloc(size)
-            memcpy(buf, (&self^.data as &&byte)^, self^.size - 1)
-            memcpy(buf + self^.size - 1, (&other.data as &&byte)^, other.size)
+            memcpy(borrow buf, (&self^.data as &&byte)^, self^.size - 1)
+            memcpy(borrow buf + self^.size - 1, (&other.data as &&byte)^, other.size)
         
         str { size: size, data: Owned(buf) }
     

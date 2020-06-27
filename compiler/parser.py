@@ -33,7 +33,7 @@ from .ast.address    import Address
 from .not_done.alias import AliasDecl, TypeDecl
 from .scope          import ScopeType
 from .ast.isexpr     import Pattern, IsExpr
-from .ast.importexpr import Import
+from .ast.importexpr import Import, SymbolImportInfo
 
 INFIX_PRECEDENCE = {
 	TokenType.AS:     1000, TokenType.IS:       1000, TokenType.ARROW:   900, TokenType.LSHIFT:    800, 
@@ -416,14 +416,14 @@ def parseAsExpr(state, expr):
 	
 	return AsExpr(expr, typeRef, Span.merge(expr.span, typeRef.span))
 
+def parseName(state):
+	if expectType(state, TokenType.NAME):
+		tok = state.tok
+		state.advance()
+		state.skipSpace()
+		return tok
+
 def parsePattern(state):
-	def parseName(state):
-		if expectType(state, TokenType.NAME):
-			tok = state.tok
-			state.advance()
-			state.skipSpace()
-			return tok
-	
 	# if state.tok.type == TokenType.OWNED:
 	# 	return parseOwnedTypeRef(state)
 	# elif state.tok.type in (TokenType.AMP, TokenType.AND):
@@ -944,13 +944,16 @@ class Path:
 		self.path = path
 		self.span = span
 
-def parsePath(state):
+def parsePath(state, allowTrailingPath=False):
 	path = [state.tok]
 	span = state.tok.span
 	state.advance()
 	onOneLine = True
 	
 	while state.tok.type == TokenType.PATH:
+		if allowTrailingPath and state.nextTok.type != TokenType.NAME:
+			break
+		
 		span = Span.merge(span, state.tok.span)
 		state.advance()
 		
@@ -1070,6 +1073,20 @@ def parseField(state, expr):
 		expr = Deref(expr, 1, derefSpan)
 	
 	return Field(expr, path, span)
+
+def isBlockStart(state):
+	offset = state.offset
+	state.skipSpace()
+	result = False
+	expectBrace = False
+	
+	if state.tok.type == TokenType.LBRACE:
+		result = True
+	elif state.skipEmptyLines() and isIndentIncrease(state):
+		result = True
+	
+	state.rollback(offset)
+	return result
 
 def isStructStart(state):
 	offset = state.offset
@@ -1432,28 +1449,68 @@ def parseFnDecl(state, doccomment, pub, extern, traitDecl=False):
 	return FnDecl(nameTok, doccomment, pub, extern, unsafe, params, cVarArgs, returnType, body, span, cVarArgsSpan)
 
 def parseImport(state):
+	def parseImportRename(state):
+		state.advance()
+		state.skipSpace()
+		if expectType(state, TokenType.NAME):
+			nameTok = state.tok
+			state.advance()
+			state.skipSpace()
+			return nameTok
+	
+	def parseImportSymbol(state):
+		if not expectType(state, TokenType.NAME):
+			return None
+		
+		symbol = state.tok.content
+		span = state.tok.span
+		rename = None
+		
+		state.advance()
+		state.skipSpace()
+		if state.tok.type == TokenType.AS:
+			rename = parseImportRename(state)
+			if rename:
+				span = Span.merge(span, rename.span)
+				rename = rename.content
+		
+		return SymbolImportInfo(symbol, rename, span)
+	
 	span = state.tok.span
 	state.advance()
 	state.skipSpace()
 	
-	path = None
-	if expectType(state, TokenType.NAME):
-		path = parsePath(state)
-		span = Span.merge(span, path.span)
+	if not expectType(state, TokenType.NAME):
+		return None
 	
-	nameTok = None
-	state.skipSpace()
-	if state.tok.type == TokenType.AS:
-		span = Span.merge(span, state.tok.span)
+	path = parsePath(state)#, allowTrailingPath=True)
+	span = Span.merge(span, path.span)
+	symbols = None
+	
+	if False and state.tok.type == TokenType.PATH:
 		state.advance()
+		if not isBlockStart(state):
+			logError(state, state.tok, 'expected import name, found `{}`'.format(state.tok.type.desc()))
+			return None
+		else:
+			symbols = parseBlock(state, parseImportSymbol).list
+	else:
+		symbol = path.path[-1]#.pop()
+		symbolSpan = symbol.span
+		# symbol = symbol.content
+		rename = None
+		
 		state.skipSpace()
-		if expectType(state, TokenType.NAME):
-			span = Span.merge(span, state.tok.span)
-			nameTok = state.tok
-			state.advance()
-			state.skipSpace()
-			
-	return Import(path.path, nameTok, span)
+		if state.tok.type == TokenType.AS:
+			rename = parseImportRename(state)
+			if rename:
+				symbolSpan = Span.merge(symbolSpan, rename.span)
+				# rename = rename.content
+		
+		symbols = [SymbolImportInfo(symbol, rename, symbolSpan)]
+	
+	span = Span.merge(span, symbols[-1].span)
+	return Import(path.path, rename, span)#symbols, span)
 
 def parseModLevelDecl(state):
 	return parseExpr(state, ExprClass.MOD)
