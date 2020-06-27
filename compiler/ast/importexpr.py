@@ -87,6 +87,12 @@ def importMod(state, mod, imp):
 	
 	imp.importedMod = importedMod
 
+class SymbolImportInfo:
+	def __init__(self, symbol, rename, span):
+		self.symbol = symbol
+		self.rename = rename
+		self.span = span
+
 class SymbolImport:
 	def __init__(self, symbol, nameTok):
 		self.name = nameTok.content
@@ -94,8 +100,10 @@ class SymbolImport:
 		self.nameTok = nameTok
 
 class Import(AST):
+	# def __init__(self, path, symbols, span):
 	def __init__(self, path, nameTok, span):
 		self.path = path
+		# self.symbols = symbols
 		self.nameTok = nameTok
 		self.span = span
 		self.symbolImports = []
