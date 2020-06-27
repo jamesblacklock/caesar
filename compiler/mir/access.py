@@ -300,20 +300,20 @@ class SymbolWrite(SymbolAccess):
 			access.rvalueImplicitType = access.type
 		
 		if access.analyzeRValue:
-			rvalue = state.analyzeNode(access.rvalue, access.rvalueImplicitType, isWrite=True)
-			if rvalue:
-				access.rvalue = rvalue
-		access.symbol.contracts = access.rvalue.contracts
-		if access.symbol.type == None:
-			access.symbol.type = access.rvalue.type
-			access.type = access.rvalue.type
-			access.symbol.checkDropFn(state)
-		elif access.type and access.rvalue.type:
-			access.rvalue = tryPromote(state, access.rvalue, access.rvalueImplicitType)
-			
-			if not typesMatch(access.type, access.rvalue.type):
-				logError(state, access.rvalue.span, 
-					'expected type {}, found {}'.format(access.type, access.rvalue.type))
+			access.rvalue = state.analyzeNode(access.rvalue, access.rvalueImplicitType, isWrite=True)
+		
+		if access.rvalue:
+			access.symbol.contracts = access.rvalue.contracts
+			if access.symbol.type == None:
+				access.symbol.type = access.rvalue.type
+				access.type = access.rvalue.type
+				access.symbol.checkDropFn(state)
+			elif access.type and access.rvalue.type:
+				access.rvalue = tryPromote(state, access.rvalue, access.rvalueImplicitType)
+				
+				if not typesMatch(access.type, access.rvalue.type):
+					logError(state, access.rvalue.span, 
+						'expected type {}, found {}'.format(access.type, access.rvalue.type))
 		
 		if type(access.symbol) == staticdecl.StaticDecl:
 			access.deref += 1
@@ -326,7 +326,8 @@ class SymbolWrite(SymbolAccess):
 			logError(state, fnCall.expr.span, 'writing union fields is unsafe; context is safe')
 		
 		access.dropBlock = state.scope.dropBlock
-		access.rvalue.dropBlock = state.scope.dropBlock
+		if access.rvalue:
+			access.rvalue.dropBlock = state.scope.dropBlock
 		return access
 	
 	def checkFlow(self, scope):
@@ -420,7 +421,9 @@ def _SymbolAccess__analyzeSymbolAccess(state, expr, access, implicitType=None):
 			access.type = t
 	elif type(expr) == valueref.Borrow:
 		_SymbolAccess__analyzeSymbolAccess(state, expr.expr, access, implicitType)
-		if access.type and not access.type.isOwnedType:
+		if not access.type:
+			return
+		elif not access.type.isOwnedType:
 			logError(state, expr.span, 'type `{}` cannot be borrowed'.format(access.type))
 		else:
 			access.type = access.type.baseType

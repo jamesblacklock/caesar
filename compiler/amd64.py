@@ -1583,7 +1583,7 @@ def brOrBrIf(state, ir, nextIR, isBrIf):
 		outputTargets = list(reversed([state.getOperand(i + offset) for i in range(0, len(inputTypes))]))
 	
 	for src, dest in zip(outputTargets, inputTargets):
-		assert src.type == dest.type
+		assert src.type.byteSize == dest.type.byteSize
 		if src == dest:
 			continue
 		

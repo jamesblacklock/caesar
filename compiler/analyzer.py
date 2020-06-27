@@ -165,6 +165,7 @@ class AnalyzerState:
 		self.strMod = None
 		self.mirBlockStack = []
 		self.ast = None
+		self.discardLevel = 0
 	
 	@property
 	def mirBlock(self):
@@ -186,19 +187,17 @@ class AnalyzerState:
 		# ast = state.analyzeNode(ast)
 		ast.analyze(state)
 		
-		# printMIR(ast)
-		
 		if state.failed:
-			exit(0)
-			# exit(1)
+			exit(1)
 		
 		return ast
 	
 	def analyzeNode(self, ast, implicitType=None, isWrite=False, discard=False):
 		assert not ast.analyzed
-		
 		if discard:
-			self.pushMIR(Block(None))
+			if self.discardLevel == 0:
+				self.pushScope(ScopeType.BLOCK)
+			self.discardLevel += 1
 		
 		invokeAttrs(self, ast)
 		mir = ast.analyze(self, implicitType)
@@ -213,8 +212,10 @@ class AnalyzerState:
 				mir = None
 		
 		if discard:
-			self.popMIR()
-		else:
+			self.discardLevel -= 1
+			if self.discardLevel == 0:
+				self.popScope()
+		elif self.discardLevel == 0:
 			ast.setAnalyzed()
 		
 		return mir

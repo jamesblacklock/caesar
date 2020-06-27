@@ -34,6 +34,7 @@ from .not_done.alias import AliasDecl, TypeDecl
 from .scope          import ScopeType
 from .ast.isexpr     import Pattern, IsExpr
 from .ast.importexpr import Import, ImportTree
+from .ast.sizeof     import Sizeof, Offsetof
 
 INFIX_PRECEDENCE = {
 	TokenType.AS:     1000, TokenType.IS:       1000, TokenType.ARROW:   900, TokenType.LSHIFT:    800, 
@@ -331,7 +332,7 @@ def parseFieldDecl(state):
 	span = Span.merge(span, state.tok.span)
 	
 	state.advance()
-	onOneLine = permitLineBreakIndent(state) == False
+	# onOneLine = permitLineBreakIndent(state) == False
 	state.skipSpace()
 	
 	if isStructStart(state):
@@ -342,8 +343,8 @@ def parseFieldDecl(state):
 	if typeRef:
 		span = Span.merge(span, typeRef.span)
 	
-	if not onOneLine:
-		state.popIndentLevel()
+	# if not onOneLine:
+	# 	state.popIndentLevel()
 	
 	fieldDecl = FieldDecl(nameTok, typeRef, pub, span)
 	fieldDecl.attrs = fieldAttrs
@@ -1016,6 +1017,40 @@ def parseStructLit(state, typeRef):
 	span = Span.merge(span, block.span)
 	return StructLit(typeRef, isUnion, block.list, span)
 
+def parseOffsetof(state):
+	class ItemParser:
+		def __init__(self):
+			self.failed = False
+			self.first = True
+		
+		def __call__(self, state):
+			if self.first:
+				self.first = False
+				result = parseTypeRef(state)
+			elif expectType(state, TokenType.NAME, TokenType.INTEGER):
+				result = state.tok
+				state.advance()
+			
+			if result == None:
+				self.failed
+			
+			return result
+	
+	span = state.tok.span
+	state.advance()
+	state.skipSpace()
+	
+	first = True
+	itemParser = ItemParser()
+	path = parseBlock(state, itemParser, BlockMarkers.PAREN, True)
+	
+	if not itemParser.failed and len(path.list) < 2:
+		logError(state, path.span, 
+			'offsetof requires a minimum of 2 parameters (found {})'.format(len(path.list)))
+		return None
+	
+	return Offsetof(path.list[0], path.list[1:], path.span)
+	
 def parseSign(state):
 	negate = state.tok.type == TokenType.MINUS
 	span = state.tok.span
@@ -1184,6 +1219,15 @@ def parseValueExprImpl(state, precedence, noSkipSpace, allowSimpleFnCall):
 		expr = parseValueExpr(state, precedence=UNARY_PRECEDENCE)
 		if expr:
 			expr = Borrow(expr, Span.merge(span, expr.span))
+	elif state.tok.type == TokenType.SIZEOF:
+		span = state.tok.span
+		state.advance()
+		state.skipSpace()
+		expr = parseTypeRef(state)
+		if expr:
+			expr = Sizeof(expr, Span.merge(span, expr.span))
+	elif state.tok.type == TokenType.OFFSETOF:
+		expr = parseOffsetof(state)
 	elif state.tok.type == TokenType.AMP:
 		expr = parseAddress(state)
 	elif state.tok.type == TokenType.INTEGER:
@@ -1570,7 +1614,9 @@ VALUE_EXPR_TOKS = (
 	TokenType.UNSAFE,
 	TokenType.STRUCT,
 	TokenType.UNION,
-	TokenType.BORROW
+	TokenType.BORROW, 
+	TokenType.SIZEOF, 
+	TokenType.OFFSETOF
 )
 
 FN_EXPR_TOKS = (
@@ -1653,6 +1699,7 @@ def parseExpr(state, exprClass, precedence=0, noSkipSpace=False, allowSimpleFnCa
 	elif exprClass == ExprClass.VALUE_EXPR:
 		if state.tok.type not in VALUE_EXPR_TOKS:
 			logError(state, state.tok.span, 'expected value expression, found {}'.format(state.tok.type.desc()))
+			return None
 	elif exprClass == ExprClass.ATTR:
 		if state.tok.type not in (*MOD_EXPR_TOKS, *FN_EXPR_TOKS):
 			logError(state, state.tok.span, 'expected expression, found {}'.format(state.tok.type.desc()))

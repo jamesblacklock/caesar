@@ -22,9 +22,8 @@ class FnCall(AST):
 	def analyze(self, state, implicitType):
 		access = None
 		dynDispatch = False
-		selfArg = None
 		if self.isMethodCall:
-			selfArg = SymbolAccess.analyzeSymbolAccess(state, self.args[0])
+			selfArg = state.analyzeNode(self.args[0], discard=True)#SymbolAccess.analyzeSymbolAccess(state, self.args[0])
 			if selfArg.type:
 				name = self.expr.path[0].content
 				symbol = None
@@ -76,8 +75,7 @@ class FnCall(AST):
 				fnType = access.type
 				if self.isMethodCall:
 					if len(fnType.params) > 0 and fnType.params[0].type.isPtrType:
-						selfArg = Address(self.args[0], fnType.params[0].type.mut, self.args[0].span)
-						selfArg = state.analyzeNode(selfArg)
+						self.args[0] = Address(self.args[0], fnType.params[0].type.mut, self.args[0].span)
 				
 				if fnType.unsafe and not state.scope.allowUnsafe:
 					logError(state, self.expr.span, 'unsafe function called in a safe context')
@@ -92,26 +90,21 @@ class FnCall(AST):
 		for _ in range(len(params), len(self.args)):
 			params.append(None)
 		
-		isSelfArg = self.isMethodCall
 		hasCVarArgs = fnType.cVarArgs if fnType else False
 		args = []
 		argFailed = False
 		for (param, arg) in zip(params, self.args):
 			expectedType = param.type if param else None
-			
-			if isSelfArg:
-				arg = selfArg
-			else:
-				arg = state.analyzeNode(arg, expectedType)
-				if arg and arg.type and not arg.type.isPrimitiveType and not arg.type.isUnknown:
-					if param == None and hasCVarArgs:
-						logError(state, arg.span, 'type {} cannot be used as a C variadic argument'.format(arg.type))
-			
-			if arg == None:
+			arg = state.analyzeNode(arg, expectedType)
+			if arg == None or arg.type == None:
 				argFailed = True
 				continue
 			
-			if arg.type and arg.type.isPtrType and arg.typeModifiers and arg.typeModifiers.uninit:
+			if not arg.type.isPrimitiveType and not arg.type.isUnknown:
+				if param == None and hasCVarArgs:
+					logError(state, arg.span, 'type {} cannot be used as a C variadic argument'.format(arg.type))
+			
+			if arg.type.isPtrType and arg.typeModifiers and arg.typeModifiers.uninit:
 				if param:
 					logError(state, arg.span, 'reference to uninit symbol passed as parameter `{}`'.format(param.name))
 				else:
@@ -120,7 +113,6 @@ class FnCall(AST):
 			
 			arg = state.typeCheck(arg, expectedType)
 			args.append(arg)
-			isSelfArg = False
 		
 		cVarArgs = []
 		if hasCVarArgs:

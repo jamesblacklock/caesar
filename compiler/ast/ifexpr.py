@@ -95,8 +95,10 @@ class If(AST):
 				result.type = tempSymbol.type
 				result.ref = True
 		
-		mir = None if not access else IfMIR(access, block, elseBlock, type, self.span)
-		block.scope.ifExpr = mir
-		elseBlock.scope.ifExpr = mir
-		state.mirBlock.append(mir)
+		if access:
+			mir = IfMIR(access, block, elseBlock, type, self.span)
+			block.scope.ifExpr = mir
+			elseBlock.scope.ifExpr = mir
+			state.mirBlock.append(mir)
+		
 		return result

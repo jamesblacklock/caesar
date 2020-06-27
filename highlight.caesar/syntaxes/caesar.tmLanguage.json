@@ -77,7 +77,7 @@
 		},
 		"numbers": {
 			"name": "constant.numeric.caesar",
-			"match": "\\b\\d+(\\.\\d+)?(((i|u)(8|16|32|64|size)|f(32|64)))?"
+			"match": "\\b\\d+(\\.\\d+)?(((i|u)(8|16|32|64)|f(32|64)|u?sz))?"
 		},
 		"attrs": {
 			"name": "variable.meta.attribute.caesar",

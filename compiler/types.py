@@ -166,7 +166,14 @@ class ArrayFields:
 		self.count = count
 		self.elementType = elementType
 	
+	def __contains__(self, index):
+		try:
+			return int(index) < self.count
+		except:
+			return False
+	
 	def __getitem__(self, index):
+		index = int(index)
 		if index >= self.count:
 			raise IndexError()
 		return FieldInfo(str(index), self.elementType, index * getAlignedSize(self.elementType))
@@ -187,6 +194,7 @@ class ArrayType(TypeSymbol):
 		self.baseType = baseType
 		self.count = count
 		self.fields = ArrayFields(baseType, count)
+		self.fieldDict = self.fields
 		self.anon = True
 
 class TupleType(TypeSymbol):

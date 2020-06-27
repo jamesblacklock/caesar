@@ -1,7 +1,24 @@
 import str as strmod
-import libc::printf
+import libc { printf, malloc, free }
+
+struct A
+    a: int
+    b:
+        c: int
+        d:
+            e: byte
+            f: byte
+        g: int
 
 fn main()
-    let s: str = "test\n"
-    unsafe printf(s->data)
+    let a = unsafe malloc(sizeof str) as &str
+    a^ = "test\n"
+    unsafe printf((borrow a)^->data)
+    unsafe free(a as &byte)
     
+    let fieldOffset = offsetof(A, b, d, f)
+    let expectedOffset = 9usz
+    let eqStr = if fieldOffset == expectedOffset {"=="} else {"!="}
+    
+    unsafe printf("%d %s %d\n", fieldOffset, eqStr->data, expectedOffset)
+    unsafe printf("%d\n", offsetof([int * 20], 7))
