@@ -585,10 +585,10 @@ def _SymbolAccess__analyzeSymbolAccess(state, expr, access, implicitType=None):
 			access.staticOffset += fieldInfo.offset
 			if len(access.dynOffsets) == 0:
 				access.field = fieldInfo
-				access.fieldSpan = expr.index.span
+				access.fieldSpan = index.span
 		else:
 			factor = getAlignedSize(access.type.baseType)
-			access.dynOffsets.append(DynOffset(expr.index, factor if factor > 1 else None))
+			access.dynOffsets.append(DynOffset(index, factor if factor > 1 else None))
 		
 		access.type = access.type.baseType
 	else:
