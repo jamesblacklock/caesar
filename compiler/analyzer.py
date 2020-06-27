@@ -14,7 +14,7 @@ from .not_done.structdecl import StructDecl
 from .not_done.alias      import AliasDecl, TypeDecl
 from .not_done.enumdecl   import EnumDecl, VariantDecl
 from .mir.access import SymbolAccess, SymbolRead
-from .ast.importexpr import Import, importMod
+from .ast.importexpr import Import
 from .           import platform
 from .mir.block  import Block
 from .mir.localsymbol import LocalSymbol
@@ -180,9 +180,7 @@ class AnalyzerState:
 		if ast.isStrMod:
 			state.strMod = ast
 		elif not ast.noStrImport:
-			imp = Import([T('str', ast.span), T('str', ast.span)], None, ast.span)
-			imp.analyzeSig(state, ast)
-			state.strMod = imp.importedMod
+			(state.strMod, _) = Import.doImport(state, ast, ['str', 'str'])
 		
 		ast.analyzeSig(state)
 		# ast = state.analyzeNode(ast)

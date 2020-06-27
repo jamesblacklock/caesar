@@ -1,8 +1,7 @@
 @@str_mod
 
 import drop::Drop
-# import libc::{ malloc, free, memcpy }
-
+# import libc { @acquire_default malloc, @release_default free, memcpy }
 @ffi("C") @acquire_default
 extern unsafe fn malloc(size: usize) -> owned &mut byte
 

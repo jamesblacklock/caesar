@@ -33,7 +33,7 @@ from .ast.address    import Address
 from .not_done.alias import AliasDecl, TypeDecl
 from .scope          import ScopeType
 from .ast.isexpr     import Pattern, IsExpr
-from .ast.importexpr import Import, SymbolImportInfo
+from .ast.importexpr import Import, ImportTree
 
 INFIX_PRECEDENCE = {
 	TokenType.AS:     1000, TokenType.IS:       1000, TokenType.ARROW:   900, TokenType.LSHIFT:    800, 
@@ -142,27 +142,26 @@ def expectIndent(state):
 	
 	return True
 
-def isIndentIncrease(state):
+def checkIndent(state):
 	if state.tok.span.startColumn != 1:
-		return False
+		return None
 	
-	indentTok = None
-	if state.tok.type == TokenType.INDENT:
-		indentTok = state.tok
+	if state.tok.type != TokenType.INDENT:
+		return 0
 	
-	level = 0 if indentTok == None else len(indentTok.content)
-	return level > state.indentLevel
+	return len(state.tok.content)
+
+def isIndentMatch(state):
+	level = checkIndent(state)
+	return level != None and level == state.indentLevel
+
+def isIndentIncrease(state):
+	level = checkIndent(state)
+	return level != None and level > state.indentLevel
 
 def isIndentDecrease(state):
-	if state.tok.span.startColumn != 1:
-		return False
-	
-	indentTok = None
-	if state.tok.type == TokenType.INDENT:
-		indentTok = state.tok
-	
-	level = 0 if indentTok == None else len(indentTok.content)
-	return level < state.indentLevel
+	level = checkIndent(state)
+	return level != None and level < state.indentLevel
 
 def expectIndentIncrease(state):
 	assert state.tok.span.startColumn == 1
@@ -1082,8 +1081,13 @@ def isBlockStart(state):
 	
 	if state.tok.type == TokenType.LBRACE:
 		result = True
-	elif state.skipEmptyLines() and isIndentIncrease(state):
-		result = True
+	elif state.skipEmptyLines():
+		if isIndentIncrease(state):
+			result = True
+		elif isIndentMatch(state):
+			state.advance()
+			state.skipSpace()
+			result = state.tok.type == TokenType.LBRACE
 	
 	state.rollback(offset)
 	return result
@@ -1449,68 +1453,42 @@ def parseFnDecl(state, doccomment, pub, extern, traitDecl=False):
 	return FnDecl(nameTok, doccomment, pub, extern, unsafe, params, cVarArgs, returnType, body, span, cVarArgsSpan)
 
 def parseImport(state):
-	def parseImportRename(state):
-		state.advance()
-		state.skipSpace()
-		if expectType(state, TokenType.NAME):
-			nameTok = state.tok
-			state.advance()
-			state.skipSpace()
-			return nameTok
-	
-	def parseImportSymbol(state):
+	def parseImportTree(state):
 		if not expectType(state, TokenType.NAME):
 			return None
 		
-		symbol = state.tok.content
-		span = state.tok.span
+		path = parsePath(state)
+		span = path.span
+		path = path.path
+		imports = None
 		rename = None
 		
-		state.advance()
-		state.skipSpace()
-		if state.tok.type == TokenType.AS:
-			rename = parseImportRename(state)
-			if rename:
-				span = Span.merge(span, rename.span)
-				rename = rename.content
+		if isBlockStart(state):
+			imports = parseBlock(state, parseImportTree)
+			span = Span.merge(span, imports.span)
+			imports = imports.list
+		else:
+			state.skipSpace()
+			if state.tok.type == TokenType.AS:
+				state.advance()
+				state.skipSpace()
+				if expectType(state, TokenType.NAME):
+					rename = state.tok
+					state.advance()
+					state.skipSpace()
 		
-		return SymbolImportInfo(symbol, rename, span)
+		return ImportTree(path, imports, rename, span)
 	
 	span = state.tok.span
 	state.advance()
 	state.skipSpace()
 	
-	if not expectType(state, TokenType.NAME):
+	importTree = parseImportTree(state)
+	if importTree == None:
 		return None
 	
-	path = parsePath(state)#, allowTrailingPath=True)
-	span = Span.merge(span, path.span)
-	symbols = None
-	
-	if False and state.tok.type == TokenType.PATH:
-		state.advance()
-		if not isBlockStart(state):
-			logError(state, state.tok, 'expected import name, found `{}`'.format(state.tok.type.desc()))
-			return None
-		else:
-			symbols = parseBlock(state, parseImportSymbol).list
-	else:
-		symbol = path.path[-1]#.pop()
-		symbolSpan = symbol.span
-		# symbol = symbol.content
-		rename = None
-		
-		state.skipSpace()
-		if state.tok.type == TokenType.AS:
-			rename = parseImportRename(state)
-			if rename:
-				symbolSpan = Span.merge(symbolSpan, rename.span)
-				# rename = rename.content
-		
-		symbols = [SymbolImportInfo(symbol, rename, symbolSpan)]
-	
-	span = Span.merge(span, symbols[-1].span)
-	return Import(path.path, rename, span)#symbols, span)
+	span = Span.merge(span, importTree.span)
+	return Import(importTree, span)
 
 def parseModLevelDecl(state):
 	return parseExpr(state, ExprClass.MOD)
