@@ -66,6 +66,8 @@ def analyzeOwnedTypeRefSig(state, ownedTypeRef):
 	
 	acquire = None
 	release = None
+	acquireSpan = ownedTypeRef.acquire.span if ownedTypeRef.acquire else ownedTypeRef.span
+	releaseSpan = ownedTypeRef.release.span if ownedTypeRef.release else ownedTypeRef.span
 	
 	if ownedTypeRef.acquire == None:
 		acquire = state.scope.acquireDefault
@@ -87,7 +89,7 @@ def analyzeOwnedTypeRefSig(state, ownedTypeRef):
 			logError(state, ownedTypeRef.release.span, '`{}` must be a function'.format(release.name))
 			release = None
 	
-	return OwnedType(baseType, acquire, release, ownedTypeRef.acquire.span, ownedTypeRef.release.span)
+	return OwnedType(baseType, acquire, release, acquireSpan, releaseSpan)
 
 def finishAnalyzingOwnedType(state, ownedType):
 	if ownedType.acquire:

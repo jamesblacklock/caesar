@@ -95,6 +95,7 @@ class FnCall(AST):
 		isSelfArg = self.isMethodCall
 		hasCVarArgs = fnType.cVarArgs if fnType else False
 		args = []
+		argFailed = False
 		for (param, arg) in zip(params, self.args):
 			expectedType = param.type if param else None
 			
@@ -102,9 +103,13 @@ class FnCall(AST):
 				arg = selfArg
 			else:
 				arg = state.analyzeNode(arg, expectedType)
-				if arg.type and not arg.type.isPrimitiveType and not arg.type.isUnknown:
+				if arg and arg.type and not arg.type.isPrimitiveType and not arg.type.isUnknown:
 					if param == None and hasCVarArgs:
 						logError(state, arg.span, 'type {} cannot be used as a C variadic argument'.format(arg.type))
+			
+			if arg == None:
+				argFailed = True
+				continue
 			
 			if arg.type and arg.type.isPtrType and arg.typeModifiers and arg.typeModifiers.uninit:
 				if param:
@@ -123,7 +128,11 @@ class FnCall(AST):
 			args = args[:len(fnType.params)]
 		
 		returnType = fnType.returnType if fnType else Void
-		mir = FnCallMIR(access, args, cVarArgs, dynDispatch, returnType, self.span)
+		if access == None or argFailed:
+			mir = None
+		else:
+			mir = FnCallMIR(access, args, cVarArgs, dynDispatch, returnType, self.span)
+		
 		for arg in args:
 			if arg.borrows:
 				lateRef = SymbolAccess.noop(arg.symbol, state.scope.dropBlock, arg.span)

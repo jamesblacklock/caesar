@@ -28,8 +28,6 @@ class FnDecl(ValueSymbol):
 		self.paramDropBlock = None
 	
 	def analyzeSig(self, state):
-		attrs.invokeAttrs(state, self)
-		
 		if self.returnTypeRef:
 			self.returnType = state.resolveTypeRefSig(self.returnTypeRef)
 		else:

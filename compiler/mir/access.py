@@ -300,7 +300,9 @@ class SymbolWrite(SymbolAccess):
 			access.rvalueImplicitType = access.type
 		
 		if access.analyzeRValue:
-			access.rvalue = state.analyzeNode(access.rvalue, access.rvalueImplicitType, isWrite=True)
+			rvalue = state.analyzeNode(access.rvalue, access.rvalueImplicitType, isWrite=True)
+			if rvalue:
+				access.rvalue = rvalue
 		access.symbol.contracts = access.rvalue.contracts
 		if access.symbol.type == None:
 			access.symbol.type = access.rvalue.type
@@ -554,25 +556,25 @@ def _SymbolAccess__analyzeSymbolAccess(state, expr, access, implicitType=None):
 			access.fieldSpan = expr.path[-1].span
 	elif type(expr) == field.Index:
 		_SymbolAccess__analyzeSymbolAccess(state, expr.expr, access)
-		expr.index = state.analyzeNode(expr.index, USize)
+		index = state.analyzeNode(expr.index, USize)
+		failed = index == None
 		
 		access.isFieldAccess = True
 		
-		failed = False
 		if not access.type:
 			failed = True
 		elif not access.type.isArrayType:
 			failed = True
 			logError(state, expr.expr.span, 
 				'base of index expression must be an array type (found {})'.format(access.type))
-		elif expr.index.type and expr.index.type != USize:
+		elif index.type and index.type != USize:
 			failed = True
-			logError(state, expr.index.span, 'index must be type usize (found {})'.format(expr.index.type))
+			logError(state, expr.index.span, 'index must be type usize (found {})'.format(index.type))
 		
 		if failed:
 			return
 		
-		staticIndex = expr.index.staticEval(state)
+		staticIndex = index.staticEval(state)
 		if staticIndex:
 			assert staticIndex.dataType == StaticDataType.INT
 			if staticIndex.data >= access.type.count:

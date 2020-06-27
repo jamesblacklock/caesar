@@ -61,7 +61,9 @@ class TypeSymbol(Symbol):
 
 class OwnedType(TypeSymbol):
 	def __init__(self, baseType, acquire, release, acquireSpan, releaseSpan):
-		name = 'owned({}, {}) {}'.format(acquire.name, release.name, baseType.name)
+		name = 'owned({}, {}) {}'.format(
+			acquire.name if acquire else '<unknown>', 
+			release.name if release else '<unknown>', baseType.name)
 		super().__init__(
 			name=name, 
 			byteSize=baseType.byteSize, 

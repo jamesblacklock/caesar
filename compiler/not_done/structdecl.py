@@ -27,9 +27,6 @@ class StructDecl(TypeSymbol):
 		decl.fieldDict = {field.name: field for field in decl.fields}
 	
 	def analyzeSig(decl, state):
-		from ..ast import attrs
-		attrs.invokeAttrs(state, decl)
-		
 		fieldDecls = []
 		for (i, fieldDecl) in enumerate(decl.fieldDecls):
 			if type(fieldDecl) == UnionFields:

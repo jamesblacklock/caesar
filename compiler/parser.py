@@ -668,10 +668,11 @@ def parseOwnedTypeRef(state):
 	state.advance()
 	state.skipSpace()
 	
-	isValid = False
+	isValid = True
 	acquire = None
 	release = None
 	if state.tok.type == TokenType.LPAREN:
+		isValid = False
 		ownedParams = parseBlock(state, parseItem, BlockMarkers.PAREN, True)
 		if len(ownedParams.list) == 2:
 			isValid = True

@@ -16,7 +16,7 @@ class IsExpr(AST):
 	
 	def analyze(self, state, implicitType):
 		typeChecked = state.analyzeNode(self.expr, discard=True)
-		if not typeChecked.type:
+		if not typeChecked or not typeChecked.type:
 			return None
 		
 		if not typeChecked.type.isEnumType:
@@ -42,11 +42,8 @@ class IsExpr(AST):
 		eq = InfixOp(tagField, tagExpr, InfixOps.EQ, None, self.span)
 		
 		access = state.analyzeNode(eq)
-		# access = result.l
-		# if type(access) == Block:
-		# 	access = access.exprs[-3].rvalue
-		
-		access.contracts = { typeChecked.symbol: Contract(typeChecked.symbol, enumType, [variant], typeChecked.deref) }
+		if access:
+			access.contracts = { typeChecked.symbol: Contract(typeChecked.symbol, enumType, [variant], typeChecked.deref) }
 		
 		return access
 

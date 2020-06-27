@@ -15,10 +15,10 @@ pub extern unsafe fn getchar() -> int
 @ffi("C")
 pub extern unsafe fn strlen(s: &byte) -> int
 
-@ffi("C")
+@ffi("C") @acquire_default
 pub extern unsafe fn malloc(size: usize) -> owned &mut byte
 
-@ffi("C")
+@ffi("C") @release_default
 pub extern unsafe fn free(buf: owned &byte)
 
 @ffi("C")

@@ -100,6 +100,8 @@ class Import(AST):
 		self.span = span
 		self.symbolImports = []
 		self.importedMod = None
+		
+		self.attrsInvoked = True
 	
 	def analyzeSig(self, state, mod):
 		importMod(state, mod, self)

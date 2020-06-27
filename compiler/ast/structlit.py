@@ -70,6 +70,7 @@ class StructLit(AST):
 					'type `{}` is not a struct type'.format(resolvedType.name))
 				resolvedType = None
 		
+		fieldFailed = False
 		initFields = {}
 		accesses = {}
 		for fieldInit in self.fields:
@@ -91,8 +92,14 @@ class StructLit(AST):
 						'type `{}` has no field `{}`'.format(resolvedType.name, fieldInit.name))
 			
 			access = state.analyzeNode(fieldInit.expr, fieldType)
-			access = state.typeCheck(access, fieldType)
-			accesses[fieldInit.name] = access
+			if access:
+				access = state.typeCheck(access, fieldType)
+				accesses[fieldInit.name] = access
+			else:
+				fieldFailed = True
+		
+		if fieldFailed:
+			return None
 		
 		if resolvedType == None:
 			fieldTypes = []

@@ -66,7 +66,7 @@ class InfixOp(AST):
 			l = state.analyzeNode(infixOp.l, implicitType)
 			r = state.analyzeNode(infixOp.r, l.type if l.type else implicitType)
 		
-		if not (l.type and r.type):
+		if not (l and l.type and r and r.type):
 			return None
 		
 		l = tryPromote(state, l, r.type)

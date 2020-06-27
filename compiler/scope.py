@@ -561,21 +561,39 @@ class Scope:
 		fnCall = FnCall(fnRef, [ptr], [], False, fnRef.type.returnType, span, isDrop=True)
 		exprs.append(fnCall)
 	
+	def dropEnum(self, symbol, field, fieldBase, exprs, span):
+		t = field.type if field else symbol.type
+		assert t.isEnumType
+		parentDropFn = field.type.dropFn if field else symbol.dropFn
+		
+		for variant in t.variants:
+			if variant.type.isCompositeType:
+				for field in variant.type.fields:
+					if field.type.isOwnedType and not parentDropFn:
+						logError(self.state, symbol.span, 
+							'owned value in field `{}` was not discarded'.format(field.name))
+						logExplain(self.state, span, 'value is dropped here')
+					elif field.type.dropFn:
+						logWarning(state, symbol.span, 
+							'I can\'t drop `enum`s properly; field `{}` will not be dropped'.format(field.name))
+	
 	def dropFields(self, symbol, field, fieldBase, exprs, span):
 		t = field.type if field else symbol.type
-		if t.isEnumType:
-			t = t.structType
+		parentDropFn = field.type.dropFn if field else symbol.dropFn
 		
-		if not t.isCompositeType:
+		if t.isEnumType:
+			self.dropEnum(symbol, field, fieldBase, exprs, span)
+			return
+		elif not t.isCompositeType:
 			return
 		
 		fieldInfo = self.symbolInfo[symbol].fieldInfo
 		for field in reversed(t.fields):
 			if field not in fieldInfo or not fieldInfo[field].uninit:
-				if field.type.isOwnedType:
-					logError(self.state, symbol.nameTok.span, 
+				if field.type.isOwnedType and not parentDropFn:
+					logError(self.state, symbol.span, 
 						'owned value in field `{}` was not discarded'.format(field.name))
-					# logExplain(self.state, block.span, 'value goes out of scope here')
+					logExplain(self.state, span, 'value is dropped here')
 				
 				if field.type.dropFn:
 					self.callDropFn(field.type.dropFn, symbol, field, fieldBase, exprs, span)

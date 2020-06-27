@@ -9,7 +9,7 @@ class Sign(AST):
 
 	def analyze(self, state):
 		access = state.analyzeNode(self.expr)
-		if access.type == None:
+		if not access or access.type == None:
 			return access
 		elif not access.type.isSigned:
 			logError(state, self.expr.span, 'type `{}` has no sign'.format(access.type.name))

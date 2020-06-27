@@ -43,7 +43,9 @@ class Return(AST):
 		access = None
 		if self.expr:
 			access = state.analyzeNode(self.expr, expectedReturnType)
-			if access.type:
+			if access == None:
+				return None
+			elif access.type:
 				returnType = access.type
 		
 		if not typesMatch(returnType, expectedReturnType):

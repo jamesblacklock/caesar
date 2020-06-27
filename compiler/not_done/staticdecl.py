@@ -17,8 +17,6 @@ class StaticDecl(ValueSymbol):
 		self.expr = None
 		
 	def analyzeSig(self, state, isConst=False):
-		attrs.invokeAttrs(state, self)
-		
 		if self.typeRef:
 			self.type = state.resolveTypeRef(self.typeRef)
 		

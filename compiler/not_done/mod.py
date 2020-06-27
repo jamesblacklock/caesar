@@ -21,49 +21,60 @@ class Mod(Symbol):
 		self.objCodePath = None
 		self.noStrImport = False
 		self.isStrMod = False
+		self.acquireDefault = None
+		self.releaseDefault = None
 	
-	def analyzeSig(mod, state):
-		state.pushScope(ScopeType.MOD, mod=mod, name=mod.name)
+	def analyzeSig(self, state):
+		state.pushScope(ScopeType.MOD, mod=self, name=self.name)
 		
-		attrs.invokeAttrs(state, mod)
+		attrs.invokeAttrs(state, self)
 		
-		for decl in mod.imports:
-			decl.analyzeSig(state, mod)
+		for decl in self.decls:
+			attrs.invokeAttrs(state, decl)
 		
-		for decl in mod.types:
+		for decl in self.imports:
+			decl.analyzeSig(state, self)
+		
+		for decl in self.types:
 			decl.analyzeSig(state)
 		
-		for decl in mod.fns:
+		for decl in self.fns:
 			decl.analyzeSig(state)
 		
-		for decl in mod.statics:
+		for decl in self.statics:
 			decl.analyzeSig(state)
 		
-		for decl in mod.consts:
+		for decl in self.consts:
 			decl.analyzeSig(state)
 		
-		for decl in mod.mods:
+		for decl in self.mods:
 			if decl.isImport:
 				continue
 			decl.analyzeSig(state)
+		
+		self.acquireDefault = state.scope.acquireDefault
+		self.releaseDefault = state.scope.releaseDefault
 		
 		state.popScope()
 	
-	def analyze(mod, state):
-		state.pushScope(ScopeType.MOD, mod=mod, name=mod.name)
+	def analyze(self, state):
+		state.pushScope(ScopeType.MOD, mod=self, name=self.name)
 		
-		for decl in mod.mods:
+		state.scope.acquireDefault = self.acquireDefault
+		state.scope.releaseDefault = self.releaseDefault
+		
+		for decl in self.mods:
 			if decl.isImport:
 				continue
 			decl.analyze(state)
 		
-		for decl in mod.statics:
+		for decl in self.statics:
 			decl.analyze(state)
 		
-		for decl in mod.consts:
+		for decl in self.consts:
 			decl.analyze(state)
 		
-		for decl in mod.fns:
+		for decl in self.fns:
 			decl.analyze(state)
 		
 		state.popScope()
@@ -177,8 +188,6 @@ class TraitDecl(TypeSymbol):
 		self.pub = pub
 	
 	def analyzeSig(self, state):
-		attrs.invokeAttrs(state, self)
-		
 		self.symbolTable = self.mod.symbolTable
 		self.mod.analyzeSig(state)
 	

@@ -14,9 +14,14 @@ class NamedTypeRef(TypeRef):
 		self.nameTok = path[-1]
 		super().__init__(self.nameTok.content, span)
 
-class OwnedTypeRef(AST):
+class OwnedTypeRef(TypeRef):
 	def __init__(self, baseType, acquire, release, span):
-		super().__init__(span)
+		assert (not acquire) == (not release)
+		acquireStr = '' if not acquire else '::'.join(tok.content for tok in acquire.path)
+		releaseStr = '' if not release else '::'.join(tok.content for tok in release.path)
+		acquireRelease = '' if not acquire else '({}, {})'.format(acquireStr, releaseStr)
+		name = 'owned{} {}'.format(acquireRelease, baseType.name)
+		super().__init__(name, span)
 		self.baseType = baseType
 		self.acquire = acquire
 		self.release = release

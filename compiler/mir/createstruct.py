@@ -20,6 +20,7 @@ class StructInitInfo:
 		self.isStruct = True
 
 def doInitField(state, inits, field, info, baseOffset=0):
+	failed = False
 	if info.isStruct:
 		baseOffset += field.offset
 		type = field.type
@@ -27,11 +28,15 @@ def doInitField(state, inits, field, info, baseOffset=0):
 			type = type.structType
 		for info in info.initInfo:
 			field = type.fieldDict[info.name]
-			doInitField(state, inits, field, info, baseOffset)
+			failed = doInitField(state, inits, field, info, baseOffset) and not failed
 		return
 	
 	access = state.analyzeNode(info.expr)
-	inits.append(FieldInit(access, baseOffset + field.offset))
+	if access:
+		inits.append(FieldInit(access, baseOffset + field.offset))
+		return failed
+	else:
+		return False
 
 class CreateStruct(MIR):
 	def __init__(self, inits, type, span):
@@ -46,9 +51,13 @@ class CreateStruct(MIR):
 		if structType.isEnumType:
 			structType = structType.structType
 		
+		failed = False
 		for info in initInfo:
 			field = structType.fieldDict[info.name]
-			doInitField(state, inits, field, info)
+			failed = doInitField(state, inits, field, info) and not failed
+		
+		if failed:
+			return None
 		
 		return CreateStruct(inits, type, span)
 	
