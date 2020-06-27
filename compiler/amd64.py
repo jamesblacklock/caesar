@@ -1704,7 +1704,7 @@ def defineStatics(mod, output):
 			continue
 		
 		bytes = bytesDef(decl.staticValue.toBytes())
-		output.write('\t{}: db {}\n'.format(decl.staticValue.label, bytes))
+		output.write('\t{}:{}'.format(decl.staticValue.label, bytes))
 	
 	if not mod.extern and mod.isImpl and mod.vtbl:
 		output.write('\t{}:\n'.format(mod.vtblName))
