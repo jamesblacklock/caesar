@@ -21,6 +21,18 @@ class Span:
 	
 	def clone(self):
 		return Span(self.source, self.startLine, self.startColumn, self.endLine, self.endColumn)
+	
+	def startSpan(self):
+		other = self.clone()
+		other.endLine = other.startLine
+		other.endColumn = other.startColumn
+		return other
+	
+	def endSpan(self):
+		other = self.clone()
+		other.startLine = other.endLine
+		other.startColumn = other.endColumn
+		return other
 
 class AnsiColor:
 	BLACK = '30'

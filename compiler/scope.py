@@ -572,7 +572,7 @@ class Scope:
 					if field.type.isOwnedType and not parentDropFn:
 						logError(self.state, symbol.span, 
 							'owned value in field `{}` was not discarded'.format(field.name))
-						logExplain(self.state, span, 'value is dropped here')
+						logExplain(self.state, span.endSpan(), 'value is dropped here')
 					elif field.type.dropFn:
 						logWarning(state, symbol.span, 
 							'I can\'t drop `enum`s properly; field `{}` will not be dropped'.format(field.name))
@@ -593,7 +593,7 @@ class Scope:
 				if field.type.isOwnedType and not parentDropFn:
 					logError(self.state, symbol.span, 
 						'owned value in field `{}` was not discarded'.format(field.name))
-					logExplain(self.state, span, 'value is dropped here')
+					logExplain(self.state, span.endSpan(), 'value is dropped here')
 				
 				if field.type.dropFn:
 					self.callDropFn(field.type.dropFn, symbol, field, fieldBase, exprs, span)
@@ -605,7 +605,7 @@ class Scope:
 		
 		if symbol.type.isOwnedType:
 			logError(self.state, symbol.span, 'owned value was not discarded')
-			logExplain(self.state, block.span, 'value goes out of scope here')
+			logExplain(self.state, block.span.endSpan(), 'value is dropped here')
 		
 		if symbol.dropFn:
 			self.callDropFn(symbol.dropFn, symbol, None, 0, exprs, block.span)

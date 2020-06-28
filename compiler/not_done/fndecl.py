@@ -1,6 +1,6 @@
 from enum     import Enum
 from ..ast.ast    import ValueSymbol#, TypeModifiers
-from ..log    import logError
+from ..log    import logError, logExplain
 from ..types  import FnType, Void
 from ..ast        import attrs
 from ..   import scope
@@ -26,6 +26,7 @@ class FnDecl(ValueSymbol):
 		self.pub = pub
 		self.mirBody = None
 		self.paramDropBlock = None
+		self.isDropFnForType = None
 	
 	def analyzeSig(self, state):
 		if self.returnTypeRef:
@@ -74,8 +75,29 @@ class FnDecl(ValueSymbol):
 		if not state.failed:
 			self.mirBody.checkFlow(None)
 			assert self.mirBody.scope.didReturn
+			# if self.isDropFnForType:
+			# 	self.checkDropFnScope(state)
 		
 		# print(self)
+	
+	def checkDropFnScope(self, state):
+		if not self.isDropFnForType.isCompositeType:
+			return
+		
+		selfSymbol = self.params[0].symbol
+		selfSymbolInfo = self.mirBody.scope.symbolInfo[selfSymbol]
+		
+		mustUninit = []
+		for field in self.isDropFnForType.fields:
+			if field.type.isOwnedType:
+				fieldInfo = selfSymbolInfo.fieldInfo[field] if field in selfSymbolInfo.fieldInfo else None
+				if not fieldInfo or not fieldInfo.uninit or fieldInfo.maybeUninit:
+					mustUninit.append(field)
+		
+		if mustUninit:
+			logError(state, self.nameTok.span, '`drop` function must uninitialize all owned fields')
+			logExplain(state, selfSymbol.span, 'the following fields were not uninitialized: {}'.format(
+				', '.join('`{}`'.format(field.name) for field in mustUninit)))
 	
 	def __str__(self):
 		fnStr = 'extern fn' if self.extern else 'fn'

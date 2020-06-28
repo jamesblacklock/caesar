@@ -118,6 +118,7 @@ class Impl(Mod):
 					
 					if self.trait.isDropTrait and 'drop' in self.symbolTable:
 						self.type.dropFn = self.symbolTable['drop']
+						self.type.dropFn.isDropFnForType = self.type
 				else:
 					logError(state, self.traitPath[-1].span, '`{}` is not a trait'.format(self.trait.name))
 					self.trait = None
