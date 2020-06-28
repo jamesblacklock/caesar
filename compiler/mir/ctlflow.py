@@ -33,7 +33,7 @@ class Return(MIR):
 	def checkFlow(self, scope):
 		if self.access:
 			self.access.checkFlow(scope)
-		scope.doReturn(self.access.symbol if self.access else None, self)
+		scope.doReturn(self.access, self)
 	
 	def writeIR(self, state):
 		state.didBreak = True

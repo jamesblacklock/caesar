@@ -9,31 +9,20 @@ from ..mir.primitive import VoidValue
 from ..mir.block     import createDropBlock
 
 class Block(AST):
-	def __init__(self, exprs, span, scopeType=None):
+	def __init__(self, exprs, scopeType, span):
 		super().__init__(span, True)
 		self.exprs = exprs
 		self.scopeType = scopeType
-		self.blockScope = scopeType == ScopeType.BLOCK
-		self.fnDecl = None
-		self.ifExpr = None
-		self.loopExpr = None
 		self.unsafe = False
-		# self.scope = None
-		self.scopeContracts = None
-		self.lastIfBranchOuterSymbolInfo = None
-		self.ifBranchOuterSymbolInfo = None
 	
 	@staticmethod
-	def fromInfo(blockInfo, scopeType=None):
-		return Block(blockInfo.list, blockInfo.span, scopeType)
+	def fromInfo(blockInfo, scopeType):
+		return Block(blockInfo.list, scopeType, blockInfo.span)
 	
 	def analyze(self, state, implicitType):
-		if self.fnDecl:
-			self.unsafe = self.fnDecl.unsafe
-		
 		resetScopeSafety = False
-		if self.blockScope:
-			state.pushScope(ScopeType.BLOCK, allowUnsafe=self.unsafe)
+		if self.scopeType == ScopeType.BLOCK:
+			state.pushScope(ScopeType.BLOCK, self)
 		
 		state.mirBlock.span = self.span
 		
@@ -50,6 +39,8 @@ class Block(AST):
 			for (i, expr) in enumerate(self.exprs):
 				if self.scopeType and (state.scope.didReturn or state.scope.didBreak):
 					unreachableSpan = Span.merge(unreachableSpan, expr.span) if unreachableSpan else expr.span
+				
+				assert state.scope.dropBlock
 				
 				if expr.hasValue and type(expr) not in (Block, ifexpr.If):
 					(tempSymbol, tempWrite) = accessmod.createTempSymbol(expr)
@@ -87,7 +78,7 @@ class Block(AST):
 			state.analyzeNode(tempWrite)
 			tempRead.type = tempSymbol.type
 			access = tempRead
-		elif self.blockScope:
+		elif self.scopeType == ScopeType.BLOCK:
 			mirBlock = state.popScope()
 			if access:
 				if access.type and not access.type.isVoidType:

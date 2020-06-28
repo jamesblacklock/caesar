@@ -44,27 +44,29 @@ class InfixOp(AST):
 				assert 0
 		elif rIndefinite and type(infixOp.l) not in (Block, If):
 			l = state.analyzeNode(infixOp.l, implicitType)
-			if type(infixOp.r) == IntLit and l.type and l.type.isPtrType:
-				# if infixOp.op in PTR_INT_OPS:
-					r = state.analyzeNode(infixOp.r, ISize if infixOp.r.value < 0 else USize)
-				# else:
-				# 	opErr()
-				# 	return
-			else:
-				r = state.analyzeNode(infixOp.r, l.type)
+			if l:
+				if type(infixOp.r) == IntLit and l.type and l.type.isPtrType:
+					# if infixOp.op in PTR_INT_OPS:
+						r = state.analyzeNode(infixOp.r, ISize if infixOp.r.value < 0 else USize)
+					# else:
+					# 	opErr()
+					# 	return
+				else:
+					r = state.analyzeNode(infixOp.r, l.type)
 		elif lIndefinite or type(infixOp.l) in (Block, If):
 			r = state.analyzeNode(infixOp.r, implicitType)
-			if type(infixOp.l) == IntLit and r.type and r.type.isPtrType:
-				# if infixOp.op in PTR_INT_OPS:
-					l = state.analyzeNode(infixOp.l, ISize if infixOp.l.value < 0 else USize)
-				# else:
-					# opErr()
-					# return
-			else:
-				l = state.analyzeNode(infixOp.l, r.type)
+			if r:
+				if type(infixOp.l) == IntLit and r.type and r.type.isPtrType:
+					# if infixOp.op in PTR_INT_OPS:
+						l = state.analyzeNode(infixOp.l, ISize if infixOp.l.value < 0 else USize)
+					# else:
+						# opErr()
+						# return
+				else:
+					l = state.analyzeNode(infixOp.l, r.type)
 		else:
 			l = state.analyzeNode(infixOp.l, implicitType)
-			r = state.analyzeNode(infixOp.r, l.type if l.type else implicitType)
+			r = state.analyzeNode(infixOp.r, l.type if l and l.type else implicitType)
 		
 		if not (l and l.type and r and r.type):
 			return None

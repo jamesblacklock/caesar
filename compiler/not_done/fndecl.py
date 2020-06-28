@@ -58,7 +58,7 @@ class FnDecl(ValueSymbol):
 		for param in self.params:
 			param.type = state.finishResolvingType(param.type)
 		
-		state.pushScope(scope.ScopeType.FN, fnDecl=self, allowUnsafe=self.unsafe)
+		state.pushScope(scope.ScopeType.FN, self)
 		
 		self.paramDropBlock = createDropBlock(self)
 		state.mirBlock.append(self.paramDropBlock)

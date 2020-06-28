@@ -18,7 +18,7 @@ class TupleLit(AST):
 		accesses = []
 		for (expr, t) in zip(self.values, expectedTypes):
 			access = state.analyzeNode(expr, t)
-			if access:
+			if access and access.type:
 				accesses.append(access)
 				resolvedTypes.append(access.type)
 			else:

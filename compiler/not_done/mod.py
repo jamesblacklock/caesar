@@ -25,7 +25,7 @@ class Mod(Symbol):
 		self.releaseDefault = None
 	
 	def analyzeSig(self, state):
-		state.pushScope(ScopeType.MOD, mod=self, name=self.name)
+		state.pushScope(ScopeType.MOD, self)
 		
 		attrs.invokeAttrs(state, self)
 		
@@ -58,10 +58,7 @@ class Mod(Symbol):
 		state.popScope()
 	
 	def analyze(self, state):
-		state.pushScope(ScopeType.MOD, mod=self, name=self.name)
-		
-		state.scope.acquireDefault = self.acquireDefault
-		state.scope.releaseDefault = self.releaseDefault
+		state.pushScope(ScopeType.MOD, self)
 		
 		for decl in self.mods:
 			if decl.isImport:

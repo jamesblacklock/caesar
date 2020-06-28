@@ -23,7 +23,7 @@ class FnCall(AST):
 		access = None
 		dynDispatch = False
 		if self.isMethodCall:
-			selfArg = state.analyzeNode(self.args[0], discard=True)#SymbolAccess.analyzeSymbolAccess(state, self.args[0])
+			selfArg = state.analyzeNode(self.args[0], discard=True)
 			if selfArg.type:
 				name = self.expr.path[0].content
 				symbol = None
@@ -68,14 +68,16 @@ class FnCall(AST):
 			access = state.analyzeNode(self.expr, implicitType)
 		
 		fnType = None
+		selfArg = None
 		if access and access.type:
 			if not access.type.isFnType:
 				logError(state, self.expr.span, 'the expression cannot be called as a function')
 			else:
 				fnType = access.type
 				if self.isMethodCall:
+					selfArg = self.args[0]
 					if len(fnType.params) > 0 and fnType.params[0].type.isPtrType:
-						self.args[0] = Address(self.args[0], fnType.params[0].type.mut, self.args[0].span)
+						selfArg = Address(selfArg, fnType.params[0].type.mut, selfArg.span)
 				
 				if fnType.unsafe and not state.scope.allowUnsafe:
 					logError(state, self.expr.span, 'unsafe function called in a safe context')
@@ -90,11 +92,17 @@ class FnCall(AST):
 		for _ in range(len(params), len(self.args)):
 			params.append(None)
 		
+		assert state.scope.dropBlock
+		
 		hasCVarArgs = fnType.cVarArgs if fnType else False
 		args = []
 		argFailed = False
+		isSelfArg = self.isMethodCall
 		for (param, arg) in zip(params, self.args):
 			expectedType = param.type if param else None
+			if isSelfArg:
+				arg = selfArg
+				isSelfArg = False
 			arg = state.analyzeNode(arg, expectedType)
 			if arg == None or arg.type == None:
 				argFailed = True

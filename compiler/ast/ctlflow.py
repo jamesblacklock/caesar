@@ -8,28 +8,26 @@ def analyzeBreakOrContinue(state, expr, isContinue):
 	if state.scope.loopDepth == 0:
 		logError(state, expr.span, '`{}` expression is not inside a loop'
 			.format('continue' if isContinue else 'break'))
-	else:
-		state.scope.didBreak = True
+		return None
+	
+	state.scope.didBreak = True
+	dropBlock = createDropBlock(expr)
+	state.mirBlock.append(dropBlock)
+	return LoopCtl(isContinue, dropBlock, expr.span)
 
 class Break(AST):
 	def __init__(self, span):
 		super().__init__(span)
 	
 	def analyze(self, state, implicitType):
-		analyzeBreakOrContinue(state, self, False)
-		dropBlock = createDropBlock(self)
-		state.mirBlock.append(dropBlock)
-		return LoopCtl(False, dropBlock, self.span)
+		return analyzeBreakOrContinue(state, self, False)
 
 class Continue(AST):
 	def __init__(self, span):
 		super().__init__(span)
 	
 	def analyze(self, state, implicitType):
-		analyzeBreakOrContinue(state, self, True)
-		dropBlock = createDropBlock(self)
-		state.mirBlock.append(dropBlock)
-		return LoopCtl(True, dropBlock, self.span)
+		return analyzeBreakOrContinue(state, self, True)
 
 class Return(AST):
 	def __init__(self, expr, span):

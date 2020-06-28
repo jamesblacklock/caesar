@@ -44,7 +44,6 @@ class SymbolInfo:
 		self.returnsSinceLastUse = set()
 		self.breaksAfterMove = {}
 		self.breaksSinceLastUse = {}
-		# self.contracts = {}
 		self.borrows = set()
 		self.borrowedBy = set()
 		self.usesOfBorrowsSinceLastUse = set()
@@ -100,32 +99,27 @@ class SymbolInfo:
 		return info
 
 class Scope:
-	def __init__(self, state, parent, scopeType, 
-		name=None, mod=None, fnDecl=None, loopExpr=None, 
-		ifBranchOuterSymbolInfo=None, allowUnsafe=False):
+	def __init__(self, state, parent, scopeType, item):
 		self.state = state
 		self.parent = parent
 		self.type = scopeType
 		self.contracts = {}
 		self.symbolTable = {}
 		self.symbolInfo = {}
-		self.name = mod.name if mod else name
+		self.name = None
 		self.didBreak = False
 		self.didReturn = False
-		self.fnDecl = fnDecl
+		self.fnDecl = None
 		self.loopDepth = 0
 		self.ifExpr = None
-		self.loopExpr = loopExpr
-		self.ifBranchOuterSymbolInfo = ifBranchOuterSymbolInfo
+		self.loopExpr = None
+		self.ifBranchOuterSymbolInfo = None
 		self.dropBlock = None
-		self.allowUnsafe = allowUnsafe
+		self.allowUnsafe = False
 		self.acquireDefault = None
 		self.releaseDefault = None
 		self.acquireDefaultSet = False
 		self.releaseDefaultSet = False
-		
-		if mod:
-			self.setSymbolTable(mod.symbolTable)
 		
 		if parent:
 			self.contracts.update(parent.contracts)
@@ -141,6 +135,33 @@ class Scope:
 		
 		if self.loopDepth > 0 or scopeType == ScopeType.LOOP:
 			self.loopDepth += 1
+		
+		if self.type == ScopeType.MOD:
+			self.setMod(item)
+		elif self.type == ScopeType.FN:
+			self.setFn(item)
+		elif self.type == ScopeType.LOOP:
+			self.setLoop(item)
+		elif self.type == ScopeType.BLOCK:
+			self.setBlock(item)
+	
+	def setMod(self, mod):
+		self.symbolTable = mod.symbolTable
+		self.name = mod.name
+		if mod.acquireDefault:
+			self.acquireDefault = mod.acquireDefault
+		if mod.releaseDefault:
+			self.releaseDefault = mod.releaseDefault
+	
+	def setFn(self, fn):
+		self.fnDecl = fn
+		self.allowUnsafe = fn.unsafe
+	
+	def setBlock(self, block):
+		self.allowUnsafe = self.allowUnsafe or (True if block and block.unsafe else False)
+	
+	def setLoop(self, loop):
+		self.loopExpr = loop
 	
 	def intersectContracts(self, contracts):
 		if contracts == None:
@@ -260,7 +281,9 @@ class Scope:
 		
 		return outerSymbolInfo
 	
-	def doReturn(self, symbol, ret):
+	def doReturn(self, access, ret):
+		symbol = access.symbol if access else None
+		
 		self.didReturn = True
 		if self.type == ScopeType.FN:
 			return
@@ -396,8 +419,6 @@ class Scope:
 	def accessSymbol(self, access):
 		access.symbol.unused = False
 		assert access.symbol.type
-		# if access.symbol.type == None:
-			# return
 		
 		info = self.loadAndSaveSymbolInfo(access.symbol)
 		if info == None:

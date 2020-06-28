@@ -325,6 +325,7 @@ class SymbolWrite(SymbolAccess):
 		if access.field and access.field.isUnionField and not state.scope.allowUnsafe:
 			logError(state, fnCall.expr.span, 'writing union fields is unsafe; context is safe')
 		
+		assert state.scope.dropBlock
 		access.dropBlock = state.scope.dropBlock
 		if access.rvalue:
 			access.rvalue.dropBlock = state.scope.dropBlock

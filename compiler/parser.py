@@ -769,13 +769,13 @@ def parseIf(state):
 			elseIf = parseIf(state)
 			exprs = [elseIf] if elseIf else []
 			span = elseIf.span if elseIf else tok.span
-			elseBlock = Block(exprs, span, ScopeType.ELSE)
+			elseBlock = Block(exprs, ScopeType.ELSE, span)
 		else:
 			elseBlock = Block.fromInfo(parseBlock(state, parseFnBodyExpr), ScopeType.ELSE)
 		
 		span = Span.merge(span, elseBlock.span)
 	else:
-		elseBlock = Block([], span, ScopeType.ELSE)
+		elseBlock = Block([], ScopeType.ELSE, span)
 		state.rollback(offset)
 	
 	return If(expr, ifBlock, elseBlock, span)
@@ -1154,7 +1154,7 @@ def parseUnsafeBlock(state):
 	state.skipSpace()
 	expr = parseExpr(state, ExprClass.FN, allowSimpleFnCall=True)
 	if type(expr) != Block:
-		expr = Block([expr], expr.span, ScopeType.BLOCK)
+		expr = Block([expr], ScopeType.BLOCK, expr.span)
 	
 	expr.span = Span.merge(span, expr.span)
 	expr.unsafe = True

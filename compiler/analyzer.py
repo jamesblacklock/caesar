@@ -1,23 +1,23 @@
 import ctypes
-from .not_done.typeref import NamedTypeRef, PtrTypeRef, ArrayTypeRef, TupleTypeRef, OwnedTypeRef
-from .types     import TypeSymbol, UnknownType, FieldInfo, PtrType, ArrayType, TupleType, OwnedType, \
-                        Void, Bool, Byte, Char, Int8, UInt8, Int16, UInt16, Int32, UInt32, \
-                        Int64, UInt64, ISize, USize, Float32, Float64, typesMatch, canCoerce, tryPromote
-from .log       import logError, logExplain
-from .ast.ast    import ValueSymbol
-from .scope      import Scope, ScopeType
-from .ast.attrs  import invokeAttrs, Attr
+from .not_done.typeref    import NamedTypeRef, PtrTypeRef, ArrayTypeRef, TupleTypeRef, OwnedTypeRef
+from .types               import TypeSymbol, UnknownType, FieldInfo, PtrType, ArrayType, TupleType, OwnedType, \
+                                 Void, Bool, Byte, Char, Int8, UInt8, Int16, UInt16, Int32, UInt32, \
+                                 Int64, UInt64, ISize, USize, Float32, Float64, typesMatch, canCoerce, tryPromote
+from .log                 import logError, logExplain
+from .ast.ast             import ValueSymbol
+from .scope               import Scope, ScopeType
+from .ast.attrs           import invokeAttrs, Attr
 from .not_done.mod        import Mod, Impl, TraitDecl
 from .not_done.fndecl     import FnDecl, CConv
 from .not_done.staticdecl import StaticDecl, ConstDecl
 from .not_done.structdecl import StructDecl
 from .not_done.alias      import AliasDecl, TypeDecl
 from .not_done.enumdecl   import EnumDecl, VariantDecl
-from .mir.access import SymbolAccess, SymbolRead
-from .ast.importexpr import Import
-from .           import platform
-from .mir.block  import Block
-from .mir.localsymbol import LocalSymbol
+from .mir.access          import SymbolAccess, SymbolRead
+from .ast.importexpr      import Import
+from .                    import platform
+from .mir.block           import Block, createDropBlock
+from .mir.localsymbol     import LocalSymbol
 
 BUILTIN_TYPES = {
 	Void.name:    Void,
@@ -197,6 +197,7 @@ class AnalyzerState:
 		if discard:
 			if self.discardLevel == 0:
 				self.pushScope(ScopeType.BLOCK)
+				self.scope.dropBlock = createDropBlock(ast)
 			self.discardLevel += 1
 		
 		invokeAttrs(self, ast)
@@ -340,40 +341,14 @@ class AnalyzerState:
 	def popMIR(self):
 		return self.mirBlockStack.pop()
 	
-	def pushScope(self, scopeType, name=None, mod=None, 
-		fnDecl=None, loopExpr=None, allowUnsafe=False,
-		ifBranchOuterSymbolInfo=None):
-		self.scope = Scope(
-			self, 
-			self.scope, 
-			scopeType, 
-			name=name, 
-			fnDecl=fnDecl, 
-			mod=mod, 
-			loopExpr=loopExpr, 
-			ifBranchOuterSymbolInfo=ifBranchOuterSymbolInfo, 
-			allowUnsafe=allowUnsafe)
+	def pushScope(self, scopeType, item=None):
+		self.scope = Scope(self, self.scope, scopeType, item)
 		
 		# self.lastIfBranchOuterSymbolInfo = None
-		self.pushMIR(Block(self.scope, allowUnsafe))
+		self.pushMIR(Block(self.scope))
 	
 	def popScope(self):
 		self.scope = self.scope.parent
-	
-	# def finalizeScope(self):
-	# 	outerSymbolInfo = self.scope.finalize()
-	# 	oldScopeType = self.scope.type
-		
-	# 	self.scope = self.scope.parent
-		
-	# 	if oldScopeType == ScopeType.IF:
-	# 		self.lastIfBranchOuterSymbolInfo = outerSymbolInfo
-	# 	elif oldScopeType not in (ScopeType.FN, ScopeType.MOD):
-	# 		for info in outerSymbolInfo.values():
-	# 			if info.symbol in self.scope.symbolInfo:
-	# 				# info = info.clone()
-	# 				info.wasDeclared = self.scope.symbolInfo[info.symbol].wasDeclared
-	# 			self.scope.symbolInfo[info.symbol] = info
 		return self.popMIR()
 	
 	def lookupSymbol(self, path, symbolTable=None, inTypePosition=False, inValuePosition=False):

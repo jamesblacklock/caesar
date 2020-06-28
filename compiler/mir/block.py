@@ -3,14 +3,13 @@ from ..scope import ScopeType
 from .ifexpr import If
 
 def createDropBlock(block):
-	return Block(None, False, block.span, True)
+	return Block(None, block.span, True)
 
 class Block(MIR):
-	def __init__(self, scope, unsafe=False, span=None, isDropBlock=False):
+	def __init__(self, scope, span=None, isDropBlock=False):
 		super().__init__(span)
 		self.exprs = []
 		self.scope = scope
-		self.unsafe = unsafe
 		self.lastIfBranchOuterSymbolInfo = None
 		self.ifBranchOuterSymbolInfo = None
 		self.isDropBlock = isDropBlock

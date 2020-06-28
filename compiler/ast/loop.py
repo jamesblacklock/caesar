@@ -12,7 +12,7 @@ class Loop(AST):
 		self.block = block
 	
 	def analyze(self, state, implicitType):
-		state.pushScope(ScopeType.LOOP, loopExpr=self)
+		state.pushScope(ScopeType.LOOP, self)
 		state.analyzeNode(self.block, Void)
 		block = state.popScope()
 		return LoopMIR(block, self.span)
@@ -24,8 +24,8 @@ class While(AST):
 		self.block = block
 	
 	def analyze(self, state, implicitType):
-		ifBlock = Block(self.block.exprs, self.block.span, ScopeType.IF)
-		elseBlock = Block([Break(self.span)], self.span, ScopeType.ELSE)
+		ifBlock = Block(self.block.exprs, ScopeType.IF, self.block.span)
+		elseBlock = Block([Break(self.span)], ScopeType.ELSE, self.span)
 		ifExpr = If(self.expr, ifBlock, elseBlock, self.span)
-		loopBlock = Block([ifExpr], self.span, ScopeType.LOOP)
-		return state.analyzeNode(Loop(loopBlock, self.span), implicitType)
+		loopBlock = Block([ifExpr], ScopeType.LOOP, self.span)
+		state.analyzeNode(Loop(loopBlock, self.span), Void)
