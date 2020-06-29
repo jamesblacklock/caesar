@@ -11,7 +11,10 @@ class StructDecl(TypeSymbol):
 		self.fieldDict = None
 		self.anon = not self.name
 		if self.anon:
-			self.name = '<anonymous struct>'
+			if not fields:
+				self.name = '<anonymous struct>'
+			else:
+				self.name = '{{{}}}'.format(', '.join('{}: {}'.format(f.name, f.typeRef.name) for f in fields))
 			self.isDefinite = False
 	
 	@staticmethod

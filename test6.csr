@@ -10,11 +10,21 @@ struct A
             f: byte
         g: int
 
+import drop
+
+tuple Box(owned(malloc, free) &int)
+impl Box: drop::Drop
+    fn drop(self: &mut Box)
+        unsafe
+            printf("freeing the box\n")
+            free(self^.0)
+
 fn main()
     let a = unsafe malloc(sizeof str) as &str
     a^ = "test\n"
+    
     unsafe printf((borrow a)^->data)
-    unsafe free(a as &byte)
+    unsafe free(a)
     
     let fieldOffset = offsetof(A, b, d, f)
     let expectedOffset = 9usz
@@ -22,3 +32,10 @@ fn main()
     
     unsafe printf("%d %s %d\n", fieldOffset, eqStr->data, expectedOffset)
     unsafe printf("%d\n", offsetof([int * 20], 7))
+    unsafe printf("%d\n", offsetof((int, float64, {asdf: byte, qwer: (byte, byte)}), 2, qwer, 1))
+    
+    let box: Box = ({let p = unsafe malloc(sizeof int) as &int, p^ = 4, p},)
+    unsafe printf("%d\n", (borrow box.0)^)
+    
+    let a: (int) = 5 as (int)
+    

@@ -35,12 +35,6 @@ class PtrTypeRef(TypeRef):
 		self.indLevel = indLevel
 		self.mut = mut
 
-class TupleTypeRef(TypeRef):
-	def __init__(self, types, span):
-		name = '({})'.format(', '.join(t.name for t in types))
-		super().__init__(name, span)
-		self.types = types
-
 class ArrayTypeRef(TypeRef):
 	def __init__(self, baseType, count, span):
 		name = '[{} * {}]'.format(baseType.name, count)

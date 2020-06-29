@@ -183,9 +183,7 @@ class Scope:
 		outerSymbolInfo = {}
 		for info in self.symbolInfo.values():
 			if info.wasDeclared:
-				if info.symbol.type == None:
-					continue
-				elif info.symbol.unused:
+				if info.symbol.unused:
 					if info.symbol.isParam:
 						self.dropSymbol(info.symbol, info.symbol.dropBlock)
 					else:
@@ -593,7 +591,7 @@ class Scope:
 					if field.type.isOwnedType and not parentDropFn:
 						logError(self.state, symbol.span, 
 							'owned value in field `{}` was not discarded'.format(field.name))
-						logExplain(self.state, span.endSpan(), 'value is dropped here')
+						logExplain(self.state, span.endSpan(), 'value escapes here')
 					elif field.type.dropFn:
 						logWarning(state, symbol.span, 
 							'I can\'t drop `enum`s properly; field `{}` will not be dropped'.format(field.name))
@@ -614,7 +612,7 @@ class Scope:
 				if field.type.isOwnedType and not parentDropFn:
 					logError(self.state, symbol.span, 
 						'owned value in field `{}` was not discarded'.format(field.name))
-					logExplain(self.state, span.endSpan(), 'value is dropped here')
+					logExplain(self.state, span.endSpan(), 'value escapes here')
 				
 				if field.type.dropFn:
 					self.callDropFn(field.type.dropFn, symbol, field, fieldBase, exprs, span)
@@ -626,7 +624,7 @@ class Scope:
 		
 		if symbol.type.isOwnedType:
 			logError(self.state, symbol.span, 'owned value was not discarded')
-			logExplain(self.state, block.span.endSpan(), 'value is dropped here')
+			logExplain(self.state, block.span.endSpan(), 'value escapes here')
 		
 		if symbol.dropFn:
 			self.callDropFn(symbol.dropFn, symbol, None, 0, exprs, block.span)

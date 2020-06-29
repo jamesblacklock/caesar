@@ -7,9 +7,10 @@ from .log            import logError
 from .ast.ast        import InfixOps
 from .ast.sign       import Sign
 from .not_done.structdecl import FieldDecl, StructDecl, UnionFields
+from .not_done.tupledecl  import TupleDecl
 from .not_done.enumdecl   import EnumDecl, VariantDecl
 from .ast.attrs      import Attr
-from .not_done.typeref import PtrTypeRef, NamedTypeRef, ArrayTypeRef, TupleTypeRef, OwnedTypeRef
+from .not_done.typeref import PtrTypeRef, NamedTypeRef, ArrayTypeRef, OwnedTypeRef
 from .not_done.mod     import Mod, Impl, TraitDecl
 from .not_done.fndecl import FnDecl, CConv
 from .not_done.staticdecl import StaticDecl, ConstDecl
@@ -385,7 +386,7 @@ def parseEnumDecl(state, doccomment):
 		
 		typeRef = None
 		if state.tok.type == TokenType.LPAREN:
-			typeRef = parseTupleTypeRef(state)
+			typeRef = parseTupleDecl(state, None, True)
 		elif isStructStart(state):
 			typeRef = parseStructDecl(state, None, True)
 		
@@ -431,7 +432,7 @@ def parsePattern(state):
 	# elif state.tok.type == TokenType.LBRACK:
 	# 	return parseArrayTypeRef(state)
 	# elif state.tok.type == TokenType.LPAREN:
-	# 	return parseTupleTypeRef(state)
+	# 	return parseTupleDecl(state)
 	# elif state.tok.type in (TokenType.LBRACE, TokenType.STRUCT):
 	# 	return parseStructDecl(state, None, True)
 	# elif state.tok.type == TokenType.UNION:
@@ -626,9 +627,23 @@ def parsePtrTypeRef(state):
 	
 	return PtrTypeRef(baseType, indLevel, mut, Span.merge(span, baseType.span))
 
-def parseTupleTypeRef(state):
-	block = parseBlock(state, parseTypeRef, blockMarkers=BlockMarkers.PAREN, requireBlockMarkers=True)
-	return TupleTypeRef(block.list, block.span)
+def parseTupleDecl(state, doccomment, anon, pub=False):
+	span = state.tok.span
+	if state.tok.type == TokenType.TUPLE:
+		state.advance()
+		state.skipSpace()
+	
+	nameTok = None
+	if not anon and expectType(state, TokenType.NAME):
+		nameTok = state.tok
+		span = Span.merge(span, state.tok.span)
+		state.advance()
+		state.skipSpace()
+	
+	block = parseBlock(state, parseTypeRef, BlockMarkers.PAREN, True)
+	span = Span.merge(span, block.span)
+	
+	return TupleDecl(nameTok, doccomment, block.list, pub, span)
 
 def parseArrayTypeRef(state):
 	baseType = None
@@ -696,8 +711,8 @@ def parseTypeRef(state):
 		return parsePtrTypeRef(state)
 	elif state.tok.type == TokenType.LBRACK:
 		return parseArrayTypeRef(state)
-	elif state.tok.type == TokenType.LPAREN:
-		return parseTupleTypeRef(state)
+	elif state.tok.type in (TokenType.LPAREN, TokenType.TUPLE):
+		return parseTupleDecl(state, None, True)
 	elif state.tok.type in (TokenType.LBRACE, TokenType.STRUCT):
 		return parseStructDecl(state, None, True)
 	elif state.tok.type == TokenType.UNION:
@@ -1197,6 +1212,11 @@ def parseValueExprImpl(state, precedence, noSkipSpace, allowSimpleFnCall):
 		state.advance()
 		state.skipSpace()
 		expr = parseStructLit(state, None)
+	elif state.tok.type == TokenType.TUPLE:
+		state.advance()
+		state.skipSpace()
+		block = parseBlock(state, parseValueExpr, BlockMarkers.PAREN, True)
+		expr = TupleLit(block.list, block.span)
 	elif state.tok.type == TokenType.NAME:
 		path = parsePath(state)
 		if isStructStart(state):
@@ -1561,6 +1581,7 @@ MOD_EXPR_TOKS = (
 	TokenType.UNSAFE, 
 	TokenType.STATIC, 
 	TokenType.STRUCT, 
+	TokenType.TUPLE, 
 	TokenType.ENUM, 
 	TokenType.UNION, 
 	TokenType.CONST, 
@@ -1578,6 +1599,7 @@ IMPL_EXPR_TOKS = (
 	TokenType.UNSAFE, 
 	TokenType.STATIC, 
 	TokenType.STRUCT, 
+	TokenType.TUPLE, 
 	TokenType.ENUM, 
 	TokenType.UNION, 
 	TokenType.CONST, 
@@ -1594,26 +1616,27 @@ TRAIT_EXPR_TOKS = (
 )
 
 VALUE_EXPR_TOKS = (
-	TokenType.NEWLINE,
-	TokenType.LBRACE,
-	TokenType.LBRACK,
-	TokenType.LPAREN,
-	TokenType.NAME,
-	TokenType.STRING,
-	TokenType.CHAR,
-	TokenType.INTEGER,
-	TokenType.FLOAT,
-	TokenType.PLUS,
-	TokenType.MINUS,
-	TokenType.AMP,
-	TokenType.AND,
-	TokenType.FALSE,
-	TokenType.TRUE,
-	TokenType.IF,
-	TokenType.VOID,
-	TokenType.UNSAFE,
-	TokenType.STRUCT,
-	TokenType.UNION,
+	TokenType.NEWLINE, 
+	TokenType.LBRACE, 
+	TokenType.LBRACK, 
+	TokenType.LPAREN, 
+	TokenType.NAME, 
+	TokenType.STRING, 
+	TokenType.CHAR, 
+	TokenType.INTEGER, 
+	TokenType.FLOAT, 
+	TokenType.PLUS, 
+	TokenType.MINUS, 
+	TokenType.AMP, 
+	TokenType.AND, 
+	TokenType.FALSE, 
+	TokenType.TRUE, 
+	TokenType.IF, 
+	TokenType.VOID, 
+	TokenType.UNSAFE, 
+	TokenType.STRUCT, 
+	TokenType.TUPLE, 
+	TokenType.UNION, 
 	TokenType.BORROW, 
 	TokenType.SIZEOF, 
 	TokenType.OFFSETOF
@@ -1630,6 +1653,7 @@ FN_EXPR_TOKS = (
 	# TokenType.UNSAFE, 
 	# TokenType.CONST, 
 	# TokenType.STRUCT, 
+	# TokenType.TUPLE, 
 	# TokenType.ENUM, 
 	# TokenType.UNION, 
 	TokenType.CONTINUE, 
@@ -1666,7 +1690,9 @@ def parseExpr(state, exprClass, precedence=0, noSkipSpace=False, allowSimpleFnCa
 		pub = True
 		state.advance()
 		state.skipSpace()
-		expectType(state, TokenType.FN, TokenType.STRUCT, TokenType.TRAIT, TokenType.UNION, TokenType.EXTERN)
+		expectType(state, 
+			TokenType.FN, TokenType.STRUCT, TokenType.TRAIT, 
+			TokenType.UNION, TokenType.EXTERN, TokenType.TUPLE)
 	
 	extern = False
 	if exprClass != ExprClass.FN and state.tok.type == TokenType.EXTERN:
@@ -1733,6 +1759,8 @@ def parseExpr(state, exprClass, precedence=0, noSkipSpace=False, allowSimpleFnCa
 			decl = parseTraitStaticDecl(state, doccomment, extern)
 		else:
 			decl = parseStaticDecl(state, doccomment, extern)
+	elif state.tok.type == TokenType.TUPLE:
+		decl = parseTupleDecl(state, doccomment, False, pub)
 	elif state.tok.type == TokenType.STRUCT:
 		decl = parseStructDecl(state, doccomment, False, pub)
 	elif state.tok.type == TokenType.UNION:

@@ -311,6 +311,7 @@ def lexNameOrKeyword(state):
 		('fn', TokenType.FN),
 		('mod', TokenType.MOD),
 		('struct', TokenType.STRUCT),
+		('tuple', TokenType.TUPLE),
 		('let', TokenType.LET),
 		('mut', TokenType.MUT),
 		('return', TokenType.RETURN),

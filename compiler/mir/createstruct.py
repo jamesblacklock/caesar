@@ -1,5 +1,4 @@
 from .mir    import MIR, StaticData, StaticDataType
-from ..types import typesMatch, Void, TupleType, ArrayType
 from ..      import ir
 
 class FieldInit:

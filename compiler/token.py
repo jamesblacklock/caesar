@@ -99,7 +99,6 @@ class Token:
 		self.span = span
 		self.type = type
 		self.content = content
-		self.error = None
 		self.offset = offset
 	
 	def __str__(self):

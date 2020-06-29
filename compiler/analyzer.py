@@ -1,6 +1,6 @@
 import ctypes
-from .not_done.typeref    import NamedTypeRef, PtrTypeRef, ArrayTypeRef, TupleTypeRef, OwnedTypeRef
-from .types               import TypeSymbol, UnknownType, FieldInfo, PtrType, ArrayType, TupleType, OwnedType, \
+from .not_done.typeref    import NamedTypeRef, PtrTypeRef, ArrayTypeRef, OwnedTypeRef
+from .types               import TypeSymbol, UnknownType, FieldInfo, PtrType, ArrayType, OwnedType, \
                                  Void, Bool, Byte, Char, Int8, UInt8, Int16, UInt16, Int32, UInt32, \
                                  Int64, UInt64, ISize, USize, Float32, Float64, typesMatch, canCoerce, tryPromote
 from .log                 import logError, logExplain
@@ -11,6 +11,7 @@ from .not_done.mod        import Mod, Impl, TraitDecl
 from .not_done.fndecl     import FnDecl, CConv
 from .not_done.staticdecl import StaticDecl, ConstDecl
 from .not_done.structdecl import StructDecl
+from .not_done.tupledecl  import TupleDecl
 from .not_done.alias      import AliasDecl, TypeDecl
 from .not_done.enumdecl   import EnumDecl, VariantDecl
 from .mir.access          import SymbolAccess, SymbolRead
@@ -43,11 +44,6 @@ class FieldLayout:
 		self.align = align
 		self.byteSize = byteSize
 		self.fields = fields
-
-def analyzeTupleTypeRefSig(state, tupleTypeRef):
-	resolvedTypes = [state.resolveTypeRefSig(t) for t in tupleTypeRef.types]
-	layout = state.generateFieldLayout(resolvedTypes)
-	return TupleType(layout.align, layout.byteSize, layout.fields)
 
 def finishAnalyzingTupleType(state, resolvedType):
 	for field in resolvedType.fields:
@@ -129,7 +125,7 @@ def buildSymbolTable(state, mod):
 		else:
 			symbolTable[decl.name] = decl
 		
-		if type(decl) in (StructDecl, AliasDecl, TypeDecl, TraitDecl, EnumDecl):
+		if type(decl) in (StructDecl, TupleDecl, AliasDecl, TypeDecl, TraitDecl, EnumDecl):
 			mod.types.append(decl)
 			if type(decl) == TraitDecl:
 				decl.mod.symbolTable = buildSymbolTable(state, decl.mod)
@@ -156,6 +152,10 @@ class T:
 	def __init__(self, content, span):
 		self.content = content
 		self.span = span
+
+__exit = exit
+def exit(_):
+	__exit(0)
 
 class AnalyzerState:
 	def __init__(self):
@@ -233,9 +233,7 @@ class AnalyzerState:
 		elif type(typeRef) == ArrayTypeRef:
 			baseType = state.resolveTypeRefSig(typeRef.baseType)
 			return ArrayType(baseType, typeRef.count)
-		elif type(typeRef) == TupleTypeRef:
-			return analyzeTupleTypeRefSig(state, typeRef)
-		elif type(typeRef) == StructDecl:
+		elif type(typeRef) in (TupleDecl, StructDecl):
 			typeRef.analyzeSig(state)
 			return typeRef
 		else:

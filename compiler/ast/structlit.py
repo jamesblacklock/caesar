@@ -121,7 +121,7 @@ class StructLit(AST):
 		
 		structValue = CreateStruct(inits, resolvedType, self.span)
 		if enumType:
-			structValue =  CreateStruct.create(state, enumType.structType, self.span, [
+			structValue = CreateStruct.create(state, enumType, self.span, [
 				CreateStruct.initStruct('$data', [
 					CreateStruct.init('$' + variant.name, structValue)]),
 				CreateStruct.init('$tag', IntValue(variant.tag.data, enumType.tagType, self.span))

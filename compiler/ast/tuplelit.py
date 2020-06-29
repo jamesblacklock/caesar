@@ -1,5 +1,6 @@
 from .ast               import AST
-from ..types            import Void, TupleType, ArrayType, getAlignedSize
+from ..types            import Void, ArrayType, getAlignedSize
+from ..not_done.tupledecl import TupleDecl
 from ..mir.createstruct import CreateStruct, FieldInit
 
 class TupleLit(AST):
@@ -8,29 +9,53 @@ class TupleLit(AST):
 		self.values = values
 	
 	def analyze(self, state, implicitType):
-		if implicitType and implicitType.isCompositeType:
-			expectedTypes = [f.type for f in implicitType.fields]
-		else:
-			expectedTypes = [None for _ in self.values]
+		# uninitFields = set()
+		resolvedType = implicitType
+		
+		if resolvedType:
+			if resolvedType.isTupleType:
+				# fieldDict = resolvedType.fieldDict
+				uninitFields = { f for f in resolvedType.fields }
+			else:
+				logError(state, self.span, 'type `{}` is not a tuple type'.format(resolvedType.name))
+				resolvedType = None
+		
+		expectedTypes = []
+		if resolvedType:
+			expectedTypes = [field.type for field in resolvedType.fields]
+		
+		while len(expectedTypes) < len(self.values):
+			expectedTypes.append(None)
 		
 		fieldFailed = False
-		resolvedTypes = []
+		# initFields = {}
 		accesses = []
-		for (expr, t) in zip(self.values, expectedTypes):
-			access = state.analyzeNode(expr, t)
-			if access and access.type:
+		# for (value, fieldType, i) in zip(self.values, expectedTypes, range(0, len(expectedTypes))):
+		for (value, fieldType) in zip(self.values, expectedTypes):
+			# if fieldType:
+				# fieldSymbol = resolvedType.fields[i]
+				# initFields[fieldSymbol] = fieldInit
+				# uninitFields.remove(fieldSymbol)
+			
+			access = state.analyzeNode(value, fieldType)
+			if access:
+				access = state.typeCheck(access, fieldType)
 				accesses.append(access)
-				resolvedTypes.append(access.type)
 			else:
 				fieldFailed = True
 		
 		if fieldFailed:
 			return None
 		
-		layout = state.generateFieldLayout(resolvedTypes)
-		type = TupleType(layout.align, layout.byteSize, layout.fields)
-		inits = [FieldInit(access, field.offset) for (access, field) in zip(accesses, layout.fields)]
-		return CreateStruct(inits, type, self.span)
+		if resolvedType == None:
+			layout = state.generateFieldLayout([access.type for access in accesses])
+			resolvedType = TupleDecl.generateAnonTupleDecl(layout)
+		
+		inits = []
+		for (access, field) in zip(accesses, resolvedType.fields):
+			inits.append(FieldInit(access, field.offset))
+		
+		return CreateStruct(inits, resolvedType, self.span)
 
 class ArrayLit(AST):
 	def __init__(self, values, span):

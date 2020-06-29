@@ -197,18 +197,6 @@ class ArrayType(TypeSymbol):
 		self.fieldDict = self.fields
 		self.anon = True
 
-class TupleType(TypeSymbol):
-	def __init__(self, align, byteSize, fields):
-		name = '({})'.format(', '.join(f.type.name for f in fields))
-		super().__init__(
-			name=name, 
-			byteSize=byteSize, 
-			align=align, 
-			isTupleType=True, 
-			isCompositeType=True)
-		self.fields = fields
-		self.anon = True
-
 # class IndefiniteIntType(TypeSymbol):
 # 	def __init__(self, initialValue):
 		
@@ -390,6 +378,7 @@ def tryPromote(state, access, toType):
 	if not fromType or not toType or fromType == toType:
 		return access
 	
+	# int/float promotions
 	intToInt = fromType.isIntType and toType.isIntType
 	intOrFloatToFloat = (fromType.isIntType or fromType.isFloatType) and toType.isFloatType
 	if intToInt or intOrFloatToFloat:
@@ -400,6 +389,7 @@ def tryPromote(state, access, toType):
 			access.dropBlock = state.scope.dropBlock
 			return access
 	
+	# pointer promotions
 	fromBaseType = fromType
 	toBaseType = toType
 	if fromBaseType.isOwnedType and toBaseType.isOwnedType and \
@@ -411,13 +401,21 @@ def tryPromote(state, access, toType):
 	if fromBaseType.isPtrType and toBaseType.isPtrType:
 		toDerefType = toBaseType.typeAfterDeref()
 		fromDerefType = fromBaseType.typeAfterDeref()
-		if typesMatch(fromDerefType, toDerefType) and not toBaseType.mut:
+		if toDerefType == Void and (fromBaseType.mut or not toBaseType.mut):
+			access.type = toType
+			return access
+		elif typesMatch(fromDerefType, toDerefType) and not toBaseType.mut:
 			access.type = toType
 			return access
 		elif toDerefType.isTraitType and toDerefType in fromDerefType.traitImpls:
 			access = state.analyzeNode(Coerce(access, toType, access.span))
 			access.dropBlock = state.scope.dropBlock
 			return access
+	
+	# promote scalar to tuple
+	if toType.isTupleType and len(toType.fields) == 1 and typesMatch(toType.fields[0].type, fromType):
+		access.type = toType
+		return access
 	
 	# if type(access) == SymbolAccess and access.ref and indefiniteMatch(access.type, expectedType):
 	# 	access.symbol.type = expectedType
@@ -460,6 +458,8 @@ def canCoerce(fromType, toType):
 		return True
 	elif fromType.isCompositeType and toType.isCompositeType:
 		return shapesMatch(fromType, toType)
+	elif toType.isTupleType and len(toType.fields) == 1 and typesMatch(toType.fields[0].type, fromType):
+		return True
 	else:
 		return False
 

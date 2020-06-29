@@ -296,6 +296,8 @@ class SymbolWrite(SymbolAccess):
 		self.analyzeRValue = True
 	
 	def analyze(access, state, ignoredImplicitType):
+		if access.type == None:
+			access.type = access.symbol.type
 		if access.rvalueImplicitType == None:
 			access.rvalueImplicitType = access.type
 		
