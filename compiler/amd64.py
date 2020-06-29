@@ -648,6 +648,7 @@ def moveData(state, src, dest,
 	assert dest.storage in (Storage.REG, Storage.XMM, Storage.STACK) or destDeref
 	
 	if src.storage == Storage.NONE:
+		assert src.type.byteSize == type.byteSize
 		newSrc = state.findTarget(src.type)
 		state.moveOperand(src, newSrc)
 		src = newSrc
@@ -1491,6 +1492,11 @@ def call(state, ir):
 				count += 1
 			requiredStackSpace += count
 			continue
+		
+		if arg.storage == Storage.NONE and arg.type.byteSize > 8:
+			stack = state.findTarget(arg.type, True)
+			state.moveOperand(arg, stack)
+			arg = stack
 		
 		for (i, reg) in enumerate(regs):
 			if type(reg) == XmmTarget:
