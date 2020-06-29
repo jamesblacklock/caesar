@@ -19,23 +19,34 @@ impl Box: drop::Drop
             printf("freeing the box\n")
             free(self^.0)
 
+fn testUninit(a: A)
+    unsafe printf("A\n    a: %d\n    b:\n        c: %d\n        d:\n            e: %d\n            f: %d\n        g: %d\n"
+        a.a, a.b.c, a.b.d.e, a.b.d.f, a.b.g)
+
 fn main()
-    let a = unsafe malloc(sizeof str) as &str
-    a^ = "test\n"
+    # let a = unsafe malloc(sizeof str) as &str
+    # a^ = "test\n"
     
-    unsafe printf((borrow a)^->data)
-    unsafe free(a)
+    # unsafe printf((borrow a)^->data)
+    # unsafe free(a)
     
-    let fieldOffset = offsetof(A, b, d, f)
-    let expectedOffset = 9usz
-    let eqStr = if fieldOffset == expectedOffset {"=="} else {"!="}
+    # let fieldOffset = offsetof(A, b, d, f)
+    # let expectedOffset = 9usz
+    # let eqStr = if fieldOffset == expectedOffset {"=="} else {"!="}
     
-    unsafe printf("%d %s %d\n", fieldOffset, eqStr->data, expectedOffset)
-    unsafe printf("%d\n", offsetof([int * 20], 7))
-    unsafe printf("%d\n", offsetof((int, float64, {asdf: byte, qwer: (byte, byte)}), 2, qwer, 1))
+    # unsafe printf("%d %s %d\n", fieldOffset, eqStr->data, expectedOffset)
+    # unsafe printf("%d\n", offsetof([int * 20], 7))
+    # unsafe printf("%d\n", offsetof((int, float64, {asdf: byte, qwer: (byte, byte)}), 2, qwer, 1))
     
-    let box: Box = ({let p = unsafe malloc(sizeof int) as &int, p^ = 4, p},)
-    unsafe printf("%d\n", (borrow box.0)^)
+    # let box: Box = ({let p = unsafe malloc(sizeof int) as &int, p^ = 4, p},)
+    # unsafe printf("%d\n", (borrow box.0)^)
     
-    let a: (int) = 5 as (int)
+    let mut a = A { b: { g: 2 } }
+    a.b.d = { e: 17 }
     
+    if false
+        a.a = 1
+    
+    # testUninit(a)
+    unsafe printf("A\n    a: %d\n    b:\n        c: %d\n        d:\n            e: %d\n            f: %d\n        g: %d\n"
+        a.a, a.b.c, a.b.d.e, a.b.d.f, a.b.g)

@@ -5,7 +5,7 @@ from .not_done        import staticdecl, enumdecl
 from .mir             import access as accessmod
 from .mir.localsymbol import LocalSymbol
 from .mir.fncall      import FnCall
-from .types           import PtrType
+from .types           import PtrType, allFields
 
 class ScopeType(Enum):
 	MOD = "MOD"
@@ -361,7 +361,19 @@ class Scope:
 			info.typeModifiers.uninit = False
 			info.maybeUninit = False
 		
-		use.typeModifiers = info.typeModifiers.clone()
+		if isRead:
+			if use.isFieldAccess:
+				pass
+			else:
+				use.typeModifiers = info.typeModifiers.clone()
+		elif use.rvalue.typeModifiers:
+			if use.isFieldAccess:
+				if use.field:
+					initFields = allFields(use.field.type)
+					initFields.difference_update(use.rvalue.typeModifiers.uninitFields)
+					info.typeModifiers.uninitFields.difference_update(initFields)
+			else:
+				info.typeModifiers = use.rvalue.typeModifiers.clone()
 		
 		if info.returnsSinceLastUse:
 			for ret in info.returnsSinceLastUse:
@@ -472,7 +484,7 @@ class Scope:
 		fieldInfo = None
 		if field and not expr.deref:
 			if field not in info.fieldInfo:
-				uninit = False#info.typeModifiers.uninit or field in info.typeModifiers.uninitFields
+				uninit = info.uninit or info.typeModifiers and field in info.typeModifiers.uninitFields
 				fieldInfo = FieldInfo(field, uninit)
 				info.fieldInfo[field] = fieldInfo
 			else:

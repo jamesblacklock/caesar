@@ -53,7 +53,7 @@ class TupleLit(AST):
 		
 		inits = []
 		for (access, field) in zip(accesses, resolvedType.fields):
-			inits.append(FieldInit(access, field.offset))
+			inits.append(FieldInit(access, field))
 		
 		return CreateStruct(inits, resolvedType, self.span)
 
@@ -90,5 +90,5 @@ class ArrayLit(AST):
 		elementType = implicitElementType
 		type = ArrayType(elementType, count)
 		alignedSize = getAlignedSize(elementType)
-		inits = [FieldInit(access, alignedSize * i) for (i, access) in enumerate(accesses)]
+		inits = [FieldInit(access, type.fields[i]) for (i, access) in enumerate(accesses)]
 		return CreateStruct(inits, type, self.span)

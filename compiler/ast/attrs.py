@@ -32,9 +32,9 @@ def releaseDefaultAttr(state, decl, params, span):
 	state.scope.releaseDefaultSet = True
 	state.scope.releaseDefault = decl
 
-def ffiAttr(state, decl, params, span):
+def cconvAttr(state, decl, params, span):
 	if params[0].value != '"C"':
-		logError(state, span, '`ffi` currently only supports the "C" convention')
+		logError(state, span, '`cconv` currently only supports the "C" convention')
 	else:
 		decl.cconv = CConv.C
 
@@ -72,7 +72,7 @@ class AttrArg:
 
 AcquireAttr = AttrInfo('acquire_default', acquireDefaultAttr, [FnDecl], [])
 ReleaseAttr = AttrInfo('release_default', releaseDefaultAttr, [FnDecl], [])
-FFIAttr = AttrInfo('ffi', ffiAttr, [FnDecl], [AttrArg(StrLit)])
+CConvAttr = AttrInfo('cconv', cconvAttr, [FnDecl], [AttrArg(StrLit)])
 AlignAttr = AttrInfo('align', alignAttr, [StructDecl, FieldDecl], [AttrArg(IntLit)])
 DropAttr = AttrInfo('drop', dropAttr, [LetDecl, FnParam], [AttrArg(ValueRef)])
 NoStrAttr = AttrInfo('no_str', noStrAttr, [Mod], [])
@@ -82,7 +82,7 @@ DropTraitAttr = AttrInfo('drop_trait', dropTraitAttr, [TraitDecl], [])
 builtinAttrs = {
 	AcquireAttr.name: AcquireAttr, 
 	ReleaseAttr.name: ReleaseAttr, 
-	FFIAttr.name: FFIAttr, 
+	CConvAttr.name: CConvAttr, 
 	AlignAttr.name: AlignAttr, 
 	DropAttr.name: DropAttr, 
 	NoStrAttr.name: NoStrAttr, 

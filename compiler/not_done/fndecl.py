@@ -11,7 +11,7 @@ class CConv(Enum):
 	C = 'C'
 
 class FnDecl(ValueSymbol):
-	def __init__(self, nameTok, doccomment, pub, extern, unsafe, 
+	def __init__(self, nameTok, doccomment, pub, extern, cconv, unsafe, 
 		params, cVarArgs, returnType, body, span, cVarArgsSpan):
 		super().__init__(nameTok, None, span, doccomment, extern)
 		self.params = params
@@ -21,7 +21,7 @@ class FnDecl(ValueSymbol):
 		self.returnType = None
 		# self.returnTypeModifiers = TypeModifiers()
 		self.body = body
-		self.cconv = CConv.CAESAR
+		self.cconv = cconv
 		self.unsafe = unsafe
 		self.pub = pub
 		self.mirBody = None
@@ -44,12 +44,10 @@ class FnDecl(ValueSymbol):
 		
 		self.type = FnType(self.unsafe, self.params, self.returnType, self.cVarArgs, self.cconv)
 		
-		if self.cVarArgs:
-			if self.cconv != CConv.C:
-				logError(state, self.cVarArgsSpan, 'may not use C variadic parameter without the C calling convention')
-		
-		if self.extern and not self.unsafe:
-			logError(state, self.nameTok.span, '`{}` must be labelled `unsafe` because it is `extern`'.format(self.name))
+		if self.cconv == CConv.C:
+			self.unsafe = True
+		elif self.cVarArgs:
+			logError(state, self.cVarArgsSpan, 'may not use C variadic parameter without the C calling convention')
 		
 		self.mangledName = state.mangleName(self)
 	
@@ -72,13 +70,13 @@ class FnDecl(ValueSymbol):
 		state.analyzeNode(self.body, self.returnType)
 		self.mirBody = state.popScope()
 		
+		# print(self)
+		
 		if not state.failed:
 			self.mirBody.checkFlow(None)
 			assert self.mirBody.scope.didReturn
 			# if self.isDropFnForType:
 			# 	self.checkDropFnScope(state)
-		
-		# print(self)
 	
 	def checkDropFnScope(self, state):
 		if not self.isDropFnForType.isCompositeType:

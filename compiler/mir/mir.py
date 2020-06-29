@@ -51,6 +51,12 @@ class TypeModifiers:
 		self.uninit = uninit
 		self.uninitFields = set()
 	
+	@staticmethod
+	def getUninitFields(access):
+		if not (access.typeModifiers and access.typeModifiers.uninitFields):
+			return set()
+		return access.typeModifiers.uninitFields
+	
 	def clone(self):
 		modifiers = TypeModifiers(self.uninit)
 		modifiers.uninitFields = { f for f in self.uninitFields }
@@ -64,6 +70,7 @@ class MIR:
 		self.attrsInvoked = True
 		self.analyzed = False
 		self.contracts = None
+		self.typeModifiers = None
 	
 	def setAnalyzed(self):
 		pass

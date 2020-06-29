@@ -178,13 +178,10 @@ class AnalyzerState:
 		ast.symbolTable = buildSymbolTable(state, ast)
 		
 		invokeAttrs(state, ast)
-		if ast.isStrMod:
-			state.strMod = ast
-		elif not ast.noStrImport:
+		if not ast.noStrImport:
 			(state.strMod, _) = Import.doImport(state, ast, ['str', 'str'])
 		
 		ast.analyzeSig(state)
-		# ast = state.analyzeNode(ast)
 		ast.analyze(state)
 		
 		if state.failed:

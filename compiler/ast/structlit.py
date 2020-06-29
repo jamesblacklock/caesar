@@ -35,19 +35,11 @@ class StructLit(AST):
 		self.fields = fields
 
 	def analyze(self, state, implicitType):
-		fieldDict =  None
-		uninitFields = set()
 		resolvedType = None
 		enumType = None
 		variant = None
-		# if self.type:
-		# 	resolvedType = self.type
-		# 	if resolvedType.isEnumType:
-		# 		resolvedType = resolvedType.structType
-		# el
 		if self.typeRef:
 			resolvedType = None
-			# if type(self.typeRef) == NamedTypeRef:
 			variants = implicitType.symbolTable if implicitType and implicitType.isEnumType else None
 			symbol = state.lookupSymbol(self.typeRef.path, variants, inTypePosition=True)
 			if type(symbol) == enumdecl.VariantDecl:
@@ -61,10 +53,10 @@ class StructLit(AST):
 		else:
 			resolvedType = implicitType
 		
+		fieldDict =  None
 		if resolvedType:
 			if resolvedType.isStructType:
 				fieldDict = resolvedType.fieldDict
-				uninitFields = { f for f in resolvedType.fields }
 			else:
 				logError(state, self.nameTok.span if self.nameTok else self.span, 
 					'type `{}` is not a struct type'.format(resolvedType.name))
@@ -86,7 +78,6 @@ class StructLit(AST):
 							'`{}` was initialized here'.format(fieldInit.name))
 					else:
 						initFields[fieldSymbol] = fieldInit
-						uninitFields.remove(fieldSymbol)
 				else:
 					logError(state, fieldInit.nameTok.span, 
 						'type `{}` has no field `{}`'.format(resolvedType.name, fieldInit.name))
@@ -117,7 +108,7 @@ class StructLit(AST):
 		inits = []
 		for field in resolvedType.fields:
 			if field.name in accesses:
-				inits.append(FieldInit(accesses[field.name], field.offset))
+				inits.append(FieldInit(accesses[field.name], field))
 		
 		structValue = CreateStruct(inits, resolvedType, self.span)
 		if enumType:

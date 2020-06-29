@@ -2,26 +2,17 @@
 
 mod stdio
 	pub
-		const __SLBF: c_int = 0x0001
-		const __SNBF: c_int = 0x0002
-		const __SRD: c_int = 0x0004
-		const __SWR: c_int = 0x0008
-		const __SRW: c_int = 0x0010
-		const __SEOF: c_int = 0x0020
-		const __SERR: c_int = 0x0040
-		const __SMBF: c_int = 0x0080
-		const __SAPP: c_int = 0x0100
-		const __SSTR: c_int = 0x0200
-		const __SOPT: c_int = 0x0400
-		const __SNPT: c_int = 0x0800
-		const __SOFF: c_int = 0x1000
-		const __SMOD: c_int = 0x2000
+		type c_int = int
+		type va_list = &void
+		
+		struct FILE;
+		struct fpos_t;
 		
 		const _IOFBF: c_int = 0
 		const _IOLBF: c_int = 1
 		const _IONBF: c_int = 2
 		
-		const NULL: &c_void = 0
+		const NULL = 0 as &void
 		
 		const BUFSIZ: c_int = 1024
 		const EOF: c_int = -1
@@ -30,47 +21,64 @@ mod stdio
 		const FILENAME_MAX: c_int = 1024
 		const L_tmpnam: c_int = 1024
 		
-		const P_tmpdir: &c_char = @c_str "/tmp"
-		
 		const SEEK_SET: c_int = 0
 		const SEEK_CUR: c_int = 1
 		const SEEK_END: c_int = 2
 		
 		const TMP_MAX = 308915776
-	
-		@FFI("C")
-		extern
-			struct FILE
-			
+		
+		extern "C"
 			static __stdinp: &FILE
 			static __stdoutp: &FILE
 			static __stderrp: &FILE
 			
-			fn printf(&c_char, ...) -> c_int
-			fn scanf(&c_char, ...) -> c_int
-			fn sscanf(&c_char, &c_char, ...) -> c_int
-			fn vfprintf(&FILE, &c_char, __VALIST) -> c_int
-			fn vprintf(&c_char, __VALIST) -> c_int
-			fn vsprintf(mut &c_char, &c_char, __VALIST) -> c_int
-			fn vsnprintf(mut &c_char, c_size_t, &c_char, __VALIST) -> c_int
+			fn remove(&byte) -> c_int
+			fn rename (&byte, &byte) -> c_int
+			fn tmpfile(void) -> &FILE
+			fn tmpnam(&mut byte*) -> &mut byte
+			fn fclose(&FILE) -> c_int
+			fn fflush(&FILE) -> c_int
+			fn fopen(&byte, &byte) -> &FILE
+			fn freopen(&byte, &byte, &FILE) -> &FILE
+			fn setbuf(&FILE, &mut byte) -> void
+			fn setvbuf(&FILE, &mut byte, c_int, size_t) -> c_int
+			fn fprintf(&FILE, &byte, ...) -> c_int
+			fn fscanf(&FILE, &byte, ...) -> c_int
+			fn printf(&byte, ...) -> c_int
+			fn scanf(&byte, ...) -> c_int
+			fn sprintf(&mut byte, &byte, ...) -> c_int
+			fn snprintf(&mut byte, usize, &byte, ...) -> c_int
+			fn sscanf(&byte, &byte, ...) -> c_int
+			fn vfprintf(&FILE, &byte, va_list) -> c_int
+			fn vfscanf(&FILE, &byte, va_list) -> c_int
+			fn vprintf(&byte, va_list) -> c_int
+			fn vscanf(&byte, va_list) -> c_int
+			fn vsnprintf(&mut byte, usize, &byte, va_list) -> c_int
+			fn vsprintf(&mut byte, &byte, va_list) -> c_int
+			fn vsscanf(&byte, &byte, va_list) -> c_int
 			fn fgetc(&FILE) -> c_int
-			fn fgets(mut &c_char, c_int, &FILE) -> mut &c_char
+			fn fgets(&mut byte, c_int, &FILE) -> &mut byte
 			fn fputc(c_int, &FILE) -> c_int
-			fn fputs(&c_char, &FILE) -> c_int
+			fn fputs(&byte, &FILE) -> c_int
 			fn getc(&FILE) -> c_int
 			fn getchar() -> c_int
-			fn gets(mut &c_char) -> mut &c_char
+			fn gets(&mut byte) -> &mut byte
 			fn putc(c_int, &FILE) -> c_int
 			fn putchar(c_int) -> c_int
-			fn puts(&c_char) -> c_int
+			fn puts(&byte) -> c_int
 			fn ungetc(c_int, &FILE) -> c_int
-			fn fread(mut &c_void, c_size_t _size, c_size_t _n, &FILE) -> c_size_t
-			fn fwrite(&c_void, c_size_t _size, c_size_t _n, &FILE) -> c_size_t
-			fn sprintf(mut &c_char, &c_char, ...) -> c_int
-			fn snprintf(mut &c_char, c_size_t, &c_char, ...) -> c_int
-		
+			fn fread(&mut void, usize, usize, &FILE) -> usize
+			fn fwrite(&void, usize, usize, &FILE) -> usize
+			fn fgetpos(&FILE, &mut fpos_t) -> c_int
+			fn fseek(&FILE, c_long, c_int) -> c_int
+			fn fsetpos(&FILE, &fpos_t) -> c_int
+			fn ftell(&FILE) -> c_long
+			fn rewind(&FILE)
+			fn clearerr(&FILE)
+			fn feof(&FILE) -> c_int
+			fn ferror(&FILE) -> c_int
+			fn perror(const char *)
+			
 		alias stdin = __stdinp
 		alias stdout = __stdoutp
 		alias stderr = __stderrp
-		
-		alias __VALIST = &c_char

@@ -1,10 +1,12 @@
-from .mir    import MIR, StaticData, StaticDataType
+from .mir    import MIR, StaticData, StaticDataType, TypeModifiers
 from ..      import ir
+from ..types import allFields
 
 class FieldInit:
-	def __init__(self, access, offset):
+	def __init__(self, access, field, offset=None):
 		self.access = access
-		self.offset = offset
+		self.field = field
+		self.offset = offset if offset != None else field.offset
 
 class FieldInitInfo:
 	def __init__(self, name, expr):
@@ -32,7 +34,7 @@ def doInitField(state, inits, field, info, baseOffset=0):
 	
 	access = state.analyzeNode(info.expr)
 	if access:
-		inits.append(FieldInit(access, baseOffset + field.offset))
+		inits.append(FieldInit(access, field, baseOffset + field.offset))
 		return failed
 	else:
 		return False
@@ -69,22 +71,32 @@ class CreateStruct(MIR):
 		return StructInitInfo(name, initInfo)
 	
 	def checkFlow(self, scope):
+		uninitFields = None if self.type.isEnumType else set(self.type.fields)
+		
 		for init in self.inits:
 			init.access.checkFlow(scope)
+			
+			if self.type.isEnumType:
+				continue
+			
+			uninitFields.discard(init.field)
+			uninitFields.update(TypeModifiers.getUninitFields(init.access))
+		
+		if uninitFields:
+			flattened = set()
+			for field in uninitFields:
+				if field.type.isCompositeType:
+					flattened.update(allFields(field.type))
+				else:
+					flattened.add(field)
+			self.typeModifiers = TypeModifiers(False)
+			self.typeModifiers.uninitFields = flattened
 	
 	def writeIR(self, state):
 		fType = ir.FundamentalType.fromResolvedType(self.type)
 		state.appendInstr(ir.Res(self, fType))
 		
-		# if lit.type.isStructType:
-		# 	state.initStructFields(lit, baseOffset)
-		# 	return
-		
 		for init in self.inits:
-			# if init.type.isCompositeType:
-			# 	state.initCompositeFields(init, baseOffset + fieldInfo.offset)
-			# 	continue
-			
 			init.access.writeIR(state)
 			state.appendInstr(ir.Imm(init.access, ir.IPTR, init.offset))
 			state.appendInstr(ir.FieldW(self, 2))

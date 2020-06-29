@@ -520,7 +520,7 @@ def parseBlock(state, parseItem, blockMarkers=BlockMarkers.BRACE,
 	
 	
 	trailingSeparator = False
-	list = []
+	itemList = []
 	while not unindented:
 		# check to see if the block was terminated
 		offset = state.offset
@@ -581,7 +581,10 @@ def parseBlock(state, parseItem, blockMarkers=BlockMarkers.BRACE,
 			skipUntilTypes = (TokenType.NEWLINE, closeMarker) if needsTerm else (TokenType.NEWLINE,)
 			state.skipUntil(*skipUntilTypes)
 		else:
-			list.append(item)
+			if type(item) == BlockInfo:
+				itemList.extend(item.list)
+			else:
+				itemList.append(item)
 			endSpan = item.span
 		
 		# following the item we expect a comma or a close marker 
@@ -604,7 +607,7 @@ def parseBlock(state, parseItem, blockMarkers=BlockMarkers.BRACE,
 	if indentedBlock and not unindented:
 		state.popIndentLevel()
 	
-	return BlockInfo(list, Span.merge(startSpan, endSpan), trailingSeparator)
+	return BlockInfo(itemList, Span.merge(startSpan, endSpan), trailingSeparator)
 
 def parsePtrTypeRef(state):
 	span = state.tok.span
@@ -1467,7 +1470,7 @@ def parseTypeDecl(state, doccomment):
 	
 	return TypeDecl(nameTok, typeRef, span, doccomment)
 
-def parseFnDecl(state, doccomment, pub, extern, traitDecl=False):
+def parseFnDecl(state, doccomment, pub, extern, cconv, traitDecl=False):
 	span = state.tok.span
 	startLine = state.tok.span.startLine
 	onOneLine = True
@@ -1514,7 +1517,8 @@ def parseFnDecl(state, doccomment, pub, extern, traitDecl=False):
 		body = Block.fromInfo(blockInfo, ScopeType.FN)
 		span = Span.merge(span, body.span)
 	
-	return FnDecl(nameTok, doccomment, pub, extern, unsafe, params, cVarArgs, returnType, body, span, cVarArgsSpan)
+	return FnDecl(nameTok, doccomment, pub, extern, cconv, unsafe, 
+		params, cVarArgs, returnType, body, span, cVarArgsSpan)
 
 def parseImport(state):
 	def parseImportTree(state):
@@ -1670,7 +1674,14 @@ ASGN_OPER_TOKS = (
 	TokenType.MINUSASGN
 )
 
-def parseExpr(state, exprClass, precedence=0, noSkipSpace=False, allowSimpleFnCall=False):
+class ModBlockInfo:
+	def __init__(self, extern, cconv, pub, attrs):
+		self.extern = extern
+		self.cconv = cconv
+		self.pub = pub
+		self.attrs = attrs
+
+def parseExpr(state, exprClass, precedence=0, noSkipSpace=False, allowSimpleFnCall=False, modBlock=None):
 	startToken = None
 	doccomment = None
 	if state.tok.type == TokenType.DOCCOMMENT:
@@ -1695,14 +1706,36 @@ def parseExpr(state, exprClass, precedence=0, noSkipSpace=False, allowSimpleFnCa
 			TokenType.UNION, TokenType.EXTERN, TokenType.TUPLE)
 	
 	extern = False
+	cconv = CConv.CAESAR
 	if exprClass != ExprClass.FN and state.tok.type == TokenType.EXTERN:
 		if startToken == None:
 			startToken = state.tok
 		extern = True
 		state.advance()
-		permitLineBreak(state)
-		if expectType(state, TokenType.FN, TokenType.STATIC, TokenType.UNSAFE) == False:
+		state.skipSpace()
+		if state.tok.type == TokenType.STRING:
+			if state.tok.content == '"C"':
+				cconv = CConv.C
+			else:
+				logError(state, state.tok.span, '{}: calling convention unsupported'.format(state.tok.content))
+			state.advance()
+			state.skipSpace()
+	
+	if (attrs or pub or extern) and isBlockStart(state):
+		def parseExprSameType(s):
+			return parseExpr(s, exprClass, modBlock=ModBlockInfo(extern, cconv, pub, attrs))
+		return parseBlock(state, parseExprSameType)
+	
+	if modBlock:
+		if isIndentDecrease(state):
 			return None
+		extern = extern or modBlock.extern
+		pub = pub or modBlock.pub
+		cconv = CConv.C if cconv == CConv.C or modBlock.cconv == CConv.C else CConv.Caesar
+		attrs.extend(modBlock.attrs)
+	
+	if extern and expectType(state, TokenType.FN, TokenType.STATIC, TokenType.UNSAFE) == False:
+		return None
 	
 	if startToken == None: startToken = state.tok
 	
@@ -1753,7 +1786,7 @@ def parseExpr(state, exprClass, precedence=0, noSkipSpace=False, allowSimpleFnCa
 			decl = parseTypeDecl(state, doccomment)
 	elif state.tok.type == TokenType.FN or \
 		state.tok.type == TokenType.UNSAFE and exprClass in (ExprClass.MOD, ExprClass.IMPL, ExprClass.TRAIT):
-		decl = parseFnDecl(state, doccomment, pub, extern, exprClass == ExprClass.TRAIT)
+		decl = parseFnDecl(state, doccomment, pub, extern, cconv, exprClass == ExprClass.TRAIT)
 	elif state.tok.type == TokenType.STATIC:
 		if exprClass == ExprClass.TRAIT:
 			decl = parseTraitStaticDecl(state, doccomment, extern)

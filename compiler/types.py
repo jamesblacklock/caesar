@@ -293,6 +293,16 @@ ISize.MIN = ISZ_MIN
 ISize.MAX = ISZ_MAX
 ISize.RNG = ISZ_RNG
 
+def allFields(t):
+	if not t.isCompositeType:
+		return set()
+	
+	fields = set(t.fields)
+	for f in t.fields:
+		fields.update(allFields(f.type))
+	
+	return fields
+
 def canAccommodate(type, intValue):
 	if type.byteSize == 1 and type.isSigned:
 		return intValue in I8_RNG

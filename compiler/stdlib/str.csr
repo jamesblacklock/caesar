@@ -2,14 +2,10 @@
 
 import drop::Drop
 # import libc { @acquire_default malloc, @release_default free, memcpy }
-@ffi("C") @acquire_default
-extern unsafe fn malloc(size: usize) -> owned &mut byte
-
-@ffi("C") @release_default
-extern unsafe fn free(buf: owned &byte)
-
-@ffi("C")
-extern unsafe fn memcpy(dest: &mut byte, src: &byte, size: usize) -> &mut byte
+extern "C"
+    @acquire_default fn malloc(size: usize) -> owned &mut byte
+    @release_default fn free(buf: owned &byte)
+    fn memcpy(dest: &mut byte, src: &byte, size: usize) -> &mut byte
 
 enum StrData
     Static(&byte)
