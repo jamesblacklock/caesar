@@ -153,10 +153,6 @@ class T:
 		self.content = content
 		self.span = span
 
-__exit = exit
-def exit(_):
-	__exit(0)
-
 class AnalyzerState:
 	def __init__(self):
 		# self.lastIfBranchOuterSymbolInfo = None

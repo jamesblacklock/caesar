@@ -1,16 +1,4 @@
-@ffi("C")
-extern unsafe fn fopen(path: &byte, mode: &byte) -> owned(fopen, fclose) &FILE
-
-@ffi("C")
-extern unsafe fn fread(buf: &byte, size: usize, count: usize, file: &FILE) -> usize
-
-@ffi("C")
-extern unsafe fn fclose(file: owned(fopen, fclose) &FILE)
-
-@ffi("C")
-extern unsafe fn printf(fmt: &byte, ...)
-
-struct FILE {}
+import libc { fopen, fread, fclose, printf, FILE }
 
 struct T
     a: int

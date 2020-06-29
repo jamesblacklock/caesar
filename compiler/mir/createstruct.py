@@ -71,7 +71,7 @@ class CreateStruct(MIR):
 		return StructInitInfo(name, initInfo)
 	
 	def checkFlow(self, scope):
-		uninitFields = None if self.type.isEnumType else set(self.type.fields)
+		uninitFields = None if self.type.isEnumType else set(f for f in self.type.fields if not f.isUnionField)
 		
 		for init in self.inits:
 			init.access.checkFlow(scope)

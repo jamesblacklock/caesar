@@ -1,16 +1,10 @@
 #! /usr/local/bin/python3 ./caesar.py --run
 
-@ffi("C")
-extern unsafe fn printf(format: &byte, ...) -> int
-
-@ffi("C")
-extern unsafe fn scanf(format: &byte, ...) -> int
-
-@ffi("C")
-extern unsafe fn time(ret: &int64) -> int64
-
-@ffi("C")
-extern unsafe fn getchar() -> int
+import libc
+	printf
+	scanf
+	time
+	getchar
 
 const NULL = 0 as &int64
 

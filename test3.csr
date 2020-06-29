@@ -1,14 +1,4 @@
-@ffi("C")
-extern unsafe fn printf(fmt: &byte, ...) -> int
-
-@ffi("C")
-extern unsafe fn getchar() -> int
-
-@ffi("C")
-extern unsafe fn malloc(size: usize) -> owned(malloc, free) &mut byte
-
-@ffi("C")
-extern unsafe fn free(buf: owned(malloc, free) &byte) -> &byte
+import libc { printf, getchar, malloc, free }
 
 fn fib(n: int) -> int
 	if n <= 1
@@ -20,7 +10,7 @@ fn main(argc: int, argv: &&byte) -> int
 	unsafe printf("What is your name? ")
 	
 	let size: usize = 128
-	let buf = unsafe malloc(size)
+	let buf = unsafe malloc(size) as &mut byte
 	let mut pt = borrow buf
 	
 	let mut i = 1usz, while {let j=i, i=i+1, j} <= size # for _ in 1...size

@@ -1,5 +1,4 @@
-@ffi("C")
-extern unsafe fn printf(fmt: &byte, ...)
+import libc::printf
 
 type MyType = int
 

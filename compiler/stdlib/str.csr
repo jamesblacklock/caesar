@@ -1,11 +1,10 @@
 @@str_mod
 
 import drop::Drop
-# import libc { @acquire_default malloc, @release_default free, memcpy }
+import libc::memcpy
 extern "C"
     @acquire_default fn malloc(size: usize) -> owned &mut byte
     @release_default fn free(buf: owned &byte)
-    fn memcpy(dest: &mut byte, src: &byte, size: usize) -> &mut byte
 
 enum StrData
     Static(&byte)

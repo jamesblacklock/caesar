@@ -1,9 +1,4 @@
-@ffi("C") extern unsafe fn printf(fmt: &byte, ...) -> int
-@ffi("C") extern unsafe fn atoi(str: &byte) -> int
-@ffi("C") extern unsafe fn exit(code: int)
-@ffi("C") extern unsafe fn malloc(size: usize) -> owned(malloc, free) &byte
-@ffi("C") extern unsafe fn free(buf: owned(malloc, free) &byte)
-@ffi("C") extern unsafe fn getchar() -> int
+import libc { printf, atoi, exit, malloc, free, getchar }
 
 struct T
 	x: int64

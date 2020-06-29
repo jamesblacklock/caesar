@@ -1,5 +1,4 @@
-@ffi("C")
-extern unsafe fn printf(fmt: &byte, ...) -> int
+import libc::printf
 
 trait SayHi
     fn sayHi(self: &SayHi)

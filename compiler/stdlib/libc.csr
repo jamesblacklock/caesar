@@ -1,11 +1,18 @@
 @@no_str
 
 pub extern "C"
-    fn printf(fmt: &byte, ...) -> int
-    fn scanf(format: &byte, ...) -> int
-    fn time(ret: &int64) -> int64
-    fn getchar() -> int
-    fn strlen(s: &byte) -> int
-    fn malloc(size: usize) -> owned(malloc, free) &mut void
-    fn free(buf: owned(malloc, free) &void)
-    fn memcpy(dest: &mut byte, src: &byte, size: usize) -> &mut byte
+	fn printf(fmt: &byte, ...) -> int
+	fn scanf(format: &byte, ...) -> int
+	fn time(ret: &int64) -> int64
+	fn getchar() -> int
+	fn strlen(s: &byte) -> int
+	fn malloc(size: usize) -> owned(malloc, free) &mut void
+	fn free(buf: owned(malloc, free) &void)
+	fn memcpy(dest: &mut byte, src: &byte, size: usize) -> &mut byte
+	fn fopen(path: &byte, mode: &byte) -> owned(fopen, fclose) &FILE
+	fn fread(buf: &byte, size: usize, count: usize, file: &FILE) -> usize
+	fn fclose(file: owned(fopen, fclose) &FILE)
+	fn atoi(str: &byte) -> int
+	fn exit(code: int)
+
+pub struct FILE {}    

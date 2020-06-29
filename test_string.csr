@@ -1,8 +1,4 @@
-@ffi("C")
-extern unsafe fn printf(fmt: &byte, ...) -> int
-
-@ffi("C")
-extern unsafe fn strlen(s: &byte) -> int
+import libc { printf, strlen }
 
 enum TestEnum
     A { a: int }
