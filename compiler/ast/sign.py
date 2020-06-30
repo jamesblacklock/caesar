@@ -13,7 +13,7 @@ class Sign(AST):
 			return access
 		elif not access.type.isSigned:
 			logError(state, self.expr.span, 'type `{}` has no sign'.format(access.type.name))
-		elif not self.negate:
-			return access
-		else:
+		elif self.negate:
 			return Neg(access, access.span)
+		else:
+			return access

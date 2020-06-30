@@ -48,4 +48,3 @@ class Offsetof(AST):
 				t = field.type
 			
 			return IntValue(offset, USize, self.span)
-					

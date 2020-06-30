@@ -1,11 +1,11 @@
-from .ast.valueref        import ValueRef
-from .ast.primitive       import IntLit
-from .ast.strlit          import StrLit
-from .ast.localdecl       import LetDecl, FnParam
-from .not_done.structdecl import StructDecl, FieldDecl
-from .not_done.fndecl     import FnDecl, CConv
-from .not_done.mod        import Mod, TraitDecl
-from .log                 import logError
+from .ast.valueref      import ValueRef
+from .ast.primitive     import IntLit
+from .ast.strlit        import StrLit
+from .ast.localdecl     import LetDecl, FnParam
+from .symbol.structdecl import StructDecl, FieldDecl
+from .symbol.fndecl     import FnDecl, CConv
+from .symbol.mod        import Mod, TraitDecl
+from .log               import logError
 
 class AttrInfo:
 	def __init__(self, name, proc, appliesTo, argInfo):

@@ -1,24 +1,24 @@
 import ctypes
-from .not_done.typeref    import NamedTypeRef, PtrTypeRef, ArrayTypeRef, OwnedTypeRef
-from .types               import TypeSymbol, UnknownType, FieldInfo, PtrType, ArrayType, OwnedType, \
-                                 Void, Bool, Byte, Char, Int8, UInt8, Int16, UInt16, Int32, UInt32, \
-                                 Int64, UInt64, ISize, USize, Float32, Float64, typesMatch, canCoerce, tryPromote
-from .log                 import logError, logExplain
-from .ast.ast             import ValueSymbol, Attr
-from .scope               import Scope, ScopeType
-from .attrs               import invokeAttrs
-from .not_done.mod        import Mod, Impl, TraitDecl
-from .not_done.fndecl     import FnDecl, CConv
-from .not_done.staticdecl import StaticDecl, ConstDecl
-from .not_done.structdecl import StructDecl
-from .not_done.tupledecl  import TupleDecl
-from .not_done.alias      import AliasDecl, TypeDecl
-from .not_done.enumdecl   import EnumDecl, VariantDecl
-from .mir.access          import SymbolAccess, SymbolRead
-from .ast.importexpr      import Import
-from .                    import platform
-from .mir.block           import Block, createDropBlock
-from .mir.localsymbol     import LocalSymbol
+from .symbol.typeref    import NamedTypeRef, PtrTypeRef, ArrayTypeRef, OwnedTypeRef
+from .types             import TypeSymbol, UnknownType, FieldInfo, PtrType, ArrayType, OwnedType, \
+                               Void, Bool, Byte, Char, Int8, UInt8, Int16, UInt16, Int32, UInt32, \
+                               Int64, UInt64, ISize, USize, Float32, Float64, typesMatch, canCoerce, tryPromote
+from .log               import logError, logExplain
+from .ast.ast           import ValueSymbol, Attr
+from .scope             import Scope, ScopeType
+from .attrs             import invokeAttrs
+from .symbol.mod        import Mod, Impl, TraitDecl
+from .symbol.fndecl     import FnDecl, CConv
+from .symbol.staticdecl import StaticDecl, ConstDecl
+from .symbol.structdecl import StructDecl
+from .symbol.tupledecl  import TupleDecl
+from .symbol.alias      import AliasDecl, TypeDecl
+from .symbol.enumdecl   import EnumDecl, VariantDecl
+from .mir.access        import SymbolAccess, SymbolRead
+from .ast.importexpr    import Import
+from .                  import platform
+from .mir.block         import Block, createDropBlock
+from .mir.localsymbol   import LocalSymbol
 
 BUILTIN_TYPES = {
 	Void.name:    Void,

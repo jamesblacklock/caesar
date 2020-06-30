@@ -1,6 +1,6 @@
 from .ast               import AST
 from ..types            import Void, ArrayType, getAlignedSize
-from ..not_done.tupledecl import TupleDecl
+from ..symbol.tupledecl import TupleDecl
 from ..mir.createstruct import CreateStruct, FieldInit
 from ..log              import logError
 from ..span             import Span

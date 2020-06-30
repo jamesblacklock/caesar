@@ -1,41 +1,41 @@
 import re
-from os              import path
-from enum            import Enum
-from .token          import TokenType
-from .span           import Span
-from .log            import logError
-from .infixops       import InfixOps
-from .ast.sign       import Sign
-from .not_done.structdecl import FieldDecl, StructDecl, UnionFields
-from .not_done.tupledecl  import TupleDecl
-from .not_done.enumdecl   import EnumDecl, VariantDecl
-from .ast.ast        import Attr
-from .not_done.typeref import PtrTypeRef, NamedTypeRef, ArrayTypeRef, OwnedTypeRef
-from .not_done.mod     import Mod, Impl, TraitDecl
-from .not_done.fndecl import FnDecl, CConv
-from .not_done.staticdecl import StaticDecl, ConstDecl
-from .ast.asexpr     import AsExpr
-from .ast.primitive  import IntLit, FloatLit, BoolLit, VoidLit
-from .ast.strlit     import CharLit, StrLit
-from .ast.block      import Block
-from .ast.fncall     import FnCall
-from .ast.ctlflow    import Return, Break, Continue
-from .ast.loop       import While, Loop
-from .ast.localdecl  import LetDecl, FnParam, CVarArgsParam
-from .ast.asgn       import Asgn
-from .ast.ifexpr     import If
-from .ast.infix      import InfixOp
-from .ast.valueref   import ValueRef, Borrow
-from .ast.field      import Index, Field
-from .ast.deref      import Deref
-from .ast.structlit  import StructLit, FieldLit
-from .ast.tuplelit   import TupleLit, ArrayLit
-from .ast.address    import Address
-from .not_done.alias import AliasDecl, TypeDecl
-from .scope          import ScopeType
-from .ast.isexpr     import Pattern, IsExpr
-from .ast.importexpr import Import, ImportTree
-from .ast.sizeof     import Sizeof, Offsetof
+from os                 import path
+from enum               import Enum
+from .token             import TokenType
+from .span              import Span
+from .log               import logError
+from .infixops          import InfixOps
+from .ast.sign          import Sign
+from .symbol.structdecl import FieldDecl, StructDecl, UnionFields
+from .symbol.tupledecl  import TupleDecl
+from .symbol.enumdecl   import EnumDecl, VariantDecl
+from .ast.ast           import Attr
+from .symbol.typeref    import PtrTypeRef, NamedTypeRef, ArrayTypeRef, OwnedTypeRef
+from .symbol.mod        import Mod, Impl, TraitDecl
+from .symbol.fndecl     import FnDecl, CConv
+from .symbol.staticdecl import StaticDecl, ConstDecl
+from .ast.asexpr        import AsExpr
+from .ast.primitive     import IntLit, FloatLit, BoolLit, VoidLit
+from .ast.strlit        import CharLit, StrLit
+from .ast.block         import Block
+from .ast.fncall        import FnCall
+from .ast.ctlflow       import Return, Break, Continue
+from .ast.loop          import While, Loop
+from .ast.localdecl     import LetDecl, FnParam, CVarArgsParam
+from .ast.asgn          import Asgn
+from .ast.ifexpr        import If
+from .ast.infix         import InfixOp
+from .ast.valueref      import ValueRef, Borrow
+from .ast.field         import Index, Field
+from .ast.deref         import Deref
+from .ast.structlit     import StructLit, FieldLit
+from .ast.tuplelit      import TupleLit, ArrayLit
+from .ast.address       import Address
+from .symbol.alias      import AliasDecl, TypeDecl
+from .scope             import ScopeType
+from .ast.isexpr        import Pattern, IsExpr
+from .ast.importexpr    import Import, ImportTree
+from .ast.sizeof        import Sizeof, Offsetof
 
 INFIX_PRECEDENCE = {
 	TokenType.AS:     1000, TokenType.IS:       1000, TokenType.ARROW:   900, TokenType.LSHIFT:    800, 

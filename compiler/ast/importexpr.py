@@ -1,10 +1,10 @@
 import os
-from .ast           import AST
-from ..types        import TypeSymbol
-from ..sourcefile   import SourceFile
-from ..not_done.mod import Mod
-from ..log          import logError, logExplain
-from ..             import tokenizer, parser, ir, amd64, build
+from .ast         import AST
+from ..types      import TypeSymbol
+from ..sourcefile import SourceFile
+from ..symbol.mod import Mod
+from ..log        import logError, logExplain
+from ..           import tokenizer, parser, ir, amd64, build
 
 ALL_IMPORTS = {}
 

@@ -1,11 +1,11 @@
-from .ast               import AST
-from ..not_done.typeref import NamedTypeRef
-from ..not_done.structdecl import StructDecl
-from ..not_done         import enumdecl
-from ..ast              import primitive
-from ..log              import logError
-from ..mir.createstruct import CreateStruct, FieldInit
-from ..mir.primitive    import IntValue
+from .ast                import AST
+from ..symbol.typeref    import NamedTypeRef
+from ..symbol.structdecl import StructDecl
+from ..symbol            import enumdecl
+from ..ast               import primitive
+from ..log               import logError
+from ..mir.createstruct  import CreateStruct, FieldInit
+from ..mir.primitive     import IntValue
 
 class FieldLit(AST):
 	def __init__(self, nameTok, expr, span, name=None):

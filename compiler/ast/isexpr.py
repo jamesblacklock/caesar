@@ -1,13 +1,10 @@
-from .ast            import AST, Contract
-from ..infixops      import InfixOps
-from ..not_done.enumdecl  import VariantDecl
-from ..log           import logError
-from ..mir.access    import SymbolRead
-from ..mir.primitive import IntValue
-from .infix          import InfixOp
-from .block          import Block
-from ..token         import Token, TokenType
-from .field          import Field
+from .ast              import AST, Contract
+from ..infixops        import InfixOps
+from ..symbol.enumdecl import VariantDecl
+from ..log             import logError
+from ..mir.primitive   import IntValue
+from .infix            import InfixOp
+from .field            import Field
 
 class IsExpr(AST):
 	def __init__(self, expr, pattern, span):
@@ -35,7 +32,12 @@ class IsExpr(AST):
 			tagField = self.expr
 		else:
 			tagField = Field(self.expr, [], self.expr.span)
-		tagField.path.append(Token(self.expr.span, TokenType.NAME, '$tag'))
+		
+		class T:
+			def __init__(content, span):
+				self.content = content
+				self.span = span
+		tagField.path.append(T('$tag', self.expr.span))
 		
 		
 		tagValue = enumType.symbolTable[variant.name].tag.data

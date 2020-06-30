@@ -1,6 +1,6 @@
 from .mir         import MIR, StaticDataType
 from ..ast        import deref, valueref, field, asgn, address
-from ..not_done   import staticdecl, fndecl
+from ..symbol     import staticdecl, fndecl
 from ..types      import typesMatch, tryPromote, getAlignedSize, PtrType, USize
 from ..           import ir
 from ..scope      import ScopeType

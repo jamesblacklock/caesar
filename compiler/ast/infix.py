@@ -24,20 +24,17 @@ class InfixOp(AST):
 		l = None
 		r = None
 		if lIndefinite and rIndefinite:
-			if type(infixOp.l) == IntLit and type(infixOp.r) == IntLit:
-				if canAccommodate(types.Int32, infixOp.l.value) and \
-					canAccommodate(types.Int32, infixOp.r.value):
-					r = state.analyzeNode(infixOp.r, types.Int32)
-					l = state.analyzeNode(infixOp.l, types.Int32)
-				elif canAccommodate(types.Int64, infixOp.l.value) and \
-					canAccommodate(types.Int64, infixOp.r.value):
-					r = state.analyzeNode(infixOp.r, types.Int64)
-					l = state.analyzeNode(infixOp.l, types.Int64)
-				else:
-					r = state.analyzeNode(infixOp.r, types.UInt64)
-					l = state.analyzeNode(infixOp.l, types.UInt64)
+			assert type(infixOp.l) == IntLit and type(infixOp.r) == IntLit
+			
+			if canAccommodate(types.Int32, infixOp.l.value) and canAccommodate(types.Int32, infixOp.r.value):
+				r = state.analyzeNode(infixOp.r, types.Int32)
+				l = state.analyzeNode(infixOp.l, types.Int32)
+			elif canAccommodate(types.Int64, infixOp.l.value) and canAccommodate(types.Int64, infixOp.r.value):
+				r = state.analyzeNode(infixOp.r, types.Int64)
+				l = state.analyzeNode(infixOp.l, types.Int64)
 			else:
-				assert 0
+				r = state.analyzeNode(infixOp.r, types.UInt64)
+				l = state.analyzeNode(infixOp.l, types.UInt64)
 		elif rIndefinite and not infixOp.l.hasBlockValue:
 			l = state.analyzeNode(infixOp.l, implicitType)
 			if l:

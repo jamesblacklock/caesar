@@ -1,6 +1,6 @@
 from .ast               import AST
 from .                  import valueref
-from ..not_done         import enumdecl
+from ..symbol           import enumdecl
 from ..mir              import access as accessmod
 from .tuplelit          import TupleLit
 from ..types            import TypeSymbol, Void

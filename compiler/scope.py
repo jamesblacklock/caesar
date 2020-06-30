@@ -1,7 +1,7 @@
 from enum             import Enum
 from .mir.drop        import DropSymbol
 from .log             import logError, logWarning, logExplain
-from .not_done        import staticdecl, enumdecl
+from .symbol          import staticdecl, enumdecl
 from .mir.localsymbol import LocalSymbol
 from .mir.fncall      import FnCall
 from .types           import PtrType, allFields
