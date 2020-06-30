@@ -70,13 +70,13 @@ class FnDecl(ValueSymbol):
 		state.analyzeNode(self.body, self.returnType)
 		self.mirBody = state.popScope()
 		
-		# print(self)
-		
 		if not state.failed:
 			self.mirBody.checkFlow(None)
 			assert self.mirBody.scope.didReturn
 			# if self.isDropFnForType:
 			# 	self.checkDropFnScope(state)
+		
+		# print(self)
 	
 	def checkDropFnScope(self, state):
 		if not self.isDropFnForType.isCompositeType:

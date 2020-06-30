@@ -2,51 +2,52 @@ from .ast               import AST
 from ..types            import Void, ArrayType, getAlignedSize
 from ..not_done.tupledecl import TupleDecl
 from ..mir.createstruct import CreateStruct, FieldInit
+from ..log              import logError
+from ..span             import Span
 
 class TupleLit(AST):
-	def __init__(self, values, span):
+	def __init__(self, values, span, resolvedType=None):
 		super().__init__(span, True)
 		self.values = values
+		self.resolvedType = resolvedType
 	
 	def analyze(self, state, implicitType):
-		# uninitFields = set()
-		resolvedType = implicitType
-		
-		if resolvedType:
-			if resolvedType.isTupleType:
-				# fieldDict = resolvedType.fieldDict
-				uninitFields = { f for f in resolvedType.fields }
-			else:
-				logError(state, self.span, 'type `{}` is not a tuple type'.format(resolvedType.name))
-				resolvedType = None
+		if self.resolvedType:
+			implicitType = self.resolvedType
 		
 		expectedTypes = []
-		if resolvedType:
-			expectedTypes = [field.type for field in resolvedType.fields]
+		if implicitType:
+			if implicitType.isTupleType:
+				expectedTypes = [field.type for field in implicitType.fields]
+			else:
+				implicitType = None
 		
 		while len(expectedTypes) < len(self.values):
 			expectedTypes.append(None)
 		
 		fieldFailed = False
-		# initFields = {}
+		tooMany = None
 		accesses = []
-		# for (value, fieldType, i) in zip(self.values, expectedTypes, range(0, len(expectedTypes))):
 		for (value, fieldType) in zip(self.values, expectedTypes):
-			# if fieldType:
-				# fieldSymbol = resolvedType.fields[i]
-				# initFields[fieldSymbol] = fieldInit
-				# uninitFields.remove(fieldSymbol)
-			
 			access = state.analyzeNode(value, fieldType)
 			if access:
-				access = state.typeCheck(access, fieldType)
+				if implicitType:
+					if fieldType == None:
+						tooMany = Span.merge(tooMany, value.span) if tooMany else value.span
+					else:
+						access = state.typeCheck(access, fieldType)
 				accesses.append(access)
 			else:
 				fieldFailed = True
 		
+		if tooMany:
+			logError(state, tooMany, 'too many fields found for type `{}` (expected {}, found {})'.format(
+				implicitType.name, len(implicitType.fields), len(self.values)))
+		
 		if fieldFailed:
 			return None
 		
+		resolvedType = implicitType
 		if resolvedType == None:
 			layout = state.generateFieldLayout([access.type for access in accesses])
 			resolvedType = TupleDecl.generateAnonTupleDecl(layout)

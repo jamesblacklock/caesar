@@ -23,11 +23,13 @@ class StructDecl(TypeSymbol):
 		decl.applyLayout(layout)
 		return decl
 	
-	def applyLayout(decl, layout):
-		decl.byteSize = layout.byteSize
-		decl.align = layout.align
-		decl.fields = layout.fields
-		decl.fieldDict = {field.name: field for field in decl.fields}
+	def applyLayout(self, layout):
+		self.byteSize = layout.byteSize
+		self.align = layout.align
+		self.fields = layout.fields
+		self.fieldDict = {field.name: field for field in self.fields}
+		if self.anon:
+			self.name = '{{{}}}'.format(', '.join('{}: {}'.format(f.name, f.type.name) for f in self.fields))
 	
 	def analyzeSig(decl, state):
 		fieldDecls = []

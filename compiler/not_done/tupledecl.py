@@ -26,6 +26,8 @@ class TupleDecl(TypeSymbol):
 		self.align = layout.align
 		self.fields = layout.fields
 		self.fieldDict = {field.name: field for field in self.fields}
+		if self.anon:
+			self.name = '({})'.format(', '.join(f.type.name for f in self.fields))
 	
 	def analyzeSig(self, state):
 		types = []

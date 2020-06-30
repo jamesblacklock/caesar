@@ -374,6 +374,9 @@ def typesMatch(type1, type2, selfType=None):
 	return False
 
 def shapesMatch(type1, type2):
+	if not (type1 and type2 and type1.isCompositeType and type2.isCompositeType):
+		return False
+	
 	if type1.byteSize != type2.byteSize or type1.align != type2.align or len(type1.fields) != len(type2.fields):
 		return False
 	

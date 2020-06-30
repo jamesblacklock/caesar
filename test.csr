@@ -39,9 +39,6 @@ const CONST_STRUCT =
 	which is the entry point for the application
 ========================================================#
 unsafe fn main()
-	# sizeof TestStruct::g
-	# offsetof TestStruct::a
-	
 	printf("a static value: %d\n", myStatic)
 	
 	let s = CONST_STRUCT

@@ -35,32 +35,31 @@ class StructLit(AST):
 		self.fields = fields
 
 	def analyze(self, state, implicitType):
-		resolvedType = None
 		enumType = None
 		variant = None
 		if self.typeRef:
-			resolvedType = None
 			variants = implicitType.symbolTable if implicitType and implicitType.isEnumType else None
 			symbol = state.lookupSymbol(self.typeRef.path, variants, inTypePosition=True)
 			if type(symbol) == enumdecl.VariantDecl:
 				variant = symbol
 				enumType = variant.enumType
-				resolvedType = variant.type
+				implicitType = variant.type
 			else:
-				resolvedType = state.resolveTypeRef(self.typeRef)
-				if resolvedType.isUnknown:
-					resolvedType = None
-		else:
-			resolvedType = implicitType
+				implicitType = state.resolveTypeRef(self.typeRef)
+				if implicitType.isUnknown:
+					implicitType = None
+			
+			if implicitType and not implicitType.isStructType:
+				logError(state, self.nameTok.span if self.nameTok else self.span, 
+					'type `{}` is not a struct type'.format(implicitType.name))
+				implicitType = None
 		
 		fieldDict =  None
-		if resolvedType:
-			if resolvedType.isStructType:
-				fieldDict = resolvedType.fieldDict
+		if implicitType:
+			if implicitType.isStructType:
+				fieldDict = implicitType.fieldDict
 			else:
-				logError(state, self.nameTok.span if self.nameTok else self.span, 
-					'type `{}` is not a struct type'.format(resolvedType.name))
-				resolvedType = None
+				implicitType = None
 		
 		fieldFailed = False
 		initFields = {}
@@ -80,7 +79,7 @@ class StructLit(AST):
 						initFields[fieldSymbol] = fieldInit
 				else:
 					logError(state, fieldInit.nameTok.span, 
-						'type `{}` has no field `{}`'.format(resolvedType.name, fieldInit.name))
+						'type `{}` has no field `{}`'.format(implicitType.name, fieldInit.name))
 			
 			access = state.analyzeNode(fieldInit.expr, fieldType)
 			if access:
@@ -92,6 +91,7 @@ class StructLit(AST):
 		if fieldFailed:
 			return None
 		
+		resolvedType = implicitType
 		if resolvedType == None:
 			fieldTypes = []
 			fieldNames = []

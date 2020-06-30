@@ -335,7 +335,7 @@ class Scope:
 			scope = scope.parent
 	
 	def setLastUse(self, info, use, isRead):
-		if not isRead and not use.isFieldAccess and (not info.uninit or info.maybeUninit):
+		if use.write and not (use.deref or use.isFieldAccess) and (not info.uninit or info.maybeUninit):
 			for (lastUse, loopExpr) in info.lastUses.items():
 				if lastUse.write and not lastUse.isFieldAccess and not lastUse.deref:
 					self.dropSymbol(info.symbol, lastUse.dropBlock)
@@ -362,16 +362,18 @@ class Scope:
 			info.maybeUninit = False
 		
 		if isRead:
-			if use.isFieldAccess:
-				pass
+			if not use.write and not use.addr and use.field and not use.field.type.isCopyable:
+				movedFields = allFields(use.field.type)
+				movedFields.add(use.field)
+				info.typeModifiers.uninitFields.update(movedFields)
 			else:
 				use.typeModifiers = info.typeModifiers.clone()
 		elif use.rvalue.typeModifiers:
-			if use.isFieldAccess:
-				if use.field:
-					initFields = allFields(use.field.type)
-					initFields.difference_update(use.rvalue.typeModifiers.uninitFields)
-					info.typeModifiers.uninitFields.difference_update(initFields)
+			if use.field:
+				initFields = allFields(use.field.type)
+				initFields.difference_update(use.rvalue.typeModifiers.uninitFields)
+				info.typeModifiers.uninitFields.difference_update(initFields)
+				info.typeModifiers.uninitFields.discard(use.field)
 			else:
 				info.typeModifiers = use.rvalue.typeModifiers.clone()
 		

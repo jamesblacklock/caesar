@@ -51,13 +51,16 @@ class FnCall(AST):
 					symbol = symbol.type
 				if isinstance(symbol, TypeSymbol):
 					if symbol.isTupleType:
-						data = TupleLit(self.args, self.span)
-						return CreateStruct.create(state, enumType, self.span, [
-							CreateStruct.initStruct('$data', [
-								CreateStruct.init('$' + variant.name, data)
-							]),
-							CreateStruct.init('$tag', IntValue(variant.tag.data, enumType.tagType, self.span))
-						])
+						data = TupleLit(self.args, self.span, resolvedType=symbol)
+						if enumType:
+							return CreateStruct.create(state, enumType, self.span, [
+								CreateStruct.initStruct('$data', [
+									CreateStruct.init('$' + variant.name, data)
+								]),
+								CreateStruct.init('$tag', IntValue(variant.tag.data, enumType.tagType, self.span))
+							])
+						else:
+							return state.analyzeNode(data)
 					else:
 						logError(state, self.expr.span, 'the expression cannot be called as a function')
 				else:
