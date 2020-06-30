@@ -2,6 +2,7 @@ from .ast            import AST
 from ..types         import Void
 from .               import ifexpr
 from ..mir           import access as accessmod, ctlflow
+from ..mir.access           import createTempSymbol
 from ..scope         import ScopeType
 from ..log           import logWarning
 from ..span          import Span
@@ -10,7 +11,7 @@ from ..mir.block     import createDropBlock
 
 class Block(AST):
 	def __init__(self, exprs, scopeType, span):
-		super().__init__(span, True)
+		super().__init__(span, True, True)
 		self.exprs = exprs
 		self.scopeType = scopeType
 		self.unsafe = False
@@ -20,15 +21,12 @@ class Block(AST):
 		return Block(blockInfo.list, scopeType, blockInfo.span)
 	
 	def analyze(self, state, implicitType):
-		resetScopeSafety = False
 		if self.scopeType == ScopeType.BLOCK:
 			state.pushScope(ScopeType.BLOCK, self)
 		
 		state.mirBlock.span = self.span
 		
 		unreachable = None
-		didReturn = False
-		didBreak = False
 		lastExpr = None
 		access = None
 		lastDropBlock = None
@@ -40,9 +38,7 @@ class Block(AST):
 				if unreachable == None and (state.scope.didReturn or state.scope.didBreak):
 					unreachable = Span.merge(expr.span, lastExpr.span)
 				
-				assert state.scope.dropBlock
-				
-				if expr.hasValue and type(expr) not in (Block, ifexpr.If):
+				if expr.hasValue and not expr.hasBlockValue:
 					(tempSymbol, tempWrite) = accessmod.createTempSymbol(expr)
 					state.analyzeNode(tempSymbol)
 					state.analyzeNode(tempWrite)
@@ -60,29 +56,31 @@ class Block(AST):
 		state.scope.dropBlock = None
 		
 		if state.scope.type == ScopeType.FN:
-			if access and implicitType != Void:
-				assert not state.scope.didReturn
-				ret = ctlflow.Return(access, lastDropBlock, access.span)
-				state.mirBlock.append(lastDropBlock)
-				state.analyzeNode(ret)
-				access.dropBlock = lastDropBlock
-			elif not state.scope.didReturn:
-				ret = ctlflow.Return(None, lastDropBlock, self.span)
-				state.mirBlock.append(lastDropBlock)
-				state.analyzeNode(ret)
-				access = None
-			
+			# need to create a return
+			if not state.scope.didReturn:
+				if access and implicitType != Void:
+					ret = ctlflow.Return(access, lastDropBlock, access.span)
+					state.mirBlock.append(lastDropBlock)
+					state.analyzeNode(ret)
+					access.dropBlock = lastDropBlock
+				else:
+					ret = ctlflow.Return(None, lastDropBlock, self.span)
+					state.mirBlock.append(lastDropBlock)
+					state.analyzeNode(ret)
+			access = None
 			lastDropBlock = None
-		elif access == None and implicitType != Void and state.scope.type in (ScopeType.IF, ScopeType.ELSE) and \
-			not (state.scope.didReturn or state.scope.didBreak):
-			(tempSymbol, tempWrite, tempRead) = accessmod.createTempTriple(VoidValue(self.span))
-			state.analyzeNode(tempSymbol)
-			state.analyzeNode(tempWrite)
-			tempRead.type = tempSymbol.type
-			access = tempRead
+		elif state.scope.type in (ScopeType.IF, ScopeType.ELSE):
+			# need to create a result
+			if not access and implicitType != Void and not (state.scope.didReturn or state.scope.didBreak):
+				(tempSymbol, tempWrite, tempRead) = accessmod.createTempTriple(VoidValue(self.span))
+				state.analyzeNode(tempSymbol)
+				state.analyzeNode(tempWrite)
+				tempRead.type = Void
+				access = tempRead
 		elif self.scopeType == ScopeType.BLOCK:
 			mirBlock = state.popScope()
 			if access:
+				# need to prepend a symbol before the block to write the result to
 				if access.type and not access.type.isVoidType:
 					(tempSymbol, tempWrite, tempRead) = accessmod.createTempTriple(access)
 					state.analyzeNode(tempSymbol)

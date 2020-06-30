@@ -7,7 +7,7 @@ from ..log        import logError
 
 class If(AST):
 	def __init__(self, expr, ifBlock, elseBlock, span):
-		super().__init__(span, True)
+		super().__init__(span, True, True)
 		self.expr = expr
 		self.block = ifBlock
 		self.elseBlock = elseBlock
@@ -37,8 +37,8 @@ class If(AST):
 		didReturn = block.scope.didReturn and elseBlock.scope.didReturn
 		state.scope.didReturn = state.scope.didReturn or didReturn
 		
-		# didBreak = block.scope.didBreak and elseBlock.scope.didBreak
-		# state.scope.didBreak = state.scope.didBreak or didBreak
+		didBreak = block.scope.didBreak and elseBlock.scope.didBreak
+		state.scope.didBreak = state.scope.didBreak or didBreak
 		
 		if implicitType == Void:
 			type = Void

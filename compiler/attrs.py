@@ -1,18 +1,23 @@
-from .ast             import AST
-from .valueref        import ValueRef
-from .primitive       import IntLit
-from .strlit          import StrLit
-from ..not_done.structdecl import StructDecl, FieldDecl
-from ..not_done.fndecl     import FnDecl, CConv
-from .localdecl       import LetDecl, FnParam
-from ..not_done.mod   import Mod, TraitDecl
-from ..log            import logError
+from .ast.valueref        import ValueRef
+from .ast.primitive       import IntLit
+from .ast.strlit          import StrLit
+from .ast.localdecl       import LetDecl, FnParam
+from .not_done.structdecl import StructDecl, FieldDecl
+from .not_done.fndecl     import FnDecl, CConv
+from .not_done.mod        import Mod, TraitDecl
+from .log                 import logError
 
-class Attr(AST):
-	def __init__(self, name, args, span):
-		super().__init__(span)
+class AttrInfo:
+	def __init__(self, name, proc, appliesTo, argInfo):
 		self.name = name
-		self.args = args
+		self.proc = proc
+		self.appliesTo = appliesTo
+		self.argInfo = argInfo
+
+class AttrArg:
+	def __init__(self, types, optional=False):
+		self.types = types if type(types) == list else [types]
+		self.optional = optional
 
 def acquireDefaultAttr(state, decl, params, span):
 	if state.scope.acquireDefaultSet:
@@ -57,18 +62,6 @@ def strModAttr(state, decl, params, span):
 
 def dropTraitAttr(state, decl, params, span):
 	decl.isDropTrait = True
-
-class AttrInfo:
-	def __init__(self, name, proc, appliesTo, argInfo):
-		self.name = name
-		self.proc = proc
-		self.appliesTo = appliesTo
-		self.argInfo = argInfo
-
-class AttrArg:
-	def __init__(self, types, optional=False):
-		self.types = types if type(types) == list else [types]
-		self.optional = optional
 
 AcquireAttr = AttrInfo('acquire_default', acquireDefaultAttr, [FnDecl], [])
 ReleaseAttr = AttrInfo('release_default', releaseDefaultAttr, [FnDecl], [])

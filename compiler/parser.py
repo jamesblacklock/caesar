@@ -4,12 +4,12 @@ from enum            import Enum
 from .token          import TokenType
 from .span           import Span
 from .log            import logError
-from .ast.ast        import InfixOps
+from .infixops       import InfixOps
 from .ast.sign       import Sign
 from .not_done.structdecl import FieldDecl, StructDecl, UnionFields
 from .not_done.tupledecl  import TupleDecl
 from .not_done.enumdecl   import EnumDecl, VariantDecl
-from .ast.attrs      import Attr
+from .ast.ast        import Attr
 from .not_done.typeref import PtrTypeRef, NamedTypeRef, ArrayTypeRef, OwnedTypeRef
 from .not_done.mod     import Mod, Impl, TraitDecl
 from .not_done.fndecl import FnDecl, CConv

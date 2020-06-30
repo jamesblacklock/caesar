@@ -1,7 +1,6 @@
-from .mir      import MIR
-from ..ir      import FAdd, FSub, FMul, FDiv, FEq, FNEq, FGreater, FLess, FGreaterEq, FLessEq, \
-                      Add, Sub, Mul, Div, Mod, Eq, NEq, Greater, Less, GreaterEq, LessEq, Imm, IPTR
-from ..ast.ast import InfixOps, CMP_OPS
+from .mir       import MIR
+from ..         import ir
+from ..infixops import InfixOps, CMP_OPS
 
 class InfixOp(MIR):
 	def __init__(self, l, r, op, type, span):
@@ -39,25 +38,25 @@ class InfixOp(MIR):
 			if self.l.type.indLevel == 1:
 				mul = self.l.type.baseType.byteSize
 			else:
-				mul = IPTR.byteSize
-			state.appendInstr(Imm(self, IPTR, mul))
-			state.appendInstr(Mul(self))
-			state.appendInstr(Add(self))
+				mul = ir.IPTR.byteSize
+			state.appendInstr(ir.Imm(self, ir.IPTR, mul))
+			state.appendInstr(ir.Mul(self))
+			state.appendInstr(ir.Add(self))
 		elif self.r.type.isPtrType:
 			if self.r.type.indLevel == 1:
 				mul = self.r.type.baseType.byteSize
 			else:
-				mul = IPTR.byteSize
-			state.appendInstr(Imm(self, IPTR, mul))
-			state.appendInstr(Mul(self))
+				mul = ir.IPTR.byteSize
+			state.appendInstr(ir.Imm(self, ir.IPTR, mul))
+			state.appendInstr(ir.Mul(self))
 			self.r.writeIR(state)
-			state.appendInstr(Add(self))
+			state.appendInstr(ir.Add(self))
 		elif self.l.type.isFloatType:
 			self.r.writeIR(state)
-			state.appendInstr(FAdd(self))
+			state.appendInstr(ir.FAdd(self))
 		else:
 			self.r.writeIR(state)
-			state.appendInstr(Add(self))
+			state.appendInstr(ir.Add(self))
 
 	def writeSubIR(self, state):
 		self.l.writeIR(state)
@@ -67,37 +66,37 @@ class InfixOp(MIR):
 			if self.l.type.indLevel == 1:
 				mul = self.l.type.baseType.byteSize
 			else:
-				mul = IPTR.byteSize
-			state.appendInstr(Imm(self, IPTR, mul))
-			state.appendInstr(Mul(self))
-			state.appendInstr(Sub(self))
+				mul = ir.IPTR.byteSize
+			state.appendInstr(ir.Imm(self, ir.IPTR, mul))
+			state.appendInstr(ir.Mul(self))
+			state.appendInstr(ir.Sub(self))
 		elif self.l.type.isFloatType:
 			self.r.writeIR(state)
-			state.appendInstr(FSub(self))
+			state.appendInstr(ir.FSub(self))
 		else:
 			self.r.writeIR(state)
-			state.appendInstr(Sub(self))
+			state.appendInstr(ir.Sub(self))
 	
 	def writeMulIR(self, state):
 		self.l.writeIR(state)
 		self.r.writeIR(state)
 		if self.l.type.isFloatType:
-			state.appendInstr(FMul(self))
+			state.appendInstr(ir.FMul(self))
 		else:
-			state.appendInstr(Mul(self))
+			state.appendInstr(ir.Mul(self))
 	
 	def writeDivIR(self, state):
 		self.l.writeIR(state)
 		self.r.writeIR(state)
 		if self.l.type.isFloatType:
-			state.appendInstr(FDiv(self))
+			state.appendInstr(ir.FDiv(self))
 		else:
-			state.appendInstr(Div(self))
+			state.appendInstr(ir.Div(self))
 	
 	def writeModuloIR(self, state):
 		self.l.writeIR(state)
 		self.r.writeIR(state)
-		state.appendInstr(Mod(self))
+		state.appendInstr(ir.Mod(self))
 	
 	def writeCmpIR(self, state):
 		self.l.writeIR(state)
@@ -105,34 +104,34 @@ class InfixOp(MIR):
 		
 		if self.op == InfixOps.EQ:
 			if self.l.type.isFloatType:
-				instr = FEq(self)
+				instr = ir.FEq(self)
 			else:
-				instr = Eq(self)
+				instr = ir.Eq(self)
 		elif self.op == InfixOps.NEQ:
 			if self.l.type.isFloatType:
-				instr = FNEq(self)
+				instr = ir.FNEq(self)
 			else:
-				instr = NEq(self)
+				instr = ir.NEq(self)
 		elif self.op == InfixOps.GREATER:
 			if self.l.type.isFloatType:
-				instr = FGreater(self)
+				instr = ir.FGreater(self)
 			else:
-				instr = Greater(self)
+				instr = ir.Greater(self)
 		elif self.op == InfixOps.LESS:
 			if self.l.type.isFloatType:
-				instr = FLess(self)
+				instr = ir.FLess(self)
 			else:
-				instr = Less(self)
+				instr = ir.Less(self)
 		elif self.op == InfixOps.GREATEREQ:
 			if self.l.type.isFloatType:
-				instr = FGreaterEq(self)
+				instr = ir.FGreaterEq(self)
 			else:
-				instr = GreaterEq(self)
+				instr = ir.GreaterEq(self)
 		elif self.op == InfixOps.LESSEQ:
 			if self.l.type.isFloatType:
-				instr = FLessEq(self)
+				instr = ir.FLessEq(self)
 			else:
-				instr = LessEq(self)
+				instr = ir.LessEq(self)
 		else:
 			assert 0
 		

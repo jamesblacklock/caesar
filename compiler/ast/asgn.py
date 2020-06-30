@@ -11,7 +11,9 @@ class Asgn(AST):
 		self.opTok = opTok
 	
 	def analyze(self, state, ignoredImplicitType):
+		asgn = self
 		if self.infixOp:
-			self.rvalue = InfixOp(self.lvalue, self.rvalue, self.infixOp, self.opTok, self.span)
+			rvalue = InfixOp(self.lvalue, self.rvalue, self.infixOp, self.opTok, self.span)
+			asgn = Asgn(self.lvalue, rvalue, None, self.opTok, self.span)
 		
-		return access.SymbolAccess.analyzeSymbolAccess(state, self)
+		return access.SymbolAccess.analyzeSymbolAccess(state, asgn)

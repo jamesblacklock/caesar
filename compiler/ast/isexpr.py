@@ -1,4 +1,5 @@
-from .ast            import AST, Contract, InfixOps
+from .ast            import AST, Contract
+from ..infixops      import InfixOps
 from ..not_done.enumdecl  import VariantDecl
 from ..log           import logError
 from ..mir.access    import SymbolRead

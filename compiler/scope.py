@@ -2,7 +2,6 @@ from enum             import Enum
 from .mir.drop        import DropSymbol
 from .log             import logError, logWarning, logExplain
 from .not_done        import staticdecl, enumdecl
-from .mir             import access as accessmod
 from .mir.localsymbol import LocalSymbol
 from .mir.fncall      import FnCall
 from .types           import PtrType, allFields
@@ -570,16 +569,17 @@ class Scope:
 			info.typeModifiers.uninit = False
 	
 	def callDropFn(self, dropFn, symbol, field, fieldBase, exprs, span):
+		from .mir.access import SymbolRead
 		symbol.fixed = True
 		
 		# create the fn ref for the fn call
-		fnRef = accessmod.SymbolRead(span)
+		fnRef = SymbolRead(span)
 		fnRef.symbol = dropFn
 		fnRef.type = dropFn.type
 		fnRef.ref = True
 		
 		# take the address of the symbol/field
-		ptr = accessmod.SymbolRead(span)
+		ptr = SymbolRead(span)
 		ptr.symbol = symbol
 		ptr.addr = True
 		if field:

@@ -1,9 +1,8 @@
 from .mir         import MIR, StaticDataType
-from ..ast        import block, deref, valueref, localdecl, field, asgn, address
+from ..ast        import deref, valueref, field, asgn, address
 from ..not_done   import staticdecl, fndecl
-from ..types      import typesMatch, tryPromote, shapesMatch, getAlignedSize, PtrType, USize
-from ..ir         import Swap, Pop, Write, Raise, Deref, DerefW, Field, FieldW, DerefField, DerefFieldW, \
-                         Fix, Dup, Addr, Imm, Global, Mul, Add, IPTR, FundamentalType
+from ..types      import typesMatch, tryPromote, getAlignedSize, PtrType, USize
+from ..           import ir
 from ..scope      import ScopeType
 from ..token      import TokenType
 from ..log        import logError
@@ -221,7 +220,7 @@ class SymbolRead(SymbolAccess):
 		stackTop = False
 		if type(expr.symbol) in (staticdecl.StaticDecl, fndecl.FnDecl):
 			assert not expr.addr
-			state.appendInstr(Global(expr, IPTR, expr.symbol.mangledName))
+			state.appendInstr(ir.Global(expr, ir.IPTR, expr.symbol.mangledName))
 			stackTop = True
 		elif type(expr.symbol) == staticdecl.ConstDecl:
 			assert not expr.addr
@@ -234,56 +233,56 @@ class SymbolRead(SymbolAccess):
 		if expr.isFieldAccess:
 			if expr.addr:
 				stackOffset = 0 if stackTop else state.localOffset(expr.symbol)
-				state.appendInstr(Addr(expr, stackOffset))
+				state.appendInstr(ir.Addr(expr, stackOffset))
 			elif expr.deref > 1:
 				stackOffset = 0 if stackTop else state.localOffset(expr.symbol)
-				state.appendInstr(Dup(expr, stackOffset))
+				state.appendInstr(ir.Dup(expr, stackOffset))
 				for _ in range(0, expr.deref - 1):
-					state.appendInstr(Deref(expr, IPTR))
+					state.appendInstr(ir.Deref(expr, ir.IPTR))
 				stackTop = True
 			
 			doAdd = False
 			if expr.staticOffset or not expr.dynOffsets:
-				state.appendInstr(Imm(expr, IPTR, expr.staticOffset))
+				state.appendInstr(ir.Imm(expr, ir.IPTR, expr.staticOffset))
 				doAdd = True
 			for dyn in expr.dynOffsets:
 				if doAdd:
-					state.appendInstr(Add(expr))
+					state.appendInstr(ir.Add(expr))
 				else:
 					doAdd = True
 				dyn.expr.writeIR(state)
 				if dyn.factor:
-					state.appendInstr(Imm(expr, IPTR, dyn.factor))
-					state.appendInstr(Mul(expr))
+					state.appendInstr(ir.Imm(expr, ir.IPTR, dyn.factor))
+					state.appendInstr(ir.Mul(expr))
 			
-			fType = FundamentalType.fromResolvedType(expr.type)
+			fType = ir.FundamentalType.fromResolvedType(expr.type)
 			stackOffset = 1 if stackTop else state.localOffset(expr.symbol)
 			if expr.deref:
-				state.appendInstr(DerefField(expr, stackOffset, fType))
+				state.appendInstr(ir.DerefField(expr, stackOffset, fType))
 			elif expr.addr:
 				assert doAdd
-				state.appendInstr(Add(expr))
+				state.appendInstr(ir.Add(expr))
 			else:
-				state.appendInstr(Field(expr, stackOffset, fType))
+				state.appendInstr(ir.Field(expr, stackOffset, fType))
 		elif expr.addr:
 			stackOffset = 0 if stackTop else state.localOffset(expr.symbol)
-			state.appendInstr(Addr(expr, stackOffset))
+			state.appendInstr(ir.Addr(expr, stackOffset))
 		else:
 			stackOffset = 0 if stackTop else state.localOffset(expr.symbol)
 			if expr.copy or expr.isBorrowed:
-				state.appendInstr(Dup(expr, stackOffset))
+				state.appendInstr(ir.Dup(expr, stackOffset))
 			elif stackOffset > 0:
-				state.appendInstr(Raise(expr, stackOffset))
+				state.appendInstr(ir.Raise(expr, stackOffset))
 			
 			if expr.deref:
 				for _ in range(0, expr.deref - 1):
-					state.appendInstr(Deref(expr, IPTR))
+					state.appendInstr(ir.Deref(expr, ir.IPTR))
 				
-				fType = FundamentalType.fromResolvedType(expr.type)
-				state.appendInstr(Deref(expr, fType))
+				fType = ir.FundamentalType.fromResolvedType(expr.type)
+				state.appendInstr(ir.Deref(expr, fType))
 			elif expr.staticOffset:
-				state.appendInstr(Imm(expr, IPTR, expr.staticOffset))
-				state.appendInstr(Add(expr))
+				state.appendInstr(ir.Imm(expr, ir.IPTR, expr.staticOffset))
+				state.appendInstr(ir.Add(expr))
 
 class SymbolWrite(SymbolAccess):
 	def __init__(self, rvalue, span, lvalueSpan=None):
@@ -346,7 +345,7 @@ class SymbolWrite(SymbolAccess):
 		
 		stackTop = False
 		if type(expr.symbol) == staticdecl.StaticDecl:
-			state.appendInstr(Global(expr, IPTR, expr.symbol.mangledName))
+			state.appendInstr(ir.Global(expr, ir.IPTR, expr.symbol.mangledName))
 			stackTop = True
 		# else:
 			# assert expr.symbol in state.operandsBySymbol
@@ -354,36 +353,36 @@ class SymbolWrite(SymbolAccess):
 		if expr.type.isVoidType:
 			expr.rvalue.writeIR(state)
 			if not expr.rvalue.type.isVoidType:
-				state.appendInstr(Pop(expr))
+				state.appendInstr(ir.Pop(expr))
 			return
 		
 		if expr.isFieldAccess:
 			expr.rvalue.writeIR(state)
 			doAdd = False
 			if expr.staticOffset or not expr.dynOffsets:
-				state.appendInstr(Imm(expr, IPTR, expr.staticOffset))
+				state.appendInstr(ir.Imm(expr, ir.IPTR, expr.staticOffset))
 				doAdd = True
 			for dyn in expr.dynOffsets:
 				dyn.expr.writeIR(state)
 				if dyn.factor:
-					state.appendInstr(Imm(expr, IPTR, dyn.factor))
-					state.appendInstr(Mul(expr))
+					state.appendInstr(ir.Imm(expr, ir.IPTR, dyn.factor))
+					state.appendInstr(ir.Mul(expr))
 				if doAdd:
-					state.appendInstr(Add(expr))
+					state.appendInstr(ir.Add(expr))
 				else:
 					doAdd = True
 			stackOffset = 2 if stackTop else state.localOffset(expr.symbol)
 			if expr.deref:
 				assert expr.deref == 1
-				state.appendInstr(DerefFieldW(expr, stackOffset))
+				state.appendInstr(ir.DerefFieldW(expr, stackOffset))
 			else:
-				state.appendInstr(FieldW(expr, stackOffset))
+				state.appendInstr(ir.FieldW(expr, stackOffset))
 		elif expr.deref:
 			assert expr.deref == 1
 			stackOffset = 0 if stackTop else state.localOffset(expr.symbol)# stackOffset = state.localOffset(expr.symbol)
-			state.appendInstr(Dup(expr, stackOffset))
+			state.appendInstr(ir.Dup(expr, stackOffset))
 			expr.rvalue.writeIR(state)
-			state.appendInstr(DerefW(expr))
+			state.appendInstr(ir.DerefW(expr))
 		else:
 			expr.rvalue.writeIR(state)
 			if state.didBreak:
@@ -394,14 +393,14 @@ class SymbolWrite(SymbolAccess):
 				# stackOffset = state.localOffset(expr.symbol)
 			if stackOffset > 0:
 				if expr.symbol.fixed:
-					state.appendInstr(Write(expr, stackOffset))
+					state.appendInstr(ir.Write(expr, stackOffset))
 				else:
-					state.appendInstr(Swap(expr, stackOffset))
-					state.appendInstr(Pop(expr))
+					state.appendInstr(ir.Swap(expr, stackOffset))
+					state.appendInstr(ir.Pop(expr))
 			else:
 				state.nameTopOperand(expr.symbol)
 				if expr.symbol.fixed:
-					state.appendInstr(Fix(expr, 0))
+					state.appendInstr(ir.Fix(expr, 0))
 			
 			if state.loopInfo:
 				state.loopInfo.droppedSymbols.discard(expr.symbol)

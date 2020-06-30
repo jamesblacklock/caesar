@@ -38,7 +38,7 @@ Currently Linux x64 and macOS x64 targets are supported. Cross-compilation is no
 
 "Hello world" example:
 
-	@ffi("C") extern unsafe fn printf(fmt: &byte, ...) -> int
+	extern "C" fn printf(fmt: &byte, ...) -> int
 	
 	fn main()
 	    unsafe printf("Hello World!\n")

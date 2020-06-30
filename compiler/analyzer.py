@@ -4,9 +4,9 @@ from .types               import TypeSymbol, UnknownType, FieldInfo, PtrType, Ar
                                  Void, Bool, Byte, Char, Int8, UInt8, Int16, UInt16, Int32, UInt32, \
                                  Int64, UInt64, ISize, USize, Float32, Float64, typesMatch, canCoerce, tryPromote
 from .log                 import logError, logExplain
-from .ast.ast             import ValueSymbol
+from .ast.ast             import ValueSymbol, Attr
 from .scope               import Scope, ScopeType
-from .ast.attrs           import invokeAttrs, Attr
+from .ast.attrs           import invokeAttrs
 from .not_done.mod        import Mod, Impl, TraitDecl
 from .not_done.fndecl     import FnDecl, CConv
 from .not_done.staticdecl import StaticDecl, ConstDecl
@@ -256,7 +256,7 @@ class AnalyzerState:
 		
 		expr = tryPromote(state, expr, expectedType)
 		if not typesMatch(expr.type, expectedType):
-			logError(state, expr.span, 'expected type {}, found {}'.format(expectedType, expr.type))
+			logError(state, expr.span, 'expected type `{}`, found `{}`'.format(expectedType, expr.type))
 		
 		return expr
 	

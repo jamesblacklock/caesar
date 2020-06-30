@@ -1,8 +1,7 @@
-from ..ast.ast  import Symbol
-from ..types import TypeSymbol, typesMatch
-from ..scope import ScopeType
-from ..ast      import attrs
-from ..log  import logError, logExplain
+from ..ast.ast import Symbol
+from ..types   import TypeSymbol, typesMatch
+from ..scope   import ScopeType
+from ..log     import logError, logExplain
 
 class Mod(Symbol):
 	def __init__(self, nameTok, doccomment, decls, span, name=None):
@@ -25,6 +24,8 @@ class Mod(Symbol):
 		self.releaseDefault = None
 	
 	def analyzeSig(self, state):
+		from .. import attrs
+		
 		state.pushScope(ScopeType.MOD, self)
 		
 		attrs.invokeAttrs(state, self)

@@ -1,8 +1,5 @@
-from .ast    import AST
-from ..mir   import access
-from ..scope import ScopeType
-from ..log   import logError
-from ..      import ir
+from .ast  import AST
+from ..mir import access
 
 class Deref(AST):
 	def __init__(self, expr, count, span):

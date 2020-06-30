@@ -1,7 +1,6 @@
 from ..ast.ast import ValueSymbol
 from ..types import typesMatch, Void
 from ..log  import logError
-from ..ast      import attrs
 from ..mir.mir import TypeModifiers
 
 class StaticDecl(ValueSymbol):

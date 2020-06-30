@@ -2,7 +2,6 @@ from enum     import Enum
 from ..ast.ast    import ValueSymbol#, TypeModifiers
 from ..log    import logError, logExplain
 from ..types  import FnType, Void
-from ..ast        import attrs
 from ..   import scope
 from ..mir.block import createDropBlock
 

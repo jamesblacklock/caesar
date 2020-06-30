@@ -1,5 +1,5 @@
-from .ast         import AST
-from ..mir.access import SymbolAccess
+from .ast  import AST
+from ..mir import access
 
 class ValueRef(AST):
 	def __init__(self, path, span):
@@ -7,7 +7,7 @@ class ValueRef(AST):
 		self.path = path
 	
 	def analyze(valueRef, state, implicitType):
-		return SymbolAccess.analyzeSymbolAccess(state, valueRef, implicitType)
+		return access.SymbolAccess.analyzeSymbolAccess(state, valueRef, implicitType)
 
 class Borrow(AST):
 	def __init__(self, expr, span):
@@ -15,4 +15,4 @@ class Borrow(AST):
 		self.expr = expr
 	
 	def analyze(self, state, implicitType):
-		return SymbolAccess.analyzeSymbolAccess(state, self, implicitType)
+		return access.SymbolAccess.analyzeSymbolAccess(state, self, implicitType)
