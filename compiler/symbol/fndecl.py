@@ -10,9 +10,9 @@ class CConv(Enum):
 	C = 'C'
 
 class FnDecl(ValueSymbol):
-	def __init__(self, nameTok, doccomment, pub, extern, cconv, unsafe, 
+	def __init__(self, name, doccomment, pub, extern, cconv, unsafe, 
 		params, cVarArgs, returnType, body, span, cVarArgsSpan):
-		super().__init__(nameTok, None, span, doccomment, extern)
+		super().__init__(name, None, span, doccomment, extern)
 		self.params = params
 		self.cVarArgs = cVarArgs
 		self.cVarArgsSpan = cVarArgsSpan

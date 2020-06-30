@@ -1,4 +1,5 @@
 from enum import Enum
+from .infixops import InfixOps
 
 class TokenType(Enum):
 	SPACE      = 'space'
@@ -106,3 +107,49 @@ class Token:
 	
 	def __repr__(self):
 		return self.__str__()
+	
+	def toInfixOp(self):
+		if self.type == TokenType.ARROW:
+			return InfixOps.ARROW
+		elif self.type == TokenType.LSHIFT:
+			return InfixOps.LSHIFT
+		elif self.type == TokenType.RSHIFT:
+			return InfixOps.RSHIFT
+		elif self.type == TokenType.TIMES:
+			return InfixOps.TIMES
+		elif self.type == TokenType.DIV:
+			return InfixOps.DIV
+		elif self.type == TokenType.MODULO:
+			return InfixOps.MODULO
+		elif self.type == TokenType.PLUS:
+			return InfixOps.PLUS
+		elif self.type == TokenType.MINUS:
+			return InfixOps.MINUS
+		elif self.type == TokenType.AMP:
+			return InfixOps.BITAND
+		elif self.type == TokenType.PIPE:
+			return InfixOps.BITOR
+		elif self.type == TokenType.CARET:
+			return InfixOps.BITXOR
+		elif self.type == TokenType.ELLIPSIS:
+			return InfixOps.RNGCLOSED
+		elif self.type == TokenType.RNGOPEN:
+			return InfixOps.RNGOPEN
+		elif self.type == TokenType.EQ:
+			return InfixOps.EQ
+		elif self.type == TokenType.NEQ:
+			return InfixOps.NEQ
+		elif self.type == TokenType.GREATER:
+			return InfixOps.GREATER
+		elif self.type == TokenType.LESS:
+			return InfixOps.LESS
+		elif self.type == TokenType.GREATEREQ:
+			return InfixOps.GREATEREQ
+		elif self.type == TokenType.LESSEQ:
+			return InfixOps.LESSEQ
+		elif self.type == TokenType.AND:
+			return InfixOps.AND
+		elif self.type == TokenType.OR:
+			return InfixOps.OR
+		else:
+			return None

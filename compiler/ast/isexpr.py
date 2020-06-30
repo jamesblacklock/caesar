@@ -3,8 +3,9 @@ from ..infixops        import InfixOps
 from ..symbol.enumdecl import VariantDecl
 from ..log             import logError
 from ..mir.primitive   import IntValue
-from .infix            import InfixOp
+from ..mir.infix       import InfixOp
 from .field            import Field
+from ..types           import Bool
 
 class IsExpr(AST):
 	def __init__(self, expr, pattern, span):
@@ -13,42 +14,42 @@ class IsExpr(AST):
 		self.pattern = pattern
 	
 	def analyze(self, state, implicitType):
-		typeChecked = state.analyzeNode(self.expr, discard=True)
-		if not typeChecked or not typeChecked.type:
+		access = state.analyzeNode(self.expr)#, discard=True)
+		if not access or not access.type:
 			return None
 		
-		if not typeChecked.type.isEnumType:
-			logError(state, typeChecked.span, 'type `{}` is not an `enum` type'.format(typeChecked.type))
+		if not access.type.isEnumType:
+			logError(state, access.span, 'type `{}` is not an `enum` type'.format(access.type))
 			return None
 		
-		enumType = typeChecked.type
+		enumType = access.type
 		variant = state.lookupSymbol(self.pattern.path, enumType.symbolTable, inTypePosition=True)
 		if variant == None:
 			return None
 		
-		assert type(variant) == VariantDecl
+		# assert type(variant) == VariantDecl
 		
-		if type(self.expr) == Field:
-			tagField = self.expr
-		else:
-			tagField = Field(self.expr, [], self.expr.span)
+		# if type(self.expr) == Field:
+		# 	tagField = self.expr
+		# else:
+		# 	tagField = Field(self.expr, [], self.expr.span)
 		
-		class T:
-			def __init__(self, content, span):
-				self.content = content
-				self.span = span
-		tagField.path.append(T('$tag', self.expr.span))
-		
+		# tagField.path.append(T('$tag', self.expr.span))
+		tagField = enumType.structType.fields[1]
+		access.ref = False
+		access.isFieldAccess = True
+		access.staticOffset += tagField.offset
+		access.type = tagField.type
 		
 		tagValue = enumType.symbolTable[variant.name].tag.data
 		tagExpr = IntValue(tagValue, enumType.tagType, self.span)
-		eq = InfixOp(tagField, tagExpr, InfixOps.EQ, self.span, self.span)
+		eq = InfixOp(access, tagExpr, InfixOps.EQ, Bool, self.span)
 		
-		access = state.analyzeNode(eq)
-		if access:
-			access.contracts = { typeChecked.symbol: Contract(typeChecked.symbol, enumType, [variant], typeChecked.deref) }
+		result = state.analyzeNode(eq)
+		if result:
+			result.contracts = { access.symbol: Contract(access.symbol, enumType, [variant], access.deref) }
 		
-		return access
+		return result
 
 class Pattern(AST):
 	def __init__(self, path, names, span):

@@ -1,8 +1,8 @@
 from ..types import Symbol, TypeSymbol
 
 class AliasDecl(Symbol):
-	def __init__(self, nameTok, typeRef, span, doccomment):
-		super().__init__(nameTok, span, doccomment)
+	def __init__(self, name, typeRef, span, doccomment):
+		super().__init__(name, span, doccomment)
 		self.typeRef = typeRef
 	
 	def analyzeSig(self, state):
@@ -21,8 +21,8 @@ class AliasDecl(Symbol):
 	# 		output.write(self.typeRef.name)
 
 class TypeDecl(TypeSymbol):
-	def __init__(self, nameTok, typeRef, span, doccomment):
-		super().__init__(nameTok, span, doccomment, isTypeDef=True)
+	def __init__(self, name, typeRef, span, doccomment):
+		super().__init__(name, span, doccomment, isTypeDef=True)
 		self.typeRef = typeRef
 		self.baseType = None
 	

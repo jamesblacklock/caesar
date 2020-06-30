@@ -44,10 +44,10 @@ class Attr(AST):
 		self.args = args
 
 class Symbol(AST):
-	def __init__(self, nameTok, span, doccomment=None, extern=False):
+	def __init__(self, name, span, doccomment=None, extern=False):
 		super().__init__(span)
-		self.nameSpan = nameTok.span if nameTok else span
-		self.name = nameTok.content if nameTok else None
+		self.nameSpan = name.span if name else span
+		self.name = name.content if name else None
 		self.unused = True
 		self.symbolTable = None
 		self.doccomment = doccomment
@@ -55,6 +55,6 @@ class Symbol(AST):
 		self.pub = False
 
 class ValueSymbol(Symbol):
-	def __init__(self, nameTok, typeRef, span, doccomment=None, extern=False):
-		super().__init__(nameTok, span, doccomment, extern)
+	def __init__(self, name, typeRef, span, doccomment=None, extern=False):
+		super().__init__(name, span, doccomment, extern)
 		self.typeRef = typeRef

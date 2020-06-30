@@ -1,19 +1,20 @@
 from enum        import Enum
-from .ast.ast    import Symbol
+from .ast.ast    import Symbol, Name
 from .mir.mir    import TypeModifiers
 from .mir.coerce import Coerce
 
 PLATFORM_WORD_SIZE = 8
 
 class TypeSymbol(Symbol):
-	def __init__(self, nameTok=None, span=None, doccomment=None, 
+	def __init__(self, nameAST=None, span=None, doccomment=None, 
 		name=None, byteSize=None, align=None, isDefinite=True, isEnumType=False, 
 		isFnType=False, isPtrType=False, isStructType=False, isTraitType=False, 
 		isIntType=False, isIntLikeType=False, isFloatType=False, isOptionType=False, 
 		isPrimitiveType=False, isSigned=False, isArrayType=False, isOwnedType=False, 
 		isTupleType=False, isCompositeType=False, isUnknown=False, isTypeDef=False):
-		super().__init__(nameTok, span, doccomment)
-		if name: self.name = name
+		super().__init__(nameAST, span, doccomment)
+		if name:
+			self.name = name
 		self.byteSize = byteSize
 		self.align = align
 		self.isDefinite = isDefinite

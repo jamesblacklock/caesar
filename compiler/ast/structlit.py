@@ -8,16 +8,11 @@ from ..mir.createstruct  import CreateStruct, FieldInit
 from ..mir.primitive     import IntValue
 
 class FieldLit(AST):
-	def __init__(self, nameTok, expr, span, name=None):
+	def __init__(self, name, expr, span):
 		super().__init__(span)
-		self.nameSpan = nameTok.span
-		self.name = nameTok.content
+		self.nameSpan = name.span
+		self.name = name.content
 		self.expr = expr
-	
-	def pretty(self, output, indent=0):
-		output.write(self.name, indent)
-		output.write(': ')
-		self.expr.pretty(output)
 
 class UnionLitFieldInfo:
 	def __init__(self):

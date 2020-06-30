@@ -4,7 +4,6 @@ from ..symbol     import staticdecl, fndecl
 from ..types      import typesMatch, tryPromote, getAlignedSize, PtrType, USize
 from ..           import ir
 from ..scope      import ScopeType
-from ..token      import TokenType
 from ..log        import logError
 from .localsymbol import LocalSymbol
 from .block       import createDropBlock
@@ -524,35 +523,23 @@ def _SymbolAccess__analyzeSymbolAccess(state, expr, access, implicitType=None):
 		fieldInfo = None
 		t = access.type
 		for fieldName in expr.path:
-			name = t.name
-			if t.isEnumType:
-				t = t.structType
-				anon = False
-			else:
-				anon = t.isCompositeType and t.anon
+			# name = t.name
+			# if t.isEnumType:
+			# 	t = t.structType
+			# 	anon = False
+			# else:
+			# 	anon =  and t.anon
 			
-			if t.isStructType:
-				if fieldName.content not in t.fieldDict:
-					name = 'struct' if anon else 'type `{}`'.format(name)
-					logError(state, fieldName.span, '{} has no field `{}`'.format(name, fieldName.content))
-					access.type = None
-					return
-				
-				fieldInfo = t.fieldDict[fieldName.content]
-			elif t.isTupleType:
-				fieldIndex = None if fieldName.type != TokenType.INTEGER else int(fieldName.content)
-				if fieldIndex == None or fieldIndex not in range(0, len(t.fields)):
-					name = 'tuple' if anon else 'type `{}`'.format(name)
-					logError(state, fieldName.span, '{} has no field `{}`'.format(name, fieldName.content))
-					access.type = None
-					return
-				
-				fieldInfo = t.fields[fieldIndex]
-			else:
+			if not t.isCompositeType:
 				logError(state, access.span, 'type `{}` has no fields'.format(t.name))
 				access.type = None
 				return
+			elif fieldName.content not in t.fieldDict:
+				logError(state, fieldName.span, 'type `{}` has no field `{}`'.format(t.name, fieldName.content))
+				access.type = None
+				return
 			
+			fieldInfo = t.fieldDict[fieldName.content]
 			offset += fieldInfo.offset
 			t = fieldInfo.type
 		

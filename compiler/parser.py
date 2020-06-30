@@ -9,7 +9,7 @@ from .ast.sign          import Sign
 from .symbol.structdecl import FieldDecl, StructDecl, UnionFields
 from .symbol.tupledecl  import TupleDecl
 from .symbol.enumdecl   import EnumDecl, VariantDecl
-from .ast.ast           import Attr
+from .ast.ast           import Attr, Name
 from .symbol.typeref    import PtrTypeRef, NamedTypeRef, ArrayTypeRef, OwnedTypeRef
 from .symbol.mod        import Mod, Impl, TraitDecl
 from .symbol.fndecl     import FnDecl, CConv
@@ -261,14 +261,14 @@ def parseFnDeclParams(state):
 		if expectType(state, TokenType.NAME) == False:
 			return None
 		
-		nameTok = state.tok
+		name = Name.fromTok(state.tok)
 		span = state.tok.span
 		
 		state.advance()
 		state.skipSpace()
 		
 		if expectType(state, TokenType.COLON) == False:
-			return FnParam(nameTok, None, span)
+			return FnParam(name, None, span)
 		
 		Span.merge(span, state.tok.span)
 		
@@ -283,7 +283,7 @@ def parseFnDeclParams(state):
 		if not onOneLine:
 			state.popIndentLevel()
 		
-		return FnParam(nameTok, typeRef, span)
+		return FnParam(name, typeRef, span)
 	
 	return parseBlock(state, parseFnParam, BlockMarkers.PAREN, True)
 
@@ -322,13 +322,13 @@ def parseFieldDecl(state):
 	if expectType(state, TokenType.NAME) == False:
 		return None
 	
-	nameTok = state.tok
+	name = Name.fromTok(state.tok)
 	
 	state.advance()
 	state.skipSpace()
 	
 	if expectType(state, TokenType.COLON) == False:
-		return FieldDecl(nameTok, None, span)
+		return FieldDecl(name, None, span)
 	
 	span = Span.merge(span, state.tok.span)
 	
@@ -347,7 +347,7 @@ def parseFieldDecl(state):
 	# if not onOneLine:
 	# 	state.popIndentLevel()
 	
-	fieldDecl = FieldDecl(nameTok, typeRef, pub, span)
+	fieldDecl = FieldDecl(name, typeRef, pub, span)
 	fieldDecl.attrs = fieldAttrs
 	return fieldDecl
 
@@ -357,9 +357,9 @@ def parseStructOrUnionDecl(state, doccomment, anon, pub, isUnion):
 		state.advance()
 		state.skipSpace()
 	
-	nameTok = None
+	name = None
 	if not anon and expectType(state, TokenType.NAME):
-		nameTok = state.tok
+		name = Name.fromTok(state.tok)
 		span = Span.merge(span, state.tok.span)
 		state.advance()
 		state.skipSpace()
@@ -367,7 +367,7 @@ def parseStructOrUnionDecl(state, doccomment, anon, pub, isUnion):
 	block = parseBlock(state, parseFieldDecl)
 	span = Span.merge(span, block.span)
 	
-	return StructDecl(nameTok, isUnion, doccomment, block.list, pub, span)
+	return StructDecl(name, isUnion, doccomment, block.list, pub, span)
 
 def parseStructDecl(state, doccomment, anon, pub=False):
 	return parseStructOrUnionDecl(state, doccomment, anon, pub, False)
@@ -378,9 +378,9 @@ def parseUnionDecl(state, doccomment, anon, pub=False):
 def parseEnumDecl(state, doccomment):
 	def parseVariantDecl(state):
 		span = state.tok.span
-		nameTok = None
+		name = None
 		if expectType(state, TokenType.NAME):
-			nameTok = state.tok
+			name = Name.fromTok(state.tok)
 			state.advance()
 			state.skipSpace()
 		
@@ -392,15 +392,15 @@ def parseEnumDecl(state, doccomment):
 		
 		if typeRef:
 			span = Span.merge(span, typeRef.span)
-		return VariantDecl(nameTok, typeRef, span)
+		return VariantDecl(name, typeRef, span)
 	
 	span = state.tok.span
 	state.advance()
 	state.skipSpace()
 	
-	nameTok = None
+	name = None
 	if expectType(state, TokenType.NAME):
-		nameTok = state.tok
+		name = Name.fromTok(state.tok)
 		span = Span.merge(span, state.tok.span)
 		state.advance()
 		state.skipSpace()
@@ -408,7 +408,7 @@ def parseEnumDecl(state, doccomment):
 	block = parseBlock(state, parseVariantDecl)
 	span = Span.merge(span, block.span)
 	
-	return EnumDecl(nameTok, doccomment, block.list, span)
+	return EnumDecl(name, doccomment, block.list, span)
 
 def parseAsExpr(state, expr):
 	typeRef = parseTypeRef(state)
@@ -636,9 +636,9 @@ def parseTupleDecl(state, doccomment, anon, pub=False):
 		state.advance()
 		state.skipSpace()
 	
-	nameTok = None
+	name = None
 	if not anon and expectType(state, TokenType.NAME):
-		nameTok = state.tok
+		name = Name.fromTok(state.tok)
 		span = Span.merge(span, state.tok.span)
 		state.advance()
 		state.skipSpace()
@@ -646,7 +646,7 @@ def parseTupleDecl(state, doccomment, anon, pub=False):
 	block = parseBlock(state, parseTypeRef, BlockMarkers.PAREN, True)
 	span = Span.merge(span, block.span)
 	
-	return TupleDecl(nameTok, doccomment, block.list, pub, span)
+	return TupleDecl(name, doccomment, block.list, pub, span)
 
 def parseArrayTypeRef(state):
 	baseType = None
@@ -953,9 +953,8 @@ def parseInfixOps(state, l, mustIndent, spaceAroundOp):
 	if opTok.type == TokenType.ARROW:
 		return parseMethodCall(state, l, r)
 	else:
-		op = InfixOps.fromTokenType(opTok.type)
 		span = Span.merge(l.span, r.span)
-		return InfixOp(l, r, op, opTok.span, span)
+		return InfixOp(l, r, opTok.toInfixOp(), opTok.span, span)
 
 class Path:
 	def __init__(self, path, span):
@@ -963,7 +962,7 @@ class Path:
 		self.span = span
 
 def parsePath(state, allowTrailingPath=False):
-	path = [state.tok]
+	path = [Name.fromTok(state.tok)]
 	span = state.tok.span
 	state.advance()
 	onOneLine = True
@@ -983,7 +982,7 @@ def parsePath(state, allowTrailingPath=False):
 		if expectType(state, TokenType.NAME) == False:
 			break
 		
-		path.append(state.tok)
+		path.append(Name.fromTok(state.tok))
 		span = Span.merge(span, state.tok.span)
 		state.advance()
 	
@@ -997,14 +996,14 @@ def parseStructLit(state, typeRef):
 		if expectType(state, TokenType.NAME) == False:
 			return None
 		
-		nameTok = state.tok
+		name = Name.fromTok(state.tok)
 		span = state.tok.span
 		
 		state.advance()
 		state.skipSpace()
 		
 		if expectType(state, TokenType.COLON) == False:
-			return FieldDecl(nameTok, None, span)
+			return FieldDecl(name, None, span)
 		
 		Span.merge(span, state.tok.span)
 		
@@ -1019,7 +1018,7 @@ def parseStructLit(state, typeRef):
 		if not onOneLine:
 			state.popIndentLevel()
 		
-		return FieldLit(nameTok, expr, span)
+		return FieldLit(name, expr, span)
 	
 	isUnion = False
 	if typeRef:
@@ -1357,9 +1356,9 @@ def parseReturn(state):
 	return Return(expr, span)
 
 class VarDecl:
-	def __init__(self, mut, nameTok, typeRef, expr, span):
+	def __init__(self, mut, name, typeRef, expr, span):
 		self.mut = mut
-		self.nameTok = nameTok
+		self.name = name
 		self.typeRef = typeRef
 		self.expr = expr
 		self.span = span
@@ -1381,7 +1380,7 @@ def parseVarDecl(state, isConst, isModLevel, isExtern):
 	if expectType(state, TokenType.NAME) == False:
 		return None
 	
-	nameTok = state.tok
+	name = Name.fromTok(state.tok)
 	span = Span.merge(span, state.tok.span)
 	state.advance()
 	state.skipSpace()
@@ -1410,25 +1409,25 @@ def parseVarDecl(state, isConst, isModLevel, isExtern):
 		elif not isExtern and expr == None:
 			logError(state, span, 'non-extern declaration requires a value')
 	
-	return VarDecl(mut, nameTok, typeRef, expr, span)
+	return VarDecl(mut, name, typeRef, expr, span)
 
 def parseLetDecl(state):
 	decl = parseVarDecl(state, False, False, False)
 	if decl != None:
-		decl = LetDecl(decl.nameTok, decl.typeRef, decl.mut, decl.expr, decl.span)
+		decl = LetDecl(decl.name, decl.typeRef, decl.mut, decl.expr, decl.span)
 	return decl
 
 def parseStaticDecl(state, doccomment, extern):
 	decl = parseVarDecl(state, False, True, extern)
 	if decl != None:
-		decl = StaticDecl(decl.nameTok, doccomment, extern, 
+		decl = StaticDecl(decl.name, doccomment, extern, 
 			decl.mut, decl.typeRef, decl.expr, decl.span)
 	return decl
 
 def parseConstDecl(state, doccomment):
 	decl = parseVarDecl(state, True, True, False)
 	if decl != None:
-		decl = ConstDecl(decl.nameTok, doccomment, 
+		decl = ConstDecl(decl.name, doccomment, 
 			decl.typeRef, decl.expr, decl.span)
 	return decl
 
@@ -1437,9 +1436,9 @@ def parseAlias(state, doccomment):
 	state.advance()
 	state.skipSpace()
 	
-	nameTok = None
+	name = None
 	if expectType(state, TokenType.NAME):
-		nameTok = state.tok
+		name = Name.fromTok(state.tok)
 		state.advance()
 		state.skipSpace()
 	
@@ -1449,16 +1448,16 @@ def parseAlias(state, doccomment):
 		state.skipSpace()
 		typeRef = parseTypeRef(state)
 	
-	return AliasDecl(nameTok, typeRef, span, doccomment)
+	return AliasDecl(name, typeRef, span, doccomment)
 
 def parseTypeDecl(state, doccomment):
 	span = state.tok.span
 	state.advance()
 	state.skipSpace()
 	
-	nameTok = None
+	name = None
 	if expectType(state, TokenType.NAME):
-		nameTok = state.tok
+		name = Name.fromTok(state.tok)
 		state.advance()
 		state.skipSpace()
 	
@@ -1468,7 +1467,7 @@ def parseTypeDecl(state, doccomment):
 		state.skipSpace()
 		typeRef = parseTypeRef(state)
 	
-	return TypeDecl(nameTok, typeRef, span, doccomment)
+	return TypeDecl(name, typeRef, span, doccomment)
 
 def parseFnDecl(state, doccomment, pub, extern, cconv, traitDecl=False):
 	span = state.tok.span
@@ -1486,9 +1485,9 @@ def parseFnDecl(state, doccomment, pub, extern, cconv, traitDecl=False):
 	state.advance()
 	state.skipSpace()
 	
-	nameTok = None
+	name = None
 	if expectType(state, TokenType.NAME):
-		nameTok = state.tok
+		name = Name.fromTok(state.tok)
 		span = Span.merge(span, state.tok.span)
 		state.advance()
 	
@@ -1517,7 +1516,7 @@ def parseFnDecl(state, doccomment, pub, extern, cconv, traitDecl=False):
 		body = Block.fromInfo(blockInfo, ScopeType.FN)
 		span = Span.merge(span, body.span)
 	
-	return FnDecl(nameTok, doccomment, pub, extern, cconv, unsafe, 
+	return FnDecl(name, doccomment, pub, extern, cconv, unsafe, 
 		params, cVarArgs, returnType, body, span, cVarArgsSpan)
 
 def parseImport(state):
@@ -1865,9 +1864,9 @@ def parseTrait(state, doccomment, pub):
 	state.advance()
 	state.skipSpace()
 	
-	nameTok = None
+	name = None
 	if expectType(state, TokenType.NAME):
-		nameTok = state.tok
+		name = Name.fromTok(state.tok)
 		state.advance()
 		state.skipSpace()
 	
@@ -1880,7 +1879,7 @@ def parseTrait(state, doccomment, pub):
 		decls = block.list
 		span = Span.merge(span, block.span)
 	
-	trait = TraitDecl(nameTok, doccomment, pub, decls, span)
+	trait = TraitDecl(name, doccomment, pub, decls, span)
 	return trait
 
 def parseModule(state, doccomment):
@@ -1888,13 +1887,13 @@ def parseModule(state, doccomment):
 	state.advance()
 	state.skipSpace()
 	
-	nameTok = None
+	name = None
 	if expectType(state, TokenType.NAME):
-		nameTok = state.tok
+		name = Name.fromTok(state.tok)
 		state.advance()
 	
 	block = parseBlock(state, parseModLevelDecl)
-	mod = Mod(nameTok, doccomment, block.list, Span.merge(span, block.span))
+	mod = Mod(name, doccomment, block.list, Span.merge(span, block.span))
 	return mod
 
 def parseTopLevelModule(state):
@@ -1905,7 +1904,7 @@ def parseTopLevelModule(state):
 		logError(state, Span(state.source, 1, 1, 1, 1), 'illegal module name: `{}`'.format(name))
 	
 	block = parseBlock(state, parseModLevelDecl, topLevelBlock=True)
-	mod = Mod(None, None, block.list, block.span, name)
+	mod = Mod(Name(name, block.span.startSpan()), None, block.list, block.span)
 	return mod
 
 def parse(source, tokens):

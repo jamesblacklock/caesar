@@ -7,8 +7,8 @@ from ..ir            import I8, I16, FundamentalType
 from ..log           import logError
 
 class EnumDecl(TypeSymbol):
-	def __init__(self, nameTok, doccomment, variants, span):
-		super().__init__(nameTok, span, doccomment, isEnumType=True)
+	def __init__(self, name, doccomment, variants, span):
+		super().__init__(name, span, doccomment, isEnumType=True)
 		self.variants = variants
 		self.dataType = Void
 		self.tagType = UInt8
@@ -55,10 +55,10 @@ class EnumDecl(TypeSymbol):
 	# 		self.variants[-1].pretty(output, indent + 1)
 
 class VariantDecl(AST):
-	def __init__(self, nameTok, typeRef, span):
+	def __init__(self, name, typeRef, span):
 		super().__init__(span)
-		self.nameSpan = nameTok.span
-		self.name = nameTok.content
+		self.nameSpan = name.span
+		self.name = name.content
 		self.typeRef = typeRef
 		self.enumType = None
 		self.type = None

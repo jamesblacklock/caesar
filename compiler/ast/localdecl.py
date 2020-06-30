@@ -7,8 +7,8 @@ class CVarArgsParam(AST):
 		super().__init__(span)
 
 class LocalDecl(ValueSymbol):
-	def __init__(self, nameTok, typeRef, mut, span):
-		super().__init__(nameTok, typeRef, span)
+	def __init__(self, name, typeRef, mut, span):
+		super().__init__(name, typeRef, span)
 		self.mut = mut
 		self.dropFn = None
 	
@@ -25,8 +25,8 @@ class LocalDecl(ValueSymbol):
 		return symbol
 
 class FnParam(LocalDecl):
-	def __init__(self, nameTok, typeRef, span):
-		super().__init__(nameTok, typeRef, False, span)
+	def __init__(self, name, typeRef, span):
+		super().__init__(name, typeRef, False, span)
 		# self.defaultExpr = defaultExpr
 		self.symbol = None
 	
@@ -34,8 +34,8 @@ class FnParam(LocalDecl):
 		self.symbol = super().analyze(state, implicitType, state.scope.fnDecl.paramDropBlock, True)
 
 class LetDecl(LocalDecl):
-	def __init__(self, nameTok, typeRef, mut, expr, span):
-		super().__init__(nameTok, typeRef, mut, span)
+	def __init__(self, name, typeRef, mut, expr, span):
+		super().__init__(name, typeRef, mut, span)
 		self.expr = expr
 	
 	def analyze(self, state, implicitType):

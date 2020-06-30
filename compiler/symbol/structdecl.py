@@ -2,8 +2,8 @@ from ..ast.ast import AST, ValueSymbol
 from ..types   import TypeSymbol
 
 class StructDecl(TypeSymbol):
-	def __init__(self, nameTok, isUnion, doccomment, fields, pub, span):
-		super().__init__(nameTok, span, doccomment, isStructType=True, isCompositeType=True)
+	def __init__(self, name, isUnion, doccomment, fields, pub, span):
+		super().__init__(name, span, doccomment, isStructType=True, isCompositeType=True)
 		self.fieldDecls = fields
 		self.isUnion = isUnion
 		self.pub = pub
@@ -62,15 +62,15 @@ class StructDecl(TypeSymbol):
 		layout = state.generateFieldLayout(types, fieldNames, decl.fieldDecls)
 		decl.applyLayout(layout)
 	
-	def pretty(self, output, indent=0):
-		output.write('union ' if self.isUnion else 'struct ', indent)
-		if self.name: output.write(self.name)
-		output.write('\n')
-		for field in self.fieldDecls[:-1]:
-			field.pretty(output, indent + 1)
-			output.write('\n')
-		if len(self.fieldDecls) > 0:
-			self.fieldDecls[-1].pretty(output, indent + 1)
+	# def pretty(self, output, indent=0):
+	# 	output.write('union ' if self.isUnion else 'struct ', indent)
+	# 	if self.name: output.write(self.name)
+	# 	output.write('\n')
+	# 	for field in self.fieldDecls[:-1]:
+	# 		field.pretty(output, indent + 1)
+	# 		output.write('\n')
+	# 	if len(self.fieldDecls) > 0:
+	# 		self.fieldDecls[-1].pretty(output, indent + 1)
 
 class UnionFields(AST):
 	def __init__(self, fields, span):
@@ -78,10 +78,10 @@ class UnionFields(AST):
 		self.fieldDecls = fields
 
 class FieldDecl(AST):
-	def __init__(self, nameTok, typeRef, pub, span):
+	def __init__(self, name, typeRef, pub, span):
 		super().__init__(span)
-		self.nameSpan = nameTok.span
-		self.name = nameTok.content
+		self.nameSpan = name.span
+		self.name = name.content
 		self.typeRef = typeRef
 		self.align = None
 		self.offset = None
@@ -89,7 +89,7 @@ class FieldDecl(AST):
 		self.noOffset = False
 		self.pub = pub
 	
-	def pretty(self, output, indent=0):
-		output.write(self.name, indent)
-		output.write(': ')
-		self.typeRef.pretty(output)
+	# def pretty(self, output, indent=0):
+	# 	output.write(self.name, indent)
+	# 	output.write(': ')
+	# 	self.typeRef.pretty(output)

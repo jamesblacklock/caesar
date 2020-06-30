@@ -1,5 +1,5 @@
 import os
-from .ast         import AST
+from .ast         import AST, Name
 from ..types      import TypeSymbol
 from ..sourcefile import SourceFile
 from ..symbol.mod import Mod
@@ -56,13 +56,8 @@ class Import(AST):
 	
 	@staticmethod
 	def doImport(state, mod, path, rename=None):
-		class T:
-			def __init__(self, content, span):
-				self.content = content
-				self.span = span
-		
-		path = [T(p, mod.span) for p in path]
-		rename = T(rename, ast.span) if rename else None
+		path = [Name(p, mod.span) for p in path]
+		rename = Name(rename, ast.span) if rename else None
 		item = ImportItem(path, rename, mod.span)
 		
 		return Import.importItem(state, mod, item)
@@ -135,10 +130,10 @@ class Import(AST):
 		
 		name = item.rename if item.rename else item.path[-1]
 		
-		if name in mod.symbolTable:
-			otherDecl = mod.symbolTable[symbol.name]
-			logError(state, nameSpan, 'import name collides with locally defined symbol')
-			logExplain(state, otherDecl.nameSpan, '`{}` locally defined declared here'.format(name))
+		if name.content in mod.symbolTable:
+			otherDecl = mod.symbolTable[name.content]
+			logError(state, name.span, 'import name collides with locally defined symbol')
+			logExplain(state, otherDecl.nameSpan, '`{}` locally defined declared here'.format(name.content))
 		else:
 			symbol.nameSpan = name.span
 			mod.symbolTable[name.content] = symbol

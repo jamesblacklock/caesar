@@ -1,8 +1,8 @@
 from ..types   import TypeSymbol
 
 class TupleDecl(TypeSymbol):
-	def __init__(self, nameTok, doccomment, typeRefs, pub, span):
-		super().__init__(nameTok, span, doccomment, isTupleType=True, isCompositeType=True)
+	def __init__(self, name, doccomment, typeRefs, pub, span):
+		super().__init__(name, span, doccomment, isTupleType=True, isCompositeType=True)
 		self.typeRefs = typeRefs
 		self.pub = pub
 		self.fields = None

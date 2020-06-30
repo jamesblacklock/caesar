@@ -1,12 +1,11 @@
-from ..ast.ast import Symbol
+from ..ast.ast import Symbol, Name
 from ..types   import TypeSymbol, typesMatch
 from ..scope   import ScopeType
 from ..log     import logError, logExplain
 
 class Mod(Symbol):
-	def __init__(self, nameTok, doccomment, decls, span, name=None):
-		super().__init__(nameTok, span, doccomment)
-		if name: self.name = name
+	def __init__(self, name, doccomment, decls, span):
+		super().__init__(name, span, doccomment)
 		self.decls = decls
 		self.types = []
 		self.fns = []
@@ -88,9 +87,9 @@ IMPL_COUNTER = 0
 class Impl(Mod):
 	def __init__(self, path, traitPath, doccomment, decls, span):
 		global IMPL_COUNTER
-		name = '$impl{}'.format(IMPL_COUNTER)
+		name = Name('$impl{}'.format(IMPL_COUNTER), span.startSpan())
 		IMPL_COUNTER += 1
-		super().__init__(None, doccomment, decls, span, name=name)
+		super().__init__(name, doccomment, decls, span)
 		self.isImpl = True
 		self.path = path
 		self.traitPath = traitPath
@@ -171,18 +170,12 @@ class Impl(Mod):
 			for symbol in self.trait.mod.decls:
 				implFn = symbolTable[symbol.name]
 				self.vtbl.append(implFn.mangledName)
-	
-	# def pretty(self, output, indent=0):
-	# 	path = '::'.join(name.content for name in self.path)
-	# 	output.write('impl {}\n'.format(path), indent)
-	# 	for decl in self.decls:
-	# 		decl.pretty(output, indent + 1)
-	# 		output.write('\n\n')
 
 class TraitDecl(TypeSymbol):
-	def __init__(self, nameTok, doccomment, pub, decls, span):
-		super().__init__(nameTok, span, doccomment, isTraitType=True)
-		self.mod = Mod(None, None, decls, span, name='$traitmod__' + self.name)
+	def __init__(self, name, doccomment, pub, decls, span):
+		super().__init__(name, span, doccomment, isTraitType=True)
+		name = Name('$traitmod__' + self.name, self.nameSpan)
+		self.mod = Mod(name, None, decls, span)
 		self.isDropTrait = False
 		self.pub = pub
 	
@@ -192,9 +185,4 @@ class TraitDecl(TypeSymbol):
 	
 	def analyze(self, state):
 		self.mod.analyze(state)
-	
-	# def pretty(self, output, indent=0):
-	# 	output.write('trait {}\n'.format(self.name), indent)
-	# 	for decl in self.decls:
-	# 		decl.pretty(output, indent + 1)
-	# 		output.write('\n\n')
+

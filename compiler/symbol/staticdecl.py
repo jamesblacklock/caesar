@@ -4,8 +4,8 @@ from ..log  import logError
 from ..mir.mir import TypeModifiers
 
 class StaticDecl(ValueSymbol):
-	def __init__(self, nameTok, typeRef, doccomment, extern, mut, expr, span):
-		super().__init__(nameTok, typeRef, span, doccomment, extern)
+	def __init__(self, name, typeRef, doccomment, extern, mut, expr, span):
+		super().__init__(name, typeRef, span, doccomment, extern)
 		self.mangledName = None
 		self.mut = mut
 		self.exprAST = expr
@@ -64,8 +64,8 @@ class StaticDecl(ValueSymbol):
 			storageClass, self.name, self.type.name, str(self.mirExpr))
 
 class ConstDecl(StaticDecl):
-	def __init__(self, nameTok, typeRef, doccomment, expr, span):
-		super().__init__(nameTok, typeRef, doccomment, False, False, expr, span)
+	def __init__(self, name, typeRef, doccomment, expr, span):
+		super().__init__(name, typeRef, doccomment, False, False, expr, span)
 		
 	def analyzeSig(self, state):
 		super().analyzeSig(state, isConst=True)
