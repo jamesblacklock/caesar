@@ -26,7 +26,7 @@ class Block(AST):
 		
 		state.mirBlock.span = self.span
 		
-		unreachableSpan = None
+		unreachable = None
 		didReturn = False
 		didBreak = False
 		lastExpr = None
@@ -37,8 +37,8 @@ class Block(AST):
 			lastExpr = self.exprs.pop()
 		
 			for (i, expr) in enumerate(self.exprs):
-				if self.scopeType and (state.scope.didReturn or state.scope.didBreak):
-					unreachableSpan = Span.merge(unreachableSpan, expr.span) if unreachableSpan else expr.span
+				if unreachable == None and (state.scope.didReturn or state.scope.didBreak):
+					unreachable = Span.merge(expr.span, lastExpr.span)
 				
 				assert state.scope.dropBlock
 				
@@ -52,6 +52,8 @@ class Block(AST):
 				state.mirBlock.append(state.scope.dropBlock)
 				state.scope.dropBlock = createDropBlock(self)
 			
+			if unreachable == None and (state.scope.didReturn or state.scope.didBreak):
+				unreachable = lastExpr.span
 			access = state.analyzeNode(lastExpr, implicitType)
 		
 		lastDropBlock = state.scope.dropBlock
@@ -93,8 +95,8 @@ class Block(AST):
 					access = None
 			state.mirBlock.append(mirBlock)
 		
-		if unreachableSpan:
-			logWarning(state, unreachableSpan, 'unreachable code')
+		if unreachable:
+			logWarning(state, unreachable, 'unreachable code')
 		
 		if lastDropBlock:
 			state.mirBlock.append(lastDropBlock)

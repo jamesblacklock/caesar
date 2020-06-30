@@ -429,7 +429,6 @@ class Scope:
 		self.symbolTable[symbol.name] = symbol
 	
 	def accessSymbol(self, access):
-		access.symbol.unused = False
 		assert access.symbol.type
 		
 		info = self.loadAndSaveSymbolInfo(access.symbol)

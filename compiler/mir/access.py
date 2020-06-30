@@ -179,6 +179,7 @@ class SymbolRead(SymbolAccess):
 		return other
 	
 	def analyze(access, state, implicitType):
+		access.symbol.unused = False
 		if type(access.symbol) == staticdecl.StaticDecl:
 			access.deref += 1
 		
@@ -296,6 +297,7 @@ class SymbolWrite(SymbolAccess):
 		self.analyzeRValue = True
 	
 	def analyze(access, state, ignoredImplicitType):
+		access.symbol.unused = False
 		if access.type == None:
 			access.type = access.symbol.type
 		if access.rvalueImplicitType == None:
