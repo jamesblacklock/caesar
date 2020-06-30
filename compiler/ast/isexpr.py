@@ -34,7 +34,7 @@ class IsExpr(AST):
 			tagField = Field(self.expr, [], self.expr.span)
 		
 		class T:
-			def __init__(content, span):
+			def __init__(self, content, span):
 				self.content = content
 				self.span = span
 		tagField.path.append(T('$tag', self.expr.span))
