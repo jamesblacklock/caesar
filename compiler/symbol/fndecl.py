@@ -92,7 +92,7 @@ class FnDecl(ValueSymbol):
 					mustUninit.append(field)
 		
 		if mustUninit:
-			logError(state, self.nameTok.span, '`drop` function must uninitialize all owned fields')
+			logError(state, self.nameSpan, '`drop` function must uninitialize all owned fields')
 			logExplain(state, selfSymbol.span, 'the following fields were not uninitialized: {}'.format(
 				', '.join('`{}`'.format(field.name) for field in mustUninit)))
 	

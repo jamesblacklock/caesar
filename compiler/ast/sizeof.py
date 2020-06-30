@@ -35,15 +35,15 @@ class Offsetof(AST):
 			t = type
 			field = None
 			offset = 0
-			for tok in self.path:
+			for name in self.path:
 				if not t.isCompositeType:
 					logError(state, self.typeRef.span, 'type `{}` has no fields'.format(t.name))
 					return None
-				elif tok.content not in t.fieldDict:
-					logError(state, tok.span, 'type `{}` has no field `{}`'.format(t.name, tok.content))
+				elif name.content not in t.fieldDict:
+					logError(state, name.span, 'type `{}` has no field `{}`'.format(t.name, name.content))
 					return None
 				
-				field = t.fieldDict[tok.content]
+				field = t.fieldDict[name.content]
 				offset += field.offset
 				t = field.type
 			

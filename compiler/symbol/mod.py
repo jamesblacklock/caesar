@@ -136,20 +136,20 @@ class Impl(Mod):
 			for decl in self.decls:
 				if decl.name in symbolTable:
 					otherDecl = symbolTable[decl.name]
-					logError(state, decl.nameTok.span, 'cannot redeclare `{}` as a different symbol'.format(decl.name))
-					logExplain(state, otherDecl.nameTok.span, '`{}` previously declared here'.format(decl.name))
+					logError(state, decl.nameSpan, 'cannot redeclare `{}` as a different symbol'.format(decl.name))
+					logExplain(state, otherDecl.nameSpan, '`{}` previously declared here'.format(decl.name))
 					continue
 				
 				if traitSymbols:
 					decl.pub = True
 					
 					if decl.name not in traitSymbols:
-						logError(state, decl.nameTok.span, 'trait `{}` has no symbol `{}`'.format(self.trait.name, decl.name))
+						logError(state, decl.nameSpan, 'trait `{}` has no symbol `{}`'.format(self.trait.name, decl.name))
 					
 					traitSymbol = traitSymbols[decl.name]
 					del traitSymbols[decl.name]
 					if not typesMatch(decl.type, traitSymbol.type, selfType=self.type):
-						logError(state, decl.nameTok.span, ('implementation of `{}` for trait `{}` ' + 
+						logError(state, decl.nameSpan, ('implementation of `{}` for trait `{}` ' + 
 							'does not match the type defined by the trait').format(decl.name, self.trait.name))
 				
 				symbolTable[decl.name] = decl
@@ -173,7 +173,7 @@ class Impl(Mod):
 				self.vtbl.append(implFn.mangledName)
 	
 	# def pretty(self, output, indent=0):
-	# 	path = '::'.join(tok.content for tok in self.path)
+	# 	path = '::'.join(name.content for name in self.path)
 	# 	output.write('impl {}\n'.format(path), indent)
 	# 	for decl in self.decls:
 	# 		decl.pretty(output, indent + 1)

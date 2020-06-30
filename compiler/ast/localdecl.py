@@ -18,7 +18,7 @@ class LocalDecl(ValueSymbol):
 			type = state.resolveTypeRef(self.typeRef)
 		
 		name = None if self.name == '_' else self.name
-		symbol = LocalSymbol(name, type, self.mut, isParam, self.dropFn, self.nameTok.span)
+		symbol = LocalSymbol(name, type, self.mut, isParam, self.dropFn, self.nameSpan)
 		symbol.dropBlock = dropBlock
 		state.scope.declSymbol(symbol)
 		
@@ -43,7 +43,7 @@ class LetDecl(LocalDecl):
 		state.mirBlock.append(symbol)
 		result = None
 		if self.expr:
-			access = accessmod.SymbolWrite(self.expr, self.span, self.nameTok.span)
+			access = accessmod.SymbolWrite(self.expr, self.span, self.nameSpan)
 			access.symbol = symbol
 			access.rvalueImplicitType = symbol.type
 			state.analyzeNode(access)

@@ -42,7 +42,7 @@ class IsExpr(AST):
 		
 		tagValue = enumType.symbolTable[variant.name].tag.data
 		tagExpr = IntValue(tagValue, enumType.tagType, self.span)
-		eq = InfixOp(tagField, tagExpr, InfixOps.EQ, None, self.span)
+		eq = InfixOp(tagField, tagExpr, InfixOps.EQ, self.span, self.span)
 		
 		access = state.analyzeNode(eq)
 		if access:

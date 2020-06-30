@@ -73,9 +73,8 @@ class Import(AST):
 		symbolPath = []
 		
 		for i in range(0, len(item.path)):
-			nameTok = item.path[i]
-			name = nameTok.content
-			testFileName = 'compiler/stdlib/{}.csr'.format(name)
+			name = item.path[i]
+			testFileName = 'compiler/stdlib/{}.csr'.format(name.content)
 			if os.path.exists(testFileName):
 				importFileName = testFileName
 				if i + 1 < len(item.path):
@@ -83,7 +82,7 @@ class Import(AST):
 				break
 		
 		if importFileName == None:
-			logError(state, item.span, '`{}`: could not locate the module'.format(name))
+			logError(state, item.span, '`{}`: could not locate the module'.format(name.content))
 			return (None, None)
 		
 		if importFileName in ALL_IMPORTS:
@@ -96,8 +95,8 @@ class Import(AST):
 			ir.generateIR(importedMod)
 			asm = amd64.generateAsm(importedMod)
 			
-			asmFileName = 'compiler/stdlib/{}.asm'.format(name)
-			objFileName = 'compiler/stdlib/{}.o'.format(name)
+			asmFileName = 'compiler/stdlib/{}.asm'.format(name.content)
+			objFileName = 'compiler/stdlib/{}.o'.format(name.content)
 			
 			try:
 				outfile = open(asmFileName, 'w')
@@ -115,38 +114,34 @@ class Import(AST):
 		
 		if importedMod not in mod.mods:
 			mod.mods.append(importedMod)
-		nameTok = item.path[-1]
 		symbol = importedMod
 		
-		for tok in symbolPath:
-			if tok.content == '_':
-				logError(state, tok.span, '`_` is not a valid symbol name')
+		for name in symbolPath:
+			if name.content == '_':
+				logError(state, name.span, '`_` is not a valid symbol name')
 				return (None, None)
 			elif type(symbol) == Mod or isinstance(symbol, TypeSymbol):
-				symbolTok = tok
 				parent = symbol
 				symbol = None
-				if tok.content in parent.symbolTable:
-					symbol = parent.symbolTable[tok.content]
+				if name.content in parent.symbolTable:
+					symbol = parent.symbolTable[name.content]
 				
 				if symbol == None or not symbol.pub:
-					logError(state, symbolTok.span, 'cannot resolve the symbol `{}`'.format(symbolTok.content))
+					logError(state, name.span, 'cannot resolve the symbol `{}`'.format(name.content))
 					return (None, None)
 			else:
-				logError(state, symbolTok.span, '`{}` is not a module'.format(symbol.name))
+				logError(state, name.span, '`{}` is not a module'.format(symbol.name))
 				return (None, None)
 		
-		nameTok = item.rename if item.rename else nameTok
-		name = nameTok.content
-		nameSpan = nameTok.span
+		name = item.rename if item.rename else item.path[-1]
 		
 		if name in mod.symbolTable:
 			otherDecl = mod.symbolTable[symbol.name]
 			logError(state, nameSpan, 'import name collides with locally defined symbol')
-			logExplain(state, otherDecl.nameTok.span, '`{}` locally defined declared here'.format(name))
+			logExplain(state, otherDecl.nameSpan, '`{}` locally defined declared here'.format(name))
 		else:
-			symbol.nameTok = nameTok
-			mod.symbolTable[name] = symbol
+			symbol.nameSpan = name.span
+			mod.symbolTable[name.content] = symbol
 		
 		return (importedMod, symbol)
 	

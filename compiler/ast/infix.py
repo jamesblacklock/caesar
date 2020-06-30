@@ -7,16 +7,16 @@ from ..log       import logError
 from ..mir.infix import InfixOp as InfixOpMIR
 
 class InfixOp(AST):
-	def __init__(self, l, r, op, opTok, span):
+	def __init__(self, l, r, op, opSpan, span):
 		super().__init__(span, True)
 		self.l = l
 		self.r = r
 		self.op = op
-		self.opTok = opTok
+		self.opSpan = opSpan
 	
 	def analyze(infixOp, state, implicitType):
 		def opErr(lType, rType):
-			logError(state, infixOp.opTok.span, 'invalid operand types for operator `{}` ({} and {})'
+			logError(state, infixOp.opSpan, 'invalid operand types for operator `{}` ({} and {})'
 				.format(infixOp.op.value, lType, rType))
 		
 		lIndefinite = not hasDefiniteType(infixOp.l)

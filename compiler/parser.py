@@ -955,7 +955,7 @@ def parseInfixOps(state, l, mustIndent, spaceAroundOp):
 	else:
 		op = InfixOps.fromTokenType(opTok.type)
 		span = Span.merge(l.span, r.span)
-		return InfixOp(l, r, op, opTok, span)
+		return InfixOp(l, r, op, opTok.span, span)
 
 class Path:
 	def __init__(self, path, span):
@@ -1338,7 +1338,7 @@ def parseValueExprOrAsgn(state):
 		lvalue = expr
 		rvalue = parseValueExpr(state)
 		
-		expr = Asgn(lvalue, rvalue, infixOp, opTok, Span.merge(lvalue.span, rvalue.span))
+		expr = Asgn(lvalue, rvalue, infixOp, opTok.span, Span.merge(lvalue.span, rvalue.span))
 	
 	return expr
 

@@ -10,8 +10,8 @@ from ..mir.primitive     import IntValue
 class FieldLit(AST):
 	def __init__(self, nameTok, expr, span, name=None):
 		super().__init__(span)
-		self.nameTok = nameTok
-		self.name = nameTok.content if nameTok else name
+		self.nameSpan = nameTok.span
+		self.name = nameTok.content
 		self.expr = expr
 	
 	def pretty(self, output, indent=0):
@@ -29,9 +29,6 @@ class StructLit(AST):
 		super().__init__(span, True)
 		self.typeRef = typeRef
 		self.isUnion = isUnion
-		self.anon = typeRef == None
-		self.nameTok = typeRef.path[-1] if typeRef else None
-		self.name = self.nameTok.content if self.nameTok else None
 		self.fields = fields
 
 	def analyze(self, state, implicitType):
@@ -50,8 +47,8 @@ class StructLit(AST):
 					implicitType = None
 			
 			if implicitType and not implicitType.isStructType:
-				logError(state, self.nameTok.span if self.nameTok else self.span, 
-					'type `{}` is not a struct type'.format(implicitType.name))
+				span = self.path[-1].span if self.path else self.span
+				logError(state, span, 'type `{}` is not a struct type'.format(implicitType.name))
 				implicitType = None
 		
 		fieldDict =  None
@@ -71,14 +68,14 @@ class StructLit(AST):
 					fieldSymbol = fieldDict[fieldInit.name]
 					fieldType = fieldSymbol.type
 					if fieldSymbol in initFields:
-						logError(state, fieldInit.nameTok.span, 
+						logError(state, fieldInit.nameSpan, 
 							'field `{}` was already initialized'.format(fieldInit.name))
-						logExplain(state, initFields[fieldSymbol].nameTok.span, 
+						logExplain(state, initFields[fieldSymbol].nameSpan, 
 							'`{}` was initialized here'.format(fieldInit.name))
 					else:
 						initFields[fieldSymbol] = fieldInit
 				else:
-					logError(state, fieldInit.nameTok.span, 
+					logError(state, fieldInit.nameSpan, 
 						'type `{}` has no field `{}`'.format(implicitType.name, fieldInit.name))
 			
 			access = state.analyzeNode(fieldInit.expr, fieldType)

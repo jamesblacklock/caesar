@@ -120,8 +120,8 @@ def buildSymbolTable(state, mod):
 		
 		if decl.name in symbolTable:
 			otherDecl = symbolTable[decl.name]
-			logError(state, decl.nameTok.span, 'cannot redeclare `{}` as a different symbol'.format(decl.name))
-			logExplain(state, otherDecl.nameTok.span, '`{}` previously declared here'.format(decl.name))
+			logError(state, decl.nameSpan, 'cannot redeclare `{}` as a different symbol'.format(decl.name))
+			logExplain(state, otherDecl.nameSpan, '`{}` previously declared here'.format(decl.name))
 		else:
 			symbolTable[decl.name] = decl
 		
@@ -343,37 +343,37 @@ class AnalyzerState:
 		return self.popMIR()
 	
 	def lookupSymbol(self, path, symbolTable=None, inTypePosition=False, inValuePosition=False):
-		symbolTok = path[0]
+		symbolName = path[0]
 		path = path[1:]
 		
-		if symbolTok.content == '_':
-			logError(self, symbolTok.span, '`_` is not a valid symbol name')
+		if symbolName.content == '_':
+			logError(self, symbolName.span, '`_` is not a valid symbol name')
 			return None
-		elif symbolTok.content in BUILTIN_TYPES:
-			symbol = BUILTIN_TYPES[symbolTok.content]
+		elif symbolName.content in BUILTIN_TYPES:
+			symbol = BUILTIN_TYPES[symbolName.content]
 		else:
-			symbol = self.scope.lookupSymbol(symbolTok.content)
+			symbol = self.scope.lookupSymbol(symbolName.content)
 		
-		if symbol == None and symbolTable and symbolTok.content in symbolTable:
-			symbol = symbolTable[symbolTok.content]
+		if symbol == None and symbolTable and symbolName.content in symbolTable:
+			symbol = symbolTable[symbolName.content]
 		
 		if symbol != None:
-			for tok in path:
-				if tok.content == '_':
-					logError(self, tok.span, '`_` is not a valid symbol name')
+			for name in path:
+				if name.content == '_':
+					logError(self, name.span, '`_` is not a valid symbol name')
 					return None
 				elif type(symbol) == Mod or isinstance(symbol, TypeSymbol):
-					symbolTok = tok
-					if tok.content not in symbol.symbolTable:
+					symbolName = name
+					if name.content not in symbol.symbolTable:
 						symbol = None
 						break
 					
 					parent = symbol
-					symbol = symbol.symbolTable[tok.content]
+					symbol = symbol.symbolTable[name.content]
 					if parent.extern and not symbol.pub:
 						symbol = None
 				else:
-					logError(self, symbolTok.span, '`{}` is not a module'.format(symbol.name))
+					logError(self, symbolName.span, '`{}` is not a module'.format(symbol.name))
 					return None
 		
 		if type(symbol) == AliasDecl:
@@ -381,10 +381,10 @@ class AnalyzerState:
 			symbol = symbol.symbol
 		
 		if symbol == None:
-			logError(self, symbolTok.span, 'cannot resolve the symbol `{}`'.format(symbolTok.content))
+			logError(self, symbolName.span, 'cannot resolve the symbol `{}`'.format(symbolName.content))
 		elif inTypePosition and not inValuePosition:
 			if not isinstance(symbol, TypeSymbol) and type(symbol) != VariantDecl:
-				logError(self, symbolTok.span, '`{}` is not a type'.format(symbolTok.content))
+				logError(self, symbolName.span, '`{}` is not a type'.format(symbolName.content))
 				symbol = None
 		elif inValuePosition and not inTypePosition:
 			if not isinstance(symbol, ValueSymbol) and type(symbol) != VariantDecl and type(symbol) != LocalSymbol:
@@ -394,7 +394,7 @@ class AnalyzerState:
 					found = 'module'
 				else:
 					assert 0
-				logError(self, symbolTok.span, 'found {} where a value was expected'.format(found))
+				logError(self, symbolName.span, 'found {} where a value was expected'.format(found))
 				symbol = None
 		
 		return symbol

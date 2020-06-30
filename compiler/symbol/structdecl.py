@@ -52,7 +52,7 @@ class StructDecl(TypeSymbol):
 		types = []
 		for field in decl.fieldDecls:
 			if field.name in fieldNames:
-				logError(state, field.nameTok.span, 
+				logError(state, field.nameSpan, 
 					'duplicate field declared in {}'.format('union' if isUnion else 'struct'))
 			
 			fieldType = state.resolveTypeRefSig(field.typeRef)
@@ -80,7 +80,7 @@ class UnionFields(AST):
 class FieldDecl(AST):
 	def __init__(self, nameTok, typeRef, pub, span):
 		super().__init__(span)
-		self.nameTok = nameTok
+		self.nameSpan = nameTok.span
 		self.name = nameTok.content
 		self.typeRef = typeRef
 		self.align = None

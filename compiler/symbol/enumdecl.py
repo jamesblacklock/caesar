@@ -9,7 +9,6 @@ from ..log           import logError
 class EnumDecl(TypeSymbol):
 	def __init__(self, nameTok, doccomment, variants, span):
 		super().__init__(nameTok, span, doccomment, isEnumType=True)
-		self.nameTok = nameTok
 		self.variants = variants
 		self.dataType = Void
 		self.tagType = UInt8
@@ -19,7 +18,7 @@ class EnumDecl(TypeSymbol):
 		if len(self.variants) > U8_MAX:
 			self.tagType = UInt16
 			if len(self.variants) > U16_MAX:
-				logError(state, self.nameTok.span, 
+				logError(state, self.nameSpan, 
 					'Congratulations, you\'ve broken the compiler! (too many variants)')
 		
 		fTagType = FundamentalType.fromResolvedType(self.tagType)
@@ -58,7 +57,7 @@ class EnumDecl(TypeSymbol):
 class VariantDecl(AST):
 	def __init__(self, nameTok, typeRef, span):
 		super().__init__(span)
-		self.nameTok = nameTok
+		self.nameSpan = nameTok.span
 		self.name = nameTok.content
 		self.typeRef = typeRef
 		self.enumType = None

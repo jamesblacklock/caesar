@@ -13,6 +13,15 @@ class Contract:
 		variants = [v for v in self.variants if v in other.variants]
 		return Contract(self.symbol, self.enumType, variants, self.indLevel)
 
+class Name:
+	def __init__(self, content, span):
+		self.content = content
+		self.span = span
+	
+	@staticmethod
+	def fromTok(tok):
+		return Name(tok.content, tok.span)
+
 class AST:
 	def __init__(self, span, hasValue=False, hasBlockValue=False):
 		self.span = span
@@ -37,7 +46,7 @@ class Attr(AST):
 class Symbol(AST):
 	def __init__(self, nameTok, span, doccomment=None, extern=False):
 		super().__init__(span)
-		self.nameTok = nameTok
+		self.nameSpan = nameTok.span if nameTok else span
 		self.name = nameTok.content if nameTok else None
 		self.unused = True
 		self.symbolTable = None

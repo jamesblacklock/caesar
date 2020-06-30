@@ -523,7 +523,7 @@ def _SymbolAccess__analyzeSymbolAccess(state, expr, access, implicitType=None):
 		offset = 0
 		fieldInfo = None
 		t = access.type
-		for tok in expr.path:
+		for fieldName in expr.path:
 			name = t.name
 			if t.isEnumType:
 				t = t.structType
@@ -532,18 +532,18 @@ def _SymbolAccess__analyzeSymbolAccess(state, expr, access, implicitType=None):
 				anon = t.isCompositeType and t.anon
 			
 			if t.isStructType:
-				if tok.content not in t.fieldDict:
+				if fieldName.content not in t.fieldDict:
 					name = 'struct' if anon else 'type `{}`'.format(name)
-					logError(state, tok.span, '{} has no field `{}`'.format(name, tok.content))
+					logError(state, fieldName.span, '{} has no field `{}`'.format(name, fieldName.content))
 					access.type = None
 					return
 				
-				fieldInfo = t.fieldDict[tok.content]
+				fieldInfo = t.fieldDict[fieldName.content]
 			elif t.isTupleType:
-				fieldIndex = None if tok.type != TokenType.INTEGER else int(tok.content)
+				fieldIndex = None if fieldName.type != TokenType.INTEGER else int(fieldName.content)
 				if fieldIndex == None or fieldIndex not in range(0, len(t.fields)):
 					name = 'tuple' if anon else 'type `{}`'.format(name)
-					logError(state, tok.span, '{} has no field `{}`'.format(name, tok.content))
+					logError(state, fieldName.span, '{} has no field `{}`'.format(name, fieldName.content))
 					access.type = None
 					return
 				
