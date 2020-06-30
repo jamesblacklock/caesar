@@ -9,7 +9,7 @@ class If(AST):
 	def __init__(self, expr, ifBlock, elseBlock, span):
 		super().__init__(span, True, True)
 		self.expr = expr
-		self.block = ifBlock
+		self.ifBlock = ifBlock
 		self.elseBlock = elseBlock
 	
 	def analyze(self, state, implicitType):
@@ -23,30 +23,36 @@ class If(AST):
 		
 		state.pushScope(ScopeType.IF)
 		state.scope.intersectContracts(contracts)
-		ifAccess = state.analyzeNode(self.block, implicitType)
-		ifType = Void if implicitType == Void else ifAccess.type if ifAccess and ifAccess.type else Void
-		block = state.popScope()
+		ifAccess = state.analyzeNode(self.ifBlock, implicitType)
+		ifBlock = state.popScope()
 		
 		state.pushScope(ScopeType.ELSE)
 		contracts = { c.symbol: c.inverted() for c in contracts.values() } if contracts else None
 		state.scope.intersectContracts(contracts)
 		elseAccess = state.analyzeNode(self.elseBlock, implicitType)
-		elseType = Void if implicitType == Void else elseAccess.type if elseAccess and elseAccess.type else Void
 		elseBlock = state.popScope()
 		
-		didReturn = block.scope.didReturn and elseBlock.scope.didReturn
+		ifType = Void
+		if ifAccess and ifAccess.type:
+			ifType = ifAccess.type
+		
+		elseType = Void
+		if elseAccess and elseAccess.type:
+			elseType = elseAccess.type
+		
+		didReturn = ifBlock.scope.didReturn and elseBlock.scope.didReturn
 		state.scope.didReturn = state.scope.didReturn or didReturn
 		
-		didBreak = block.scope.didBreak and elseBlock.scope.didBreak
+		didBreak = ifBlock.scope.didBreak and elseBlock.scope.didBreak
 		state.scope.didBreak = state.scope.didBreak or didBreak
 		
 		if implicitType == Void:
 			type = Void
-		elif didReturn:
+		elif didReturn or didBreak:
 			type = implicitType if implicitType else Void
-		elif block.scope.didReturn:
+		elif ifBlock.scope.didReturn or ifBlock.scope.didBreak:
 			type = elseType
-		elif elseBlock.scope.didReturn:
+		elif elseBlock.scope.didReturn or elseBlock.scope.didBreak:
 			type = ifType
 		elif typesMatch(ifType, elseType):
 			type = ifType
@@ -70,18 +76,18 @@ class If(AST):
 			if ifAccess and elseAccess:
 				(tempSymbol, ifWrite, elseWrite) = accessmod.createTempSymbol(ifAccess, elseAccess)
 				state.analyzeNode(tempSymbol)
-				state.pushMIR(block)
+				state.pushMIR(ifBlock)
 				state.analyzeNode(ifWrite)
-				block = state.popMIR()
+				ifBlock = state.popMIR()
 				state.pushMIR(elseBlock)
 				state.analyzeNode(elseWrite)
 				elseBlock = state.popMIR()
 			elif ifAccess:
 				(tempSymbol, ifWrite) = accessmod.createTempSymbol(ifAccess)
 				state.analyzeNode(tempSymbol)
-				state.pushMIR(block)
+				state.pushMIR(ifBlock)
 				state.analyzeNode(ifWrite)
-				block = state.popMIR()
+				ifBlock = state.popMIR()
 			elif elseAccess:
 				(tempSymbol, elseWrite) = accessmod.createTempSymbol(elseAccess)
 				state.analyzeNode(tempSymbol)
@@ -96,8 +102,8 @@ class If(AST):
 				result.ref = True
 		
 		if access:
-			mir = IfMIR(access, block, elseBlock, type, self.span)
-			block.scope.ifExpr = mir
+			mir = IfMIR(access, ifBlock, elseBlock, type, self.span)
+			ifBlock.scope.ifExpr = mir
 			elseBlock.scope.ifExpr = mir
 			state.mirBlock.append(mir)
 		

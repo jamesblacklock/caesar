@@ -1,11 +1,10 @@
 from .ast               import AST
-from .                  import block, valueref, primitive
+from .                  import valueref
 from ..not_done         import enumdecl
 from ..mir              import access as accessmod
-from .structlit         import StructLit, FieldLit
 from .tuplelit          import TupleLit
-from ..types            import PtrType, TypeSymbol, Void
-from ..log              import logError, logWarning
+from ..types            import TypeSymbol, Void
+from ..log              import logError
 from ..mir.fncall       import FnCall as FnCallMIR
 from ..mir.createstruct import CreateStruct
 from ..mir.primitive    import IntValue

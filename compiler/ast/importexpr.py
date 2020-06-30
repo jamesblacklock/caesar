@@ -29,13 +29,6 @@ def flattenImportTree(imports, parentPath=None):
 	
 	return items
 
-class ImportTree(AST):
-	def __init__(self, path, imports, rename, span):
-		super().__init__(span)
-		self.path = path
-		self.imports = imports
-		self.rename = rename
-
 class ImportItem:
 	def __init__(self, path, rename, span):
 		self.path = path
@@ -46,6 +39,13 @@ class ImportItem:
 		path = '::'.join(p.content for p in self.path)
 		rename = ' as {}'.format(self.rename.content) if self.rename else ''
 		return path + rename
+
+class ImportTree(AST):
+	def __init__(self, path, imports, rename, span):
+		super().__init__(span)
+		self.path = path
+		self.imports = imports
+		self.rename = rename
 
 class Import(AST):
 	def __init__(self, importTree, span):
