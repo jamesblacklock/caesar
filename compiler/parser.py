@@ -1522,15 +1522,15 @@ def parseFnDecl(state, doccomment, pub, extern, cconv, traitDecl=False):
 
 def parseImport(state):
 	def parseImportTree(state):
-		if not expectType(state, TokenType.NAME):
-			return None
+		path = None
+		span = state.tok.span
+		if state.tok.type == TokenType.NAME:
+			path = parsePath(state)
+			span = path.span
+			path = path.path
 		
-		path = parsePath(state)
-		span = path.span
-		path = path.path
 		imports = None
 		rename = None
-		
 		if isBlockStart(state):
 			imports = parseBlock(state, parseImportTree)
 			span = Span.merge(span, imports.span)
@@ -1544,6 +1544,13 @@ def parseImport(state):
 					rename = state.tok
 					state.advance()
 					state.skipSpace()
+		
+		if not (path or imports):
+			logError(state, state.tok.span, 'expected module path or imports block, found {}'.format(state.tok.type.desc()))
+			return None
+		
+		if path == None:
+			path = []
 		
 		return ImportTree(path, imports, rename, span)
 	
