@@ -738,11 +738,11 @@ class IRState:
 		
 		inputSymbols = []
 		for param in fnDecl.params:
-			if param.symbol.type.isVoidType:
+			if param.type.isVoidType:
 				continue
 			
-			fType = FundamentalType.fromResolvedType(param.symbol.type)
-			inputSymbols.append(param.symbol)
+			fType = FundamentalType.fromResolvedType(param.type)
+			inputSymbols.append(param)
 			self.paramTypes.append(fType)
 		
 		self.setupLocals(self.paramTypes, inputSymbols)
@@ -925,7 +925,7 @@ def fnToIR(fnDecl):
 	state = IRState(fnDecl)
 	
 	for (i, param) in enumerate(reversed(fnDecl.params)):
-		if param.symbol.fixed:
+		if param.fixed:
 			state.appendInstr(Fix(param, i))
 	
 	fnDecl.mirBody.writeIR(state)

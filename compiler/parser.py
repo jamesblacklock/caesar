@@ -1,41 +1,41 @@
 import re
-from os                 import path
-from enum               import Enum
-from .token             import TokenType
-from .span              import Span
-from .log               import logError
-from .infixops          import InfixOps
-from .ast.sign          import Sign
-from .symbol.structdecl import FieldDecl, StructDecl, UnionFields
-from .symbol.tupledecl  import TupleDecl
-from .symbol.enumdecl   import EnumDecl, VariantDecl
-from .ast.ast           import Attr, Name
-from .symbol.typeref    import PtrTypeRef, NamedTypeRef, ArrayTypeRef, OwnedTypeRef
-from .symbol.mod        import Mod, Impl, TraitDecl
-from .symbol.fndecl     import FnDecl, CConv
-from .symbol.staticdecl import StaticDecl, ConstDecl
-from .ast.asexpr        import AsExpr
-from .ast.primitive     import IntLit, FloatLit, BoolLit, VoidLit
-from .ast.strlit        import CharLit, StrLit
-from .ast.block         import Block
-from .ast.fncall        import FnCall
-from .ast.ctlflow       import Return, Break, Continue
-from .ast.loop          import While, Loop
-from .ast.localdecl     import LetDecl, FnParam, CVarArgsParam
-from .ast.asgn          import Asgn
-from .ast.ifexpr        import If
-from .ast.infix         import InfixOp
-from .ast.valueref      import ValueRef, Borrow
-from .ast.field         import Index, Field
-from .ast.deref         import Deref
-from .ast.structlit     import StructLit, FieldLit
-from .ast.tuplelit      import TupleLit, ArrayLit
-from .ast.address       import Address
-from .symbol.alias      import AliasDecl, TypeDecl
-from .scope             import ScopeType
-from .ast.isexpr        import Pattern, IsExpr
-from .ast.importexpr    import Import, ImportTree
-from .ast.sizeof        import Sizeof, Offsetof
+from os              import path
+from enum            import Enum
+from .token          import TokenType
+from .span           import Span
+from .log            import logError
+from .infixops       import InfixOps
+from .ast.sign       import Sign
+from .ast.structdecl import FieldDecl, StructDecl, UnionFields
+from .ast.tupledecl  import TupleDecl
+from .ast.enumdecl   import EnumDecl, VariantDecl
+from .ast.ast        import Attr, Name
+from .ast.typeref    import PtrTypeRef, NamedTypeRef, ArrayTypeRef, OwnedTypeRef
+from .symbol.mod     import Mod, Impl, TraitDecl
+from .ast.fndecl     import FnDecl, CConv
+from .ast.staticdecl import StaticDecl, ConstDecl
+from .ast.asexpr     import AsExpr
+from .ast.primitive  import IntLit, FloatLit, BoolLit, VoidLit
+from .ast.strlit     import CharLit, StrLit
+from .ast.block      import Block
+from .ast.fncall     import FnCall
+from .ast.ctlflow    import Return, Break, Continue
+from .ast.loop       import While, Loop
+from .ast.localdecl  import LetDecl, FnParam, CVarArgsParam
+from .ast.asgn       import Asgn
+from .ast.ifexpr     import If
+from .ast.infix      import InfixOp
+from .ast.valueref   import ValueRef, Borrow
+from .ast.field      import Index, Field
+from .ast.deref      import Deref
+from .ast.structlit  import StructLit, FieldLit
+from .ast.tuplelit   import TupleLit, ArrayLit
+from .ast.address    import Address
+from .ast.typedecl   import TypeDecl
+from .ast.isexpr     import Pattern, IsExpr
+from .ast.importexpr import Import, ImportTree
+from .ast.sizeof     import Sizeof, Offsetof
+from .scope          import ScopeType
 
 INFIX_PRECEDENCE = {
 	TokenType.AS:     1000, TokenType.IS:       1000, TokenType.ARROW:   900, TokenType.LSHIFT:    800, 
@@ -299,7 +299,7 @@ def parseFnDeclReturnType(state):
 	
 	return typeRef
 
-def parseFieldDecl(state):
+def parseFieldDecl(state, isUnion):
 	span = state.tok.span
 	
 	fieldAttrs = []
@@ -307,10 +307,10 @@ def parseFieldDecl(state):
 		fieldAttrs = parseAttrs(state)
 		permitLineBreak(state)
 	
-	if state.tok.type == TokenType.UNION:
+	if not isUnion and state.tok.type == TokenType.UNION:
 		state.advance()
 		state.skipSpace()
-		unionFields = parseBlock(state, parseFieldDecl)
+		unionFields = parseBlock(state, lambda s: parseFieldDecl(s, True))
 		return UnionFields(unionFields.list, Span.merge(span, unionFields.span))
 	
 	pub = False
@@ -364,7 +364,7 @@ def parseStructOrUnionDecl(state, doccomment, anon, pub, isUnion):
 		state.advance()
 		state.skipSpace()
 	
-	block = parseBlock(state, parseFieldDecl)
+	block = parseBlock(state, lambda s: parseFieldDecl(s, isUnion))
 	span = Span.merge(span, block.span)
 	
 	return StructDecl(name, isUnion, doccomment, block.list, pub, span)
@@ -1137,7 +1137,8 @@ def isBlockStart(state):
 		if isIndentIncrease(state):
 			result = True
 		elif isIndentMatch(state):
-			state.advance()
+			if state.tok.type == TokenType.INDENT:
+				state.advance()
 			state.skipSpace()
 			result = state.tok.type == TokenType.LBRACE
 	
@@ -1431,24 +1432,24 @@ def parseConstDecl(state, doccomment):
 			decl.typeRef, decl.expr, decl.span)
 	return decl
 
-def parseAlias(state, doccomment):
-	span = state.tok.span
-	state.advance()
-	state.skipSpace()
+# def parseAlias(state, doccomment):
+# 	span = state.tok.span
+# 	state.advance()
+# 	state.skipSpace()
 	
-	name = None
-	if expectType(state, TokenType.NAME):
-		name = Name.fromTok(state.tok)
-		state.advance()
-		state.skipSpace()
+# 	name = None
+# 	if expectType(state, TokenType.NAME):
+# 		name = Name.fromTok(state.tok)
+# 		state.advance()
+# 		state.skipSpace()
 	
-	typeRef = None
-	if expectType(state, TokenType.ASGN):
-		state.advance()
-		state.skipSpace()
-		typeRef = parseTypeRef(state)
+# 	typeRef = None
+# 	if expectType(state, TokenType.ASGN):
+# 		state.advance()
+# 		state.skipSpace()
+# 		typeRef = parseTypeRef(state)
 	
-	return AliasDecl(name, typeRef, span, doccomment)
+# 	return AliasDecl(name, typeRef, span, doccomment)
 
 def parseTypeDecl(state, doccomment):
 	span = state.tok.span
@@ -1588,7 +1589,7 @@ MOD_EXPR_TOKS = (
 	TokenType.ENUM, 
 	TokenType.UNION, 
 	TokenType.CONST, 
-	TokenType.ALIAS, 
+	# TokenType.ALIAS, 
 	TokenType.TYPE, 
 	TokenType.IMPL, 
 	TokenType.TRAIT, 
@@ -1597,7 +1598,7 @@ MOD_EXPR_TOKS = (
 )
 
 IMPL_EXPR_TOKS = (
-	TokenType.ALIAS, 
+	# TokenType.ALIAS, 
 	TokenType.FN, 
 	TokenType.UNSAFE, 
 	TokenType.STATIC, 
@@ -1647,7 +1648,7 @@ VALUE_EXPR_TOKS = (
 
 FN_EXPR_TOKS = (
 	*VALUE_EXPR_TOKS, 
-	TokenType.ALIAS, 
+	# TokenType.ALIAS, 
 	TokenType.LET, 
 	TokenType.LOOP, 
 	TokenType.WHILE, 
@@ -1776,8 +1777,8 @@ def parseExpr(state, exprClass, precedence=0, noSkipSpace=False, allowSimpleFnCa
 		decl = parseImpl(state, doccomment)
 	elif state.tok.type == TokenType.TRAIT:
 		decl = parseTrait(state, doccomment, pub)
-	elif state.tok.type == TokenType.ALIAS:
-		decl = parseAlias(state, doccomment)
+	# elif state.tok.type == TokenType.ALIAS:
+		# decl = parseAlias(state, doccomment)
 	elif state.tok.type == TokenType.TYPE:
 		if exprClass == ExprClass.TRAIT:
 			decl = parseTraitTypeDecl(state, doccomment)
@@ -1905,6 +1906,7 @@ def parseTopLevelModule(state):
 	
 	block = parseBlock(state, parseModLevelDecl, topLevelBlock=True)
 	mod = Mod(Name(name, block.span.startSpan()), None, block.list, block.span)
+	mod.topLevel = True
 	return mod
 
 def parse(source, tokens):

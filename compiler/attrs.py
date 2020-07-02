@@ -2,8 +2,8 @@ from .ast.valueref      import ValueRef
 from .ast.primitive     import IntLit
 from .ast.strlit        import StrLit
 from .ast.localdecl     import LetDecl, FnParam
-from .symbol.structdecl import StructDecl, FieldDecl
-from .symbol.fndecl     import FnDecl, CConv
+from .ast.fndecl        import FnDecl, CConv
+from .ast.structdecl    import StructDecl, FieldDecl
 from .symbol.mod        import Mod, TraitDecl
 from .log               import logError
 

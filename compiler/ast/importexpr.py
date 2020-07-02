@@ -1,20 +1,20 @@
 import os
-from .ast         import AST, Name
-from ..types      import TypeSymbol
-from ..sourcefile import SourceFile
-from ..symbol.mod import Mod
-from ..log        import logError, logExplain
-from ..           import tokenizer, parser, ir, amd64, build
+from .ast            import AST, Name
+from ..sourcefile    import SourceFile
+from ..symbol.symbol import SymbolType
+from ..symbol.mod    import Mod
+from ..log           import logError, logExplain
+from ..              import tokenizer, parser, ir, amd64, build
 
 ALL_IMPORTS = {}
 
-def setExternFlags(state, mod):
-	mod.extern = True
+def setImportFlags(state, mod):
+	mod.isImport = True
 	for subMod in mod.mods:
-		setExternFlags(state, subMod)
+		setImportFlags(state, subMod)
 	
-	for decl in (*mod.fns, *mod.statics, *mod.types):
-		decl.extern = True
+	for symbol in mod.symbols:
+		symbol.isImport = True
 
 def flattenImportTree(imports, parentPath=None):
 	newPath = [*parentPath, *imports.path] if parentPath else imports.path
@@ -101,10 +101,9 @@ class Import(AST):
 			except Exception as e:
 				print(e)
 			
-			importedMod.isImport = True
 			importedMod.mainFn = None
 			importedMod.objCodePath = objFileName
-			setExternFlags(state, importedMod)
+			setImportFlags(state, importedMod)
 			ALL_IMPORTS[importFileName] = importedMod
 		
 		if importedMod not in mod.mods:
@@ -115,7 +114,7 @@ class Import(AST):
 			if name.content == '_':
 				logError(state, name.span, '`_` is not a valid symbol name')
 				return (None, None)
-			elif type(symbol) == Mod or isinstance(symbol, TypeSymbol):
+			elif symbol.symbolType in (SymbolType.MOD, SymbolType.TYPE):
 				parent = symbol
 				symbol = None
 				if name.content in parent.symbolTable:
@@ -140,7 +139,7 @@ class Import(AST):
 		
 		return (importedMod, symbol)
 	
-	def analyzeSig(self, state, mod):
+	def importSymbols(self, state, mod):
 		items = flattenImportTree(self.tree)
 		for item in items:
 			Import.importItem(state, mod, item)

@@ -1,11 +1,10 @@
-from .ast                import AST
-from ..symbol.typeref    import NamedTypeRef
-from ..symbol.structdecl import StructDecl
-from ..symbol            import enumdecl
-from ..ast               import primitive
-from ..log               import logError
-from ..mir.createstruct  import CreateStruct, FieldInit
-from ..mir.primitive     import IntValue
+from .ast               import AST
+from .typeref           import NamedTypeRef
+from ..symbol.struct    import StructType
+from ..symbol.symbol    import SymbolType
+from ..mir.createstruct import CreateStruct, FieldInit
+from ..mir.primitive    import IntValue
+from ..log              import logError
 
 class FieldLit(AST):
 	def __init__(self, name, expr, span):
@@ -32,12 +31,12 @@ class StructLit(AST):
 		if self.typeRef:
 			variants = implicitType.symbolTable if implicitType and implicitType.isEnumType else None
 			symbol = state.lookupSymbol(self.typeRef.path, variants, inTypePosition=True)
-			if type(symbol) == enumdecl.VariantDecl:
+			if symbol.symbolType == SymbolType.VARIANT:
 				variant = symbol
 				enumType = variant.enumType
 				implicitType = variant.type
 			else:
-				implicitType = state.resolveTypeRef(self.typeRef)
+				implicitType = symbol.type
 				if implicitType.isUnknown:
 					implicitType = None
 			
@@ -95,7 +94,7 @@ class StructLit(AST):
 			if self.isUnion:
 				fieldInfo = [UnionLitFieldInfo() for _ in self.fields]
 			layout = state.generateFieldLayout(fieldTypes, fieldNames, fieldInfo)
-			resolvedType = StructDecl.generateAnonStructDecl(layout)
+			resolvedType = StructType.generateAnonStructType(layout)
 		
 		inits = []
 		for field in resolvedType.fields:

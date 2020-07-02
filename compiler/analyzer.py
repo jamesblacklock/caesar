@@ -1,24 +1,24 @@
 import ctypes
-from .symbol.typeref    import NamedTypeRef, PtrTypeRef, ArrayTypeRef, OwnedTypeRef
-from .types             import TypeSymbol, UnknownType, FieldInfo, PtrType, ArrayType, OwnedType, \
-                               Void, Bool, Byte, Char, Int8, UInt8, Int16, UInt16, Int32, UInt32, \
-                               Int64, UInt64, ISize, USize, Float32, Float64, typesMatch, canCoerce, tryPromote
-from .log               import logError, logExplain
-from .ast.ast           import ValueSymbol, Attr
-from .scope             import Scope, ScopeType
-from .attrs             import invokeAttrs
-from .symbol.mod        import Mod, Impl, TraitDecl
-from .symbol.fndecl     import FnDecl, CConv
-from .symbol.staticdecl import StaticDecl, ConstDecl
-from .symbol.structdecl import StructDecl
-from .symbol.tupledecl  import TupleDecl
-from .symbol.alias      import AliasDecl, TypeDecl
-from .symbol.enumdecl   import EnumDecl, VariantDecl
-from .mir.access        import SymbolAccess, SymbolRead
-from .ast.importexpr    import Import
-from .                  import platform
-from .mir.block         import Block, createDropBlock
-from .mir.localsymbol   import LocalSymbol
+from .symbol.symbol  import SymbolType, Deps
+from .ast.typeref    import NamedTypeRef, PtrTypeRef, ArrayTypeRef, OwnedTypeRef
+from .types          import FieldInfo, PtrType, ArrayType, OwnedType, \
+                            Void, Bool, Byte, Char, Int8, UInt8, Int16, UInt16, Int32, UInt32, \
+                            Int64, UInt64, ISize, USize, Float32, Float64, typesMatch, canCoerce, tryPromote
+from .log            import logError, logExplain
+from .ast.ast        import ValueSymbol, Attr
+from .scope          import Scope, ScopeType
+from .attrs          import invokeAttrs
+from .symbol.mod     import Mod, Impl
+from .symbol.trait   import Trait
+from .symbol.fn      import Fn, CConv
+from .symbol.static  import Static
+from .ast.structdecl import StructDecl
+from .ast.tupledecl  import TupleDecl
+# from .symbol.alias   import AliasDecl
+from .mir.access     import SymbolAccess, SymbolRead
+from .ast.importexpr import Import
+from .               import platform
+from .mir.block      import Block, createDropBlock
 
 BUILTIN_TYPES = {
 	Void.name:    Void,
@@ -45,14 +45,14 @@ class FieldLayout:
 		self.byteSize = byteSize
 		self.fields = fields
 
-def finishAnalyzingTupleType(state, resolvedType):
+def finishAnalyzingTupleType(state, resolvedType, deps):
 	for field in resolvedType.fields:
-		field.type = state.finishResolvingType(field.type)
+		field.type = state.finishResolvingType(field.type, deps)
 	return resolvedType
 
-def finishAnalyzingStructType(state, resolvedType):
+def finishAnalyzingStructType(state, resolvedType, deps):
 	for field in resolvedType.fields:
-		field.type = state.finishResolvingType(field.type)
+		field.type = state.finishResolvingType(field.type, deps)
 	return resolvedType
 
 def analyzeOwnedTypeRefSig(state, ownedTypeRef):
@@ -65,37 +65,53 @@ def analyzeOwnedTypeRefSig(state, ownedTypeRef):
 	acquireSpan = ownedTypeRef.acquire.span if ownedTypeRef.acquire else ownedTypeRef.span
 	releaseSpan = ownedTypeRef.release.span if ownedTypeRef.release else ownedTypeRef.span
 	
-	if ownedTypeRef.acquire == None:
-		acquire = state.scope.acquireDefault
-		if acquire == None:
-			logError(state, ownedTypeRef.span, 'default `acquire` fn is not defined in the current scope')
-	else:
+	if ownedTypeRef.acquire:
 		acquire = state.lookupSymbol(ownedTypeRef.acquire.path, inValuePosition=True)
-		if acquire and type(acquire) != FnDecl:
+		if acquire and type(acquire) != Fn:
 			logError(state, ownedTypeRef.acquire.span, '`{}` must be a function'.format(acquire.name))
 			acquire = None
 	
-	if ownedTypeRef.release == None:
-		release = state.scope.releaseDefault
-		if release == None:
-			logError(state, ownedTypeRef.span, 'default `release` fn is not defined in the current scope')
-	else:
+	if ownedTypeRef.release:
 		release = state.lookupSymbol(ownedTypeRef.release.path, inValuePosition=True)
-		if release and type(release) != FnDecl:
+		if release and type(release) != Fn:
 			logError(state, ownedTypeRef.release.span, '`{}` must be a function'.format(release.name))
 			release = None
 	
-	return OwnedType(baseType, acquire, release, acquireSpan, releaseSpan)
+	return OwnedType(baseType, acquire, release, acquireSpan, releaseSpan, ownedTypeRef.span)
 
-def finishAnalyzingOwnedType(state, ownedType):
+def finishAnalyzingOwnedType(state, ownedType, deps):
+	ok = True
+	
+	if not ownedType.acquire:
+		if state.scope.acquireDefault:
+			ownedType.acquire = state.scope.acquireDefault.symbol
+		else:
+			ok = False
+			logError(state, ownedType.span, 'default `acquire` fn is not defined in the current scope')
+	
+	if not ownedType.release:
+		if state.scope.releaseDefault:
+			ownedType.release = state.scope.releaseDefault.symbol
+		else:
+			ok = False
+			logError(state, ownedType.span, 'default `release` fn is not defined in the current scope')
+	
+	ownedType.updateName()
+	
+	if not ok:
+		return
+	
 	if ownedType.acquire:
-		if ownedType.acquire.returnType and \
-			not typesMatch(ownedType, ownedType.acquire.returnType) and \
-			not canCoerce(ownedType, ownedType.acquire.returnType):
+		ownedType.acquire.analyze(state, deps)
+		returnType = ownedType.acquire.type.returnType
+		if returnType and \
+			not typesMatch(ownedType, returnType) and \
+			not canCoerce(ownedType, returnType):
 			logError(state, ownedType.acquireSpan, '`{}` must return `{}` (found `{}`)'.format(
-				ownedType.acquire.name, ownedType.name, ownedType.acquire.returnType.name))
+				ownedType.acquire.name, ownedType.name, returnType.name))
 	
 	if ownedType.release:
+		ownedType.release.analyze(state, deps)
 		isValid = False
 		for param in ownedType.release.params:
 			if param.type and (typesMatch(ownedType, param.type) or canCoerce(ownedType, param.type)):
@@ -109,49 +125,37 @@ def finishAnalyzingOwnedType(state, ownedType):
 	return ownedType
 
 def buildSymbolTable(state, mod):
-	symbolTable = {}
 	for decl in mod.decls:
-		if type(decl) == Import:
-			mod.imports.append(decl)
-			continue
-		elif type(decl) == Attr:
+		if type(decl) == Attr:
 			mod.attrs.append(decl)
 			continue
+		elif type(decl) == Import:
+			decl.importSymbols(state, mod)
+			continue
 		
-		if decl.name in symbolTable:
-			otherDecl = symbolTable[decl.name]
-			logError(state, decl.nameSpan, 'cannot redeclare `{}` as a different symbol'.format(decl.name))
-			logExplain(state, otherDecl.nameSpan, '`{}` previously declared here'.format(decl.name))
-		else:
-			symbolTable[decl.name] = decl
+		symbol = decl.createSymbol(state)
+		if type(symbol) == Trait:
+			buildSymbolTable(state, symbol.mod)
+		elif type(symbol) == Fn:
+			mod.fns.append(symbol)
+			if symbol.name == 'main':
+				mod.mainFn = symbol
+		elif type(symbol) == Static:
+			mod.statics.append(symbol)
+		elif type(symbol) in (Mod, Impl):
+			mod.mods.append(symbol)
+			buildSymbolTable(state, symbol)
 		
-		if type(decl) in (StructDecl, TupleDecl, AliasDecl, TypeDecl, TraitDecl, EnumDecl):
-			mod.types.append(decl)
-			if type(decl) == TraitDecl:
-				decl.mod.symbolTable = buildSymbolTable(state, decl.mod)
-		elif type(decl) == FnDecl:
-			mod.fns.append(decl)
-			if decl.name == 'main':
-				mod.mainFn = decl
-		elif type(decl) == StaticDecl:
-			mod.statics.append(decl)
-		elif type(decl) == ConstDecl:
-			mod.consts.append(decl)
-		elif type(decl) in (Mod, Impl):
-			mod.mods.append(decl)
-			decl.symbolTable = buildSymbolTable(state, decl)
+		if symbol.name in mod.symbolTable:
+			otherSymbol = mod.symbolTable[symbol.name]
+			logError(state, symbol.nameSpan, 'cannot redeclare `{}` as a different symbol'.format(symbol.name))
+			logExplain(state, otherSymbol.nameSpan, '`{}` previously declared here'.format(symbol.name))
 		else:
-			assert 0
-	
-	return symbolTable
+			mod.symbolTable[symbol.name] = symbol
+			mod.symbols.append(symbol)
 
 def analyze(ast):
 	return AnalyzerState.analyze(None, ast)
-
-class T:
-	def __init__(self, content, span):
-		self.content = content
-		self.span = span
 
 class AnalyzerState:
 	def __init__(self):
@@ -171,14 +175,14 @@ class AnalyzerState:
 		state = AnalyzerState()
 		state.ast = ast
 		
-		ast.symbolTable = buildSymbolTable(state, ast)
+		buildSymbolTable(state, ast)
 		
 		invokeAttrs(state, ast)
 		if not ast.noStrImport:
 			(state.strMod, _) = Import.doImport(state, ast, ['str', 'str'])
 		
-		ast.analyzeSig(state)
-		ast.analyze(state)
+		ast.checkSig(state)
+		ast.analyze(state, Deps(ast))
 		
 		if state.failed:
 			exit(1)
@@ -216,8 +220,12 @@ class AnalyzerState:
 	
 	def resolveTypeRefSig(state, typeRef):
 		if type(typeRef) == NamedTypeRef:
+			builtinName = typeRef.path[0].content if len(typeRef.path) == 1 else None
+			if builtinName in BUILTIN_TYPES:
+				return BUILTIN_TYPES[builtinName]
+			
 			result = state.lookupSymbol(typeRef.path, inTypePosition=True)
-			return result if result else UnknownType
+			return result.type if result else None#UnknownType
 		elif type(typeRef) == OwnedTypeRef:
 			return analyzeOwnedTypeRefSig(state, typeRef)
 		elif type(typeRef) == PtrTypeRef:
@@ -227,25 +235,30 @@ class AnalyzerState:
 			baseType = state.resolveTypeRefSig(typeRef.baseType)
 			return ArrayType(baseType, typeRef.count)
 		elif type(typeRef) in (TupleDecl, StructDecl):
-			typeRef.analyzeSig(state)
-			return typeRef
+			symbol = typeRef.createSymbol(state)
+			return symbol.type
 		else:
 			assert 0
 	
-	def finishResolvingType(state, resolvedType):
+	def finishResolvingType(state, resolvedType, deps=None):
+		if deps == None:
+			deps = Deps(None)
+		
 		if resolvedType == None:
 			return None
+		elif resolvedType.symbol:
+			resolvedType.symbol.analyze(state, deps)
 		elif resolvedType.isOwnedType:
-			return finishAnalyzingOwnedType(state, resolvedType)
-		elif resolvedType.isPtrType or resolvedType.isArrayType or resolvedType.isTypeDef:
-			resolvedType.baseType = state.finishResolvingType(resolvedType.baseType)
-			return resolvedType
+			finishAnalyzingOwnedType(state, resolvedType, deps)
+		elif resolvedType.isPtrType or resolvedType.isArrayType:# or resolvedType.isTypeDef:
+			state.finishResolvingType(resolvedType.baseType, deps)
 		elif resolvedType.isTupleType:
-			return finishAnalyzingTupleType(state, resolvedType)
+			finishAnalyzingTupleType(state, resolvedType, deps)
 		elif resolvedType.isStructType:
-			return finishAnalyzingStructType(state, resolvedType)
-		else:
-			return resolvedType
+			finishAnalyzingStructType(state, resolvedType, deps)
+		
+		resolvedType.updateName()
+		return resolvedType
 	
 	def resolveTypeRef(state, typeRef):
 		return state.finishResolvingType(state.resolveTypeRefSig(typeRef))
@@ -261,14 +274,14 @@ class AnalyzerState:
 		return expr
 	
 	def mangleName(state, decl):
-		if type(decl) == FnDecl and decl.cconv == CConv.C:
+		if type(decl) == Fn and decl.type.cconv == CConv.C:
 			prefix = '_' if platform.MacOS or platform.Windows else ''
 			return '{}{}'.format(prefix, decl.name)
 		else:
 			letter = None
-			if type(decl) == FnDecl:
+			if type(decl) == Fn:
 				letter = 'F'
-			elif type(decl) == StaticDecl:
+			elif type(decl) == Static:
 				letter = 'S'
 			else:
 				assert 0
@@ -349,8 +362,6 @@ class AnalyzerState:
 		if symbolName.content == '_':
 			logError(self, symbolName.span, '`_` is not a valid symbol name')
 			return None
-		elif symbolName.content in BUILTIN_TYPES:
-			symbol = BUILTIN_TYPES[symbolName.content]
 		else:
 			symbol = self.scope.lookupSymbol(symbolName.content)
 		
@@ -362,7 +373,7 @@ class AnalyzerState:
 				if name.content == '_':
 					logError(self, name.span, '`_` is not a valid symbol name')
 					return None
-				elif type(symbol) == Mod or isinstance(symbol, TypeSymbol):
+				elif symbol.symbolType in (SymbolType.MOD, SymbolType.TYPE):
 					symbolName = name
 					if name.content not in symbol.symbolTable:
 						symbol = None
@@ -370,27 +381,27 @@ class AnalyzerState:
 					
 					parent = symbol
 					symbol = symbol.symbolTable[name.content]
-					if parent.extern and not symbol.pub:
+					if parent.isImport and not symbol.pub:
 						symbol = None
 				else:
 					logError(self, symbolName.span, '`{}` is not a module'.format(symbol.name))
 					return None
 		
-		if type(symbol) == AliasDecl:
-			assert symbol.symbol
-			symbol = symbol.symbol
+		# if type(symbol) == AliasDecl:
+		# 	assert symbol.symbol
+		# 	symbol = symbol.symbol
 		
 		if symbol == None:
 			logError(self, symbolName.span, 'cannot resolve the symbol `{}`'.format(symbolName.content))
 		elif inTypePosition and not inValuePosition:
-			if not isinstance(symbol, TypeSymbol) and type(symbol) != VariantDecl:
+			if symbol.symbolType not in (SymbolType.TYPE, SymbolType.VARIANT):
 				logError(self, symbolName.span, '`{}` is not a type'.format(symbolName.content))
 				symbol = None
 		elif inValuePosition and not inTypePosition:
-			if not isinstance(symbol, ValueSymbol) and type(symbol) != VariantDecl and type(symbol) != LocalSymbol:
-				if isinstance(symbol, TypeSymbol):
+			if symbol.symbolType not in (SymbolType.VALUE, SymbolType.VARIANT):
+				if symbol.symbolType == SymbolType.TYPE:
 					found = 'type reference'
-				elif type(symbol) == Mod:
+				elif symbol.symbolType == SymbolType.MOD:
 					found = 'module'
 				else:
 					assert 0

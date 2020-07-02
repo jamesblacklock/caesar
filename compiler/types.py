@@ -5,16 +5,16 @@ from .mir.coerce import Coerce
 
 PLATFORM_WORD_SIZE = 8
 
-class TypeSymbol(Symbol):
-	def __init__(self, nameAST=None, span=None, doccomment=None, 
-		name=None, byteSize=None, align=None, isDefinite=True, isEnumType=False, 
+class Type:
+	def __init__(self, name=None, span=None, symbol=None,
+		byteSize=None, align=None, isDefinite=True, isEnumType=False, 
 		isFnType=False, isPtrType=False, isStructType=False, isTraitType=False, 
 		isIntType=False, isIntLikeType=False, isFloatType=False, isOptionType=False, 
 		isPrimitiveType=False, isSigned=False, isArrayType=False, isOwnedType=False, 
-		isTupleType=False, isCompositeType=False, isUnknown=False, isTypeDef=False):
-		super().__init__(nameAST, span, doccomment)
-		if name:
-			self.name = name
+		isTupleType=False, isCompositeType=False, isUnknown=False):#, isTypeDef=False):
+		self.name = name
+		self.span = span
+		self.symbol = symbol
 		self.byteSize = byteSize
 		self.align = align
 		self.isDefinite = isDefinite
@@ -35,7 +35,7 @@ class TypeSymbol(Symbol):
 		self.isEnumType = isEnumType
 		self.isOwnedType = isOwnedType
 		self.isTraitType = isTraitType
-		self.isTypeDef = isTypeDef
+		# self.isTypeDef = isTypeDef
 		self.dropFn = None
 		self.symbolTable = {}
 		self.traitImpls = {}
@@ -47,6 +47,9 @@ class TypeSymbol(Symbol):
 	@property
 	def isUnsized(self):
 		return self.byteSize == None
+	
+	def updateName(self):
+		pass
 	
 	def canChangeTo(self, other):
 		if not self.isDefinite and self.isCompositeType and other.isCompositeType:
@@ -60,13 +63,10 @@ class TypeSymbol(Symbol):
 	def pretty(self, output, indent=0):
 		output.write(self.name, indent)
 
-class OwnedType(TypeSymbol):
-	def __init__(self, baseType, acquire, release, acquireSpan, releaseSpan):
-		name = 'owned({}, {}) {}'.format(
-			acquire.name if acquire else '<unknown>', 
-			release.name if release else '<unknown>', baseType.name)
+class OwnedType(Type):
+	def __init__(self, baseType, acquire, release, acquireSpan, releaseSpan, span):
 		super().__init__(
-			name=name, 
+			span=span, 
 			byteSize=baseType.byteSize, 
 			align=baseType.align, 
 			isOwnedType=True)
@@ -75,8 +75,14 @@ class OwnedType(TypeSymbol):
 		self.release = release
 		self.acquireSpan = acquireSpan
 		self.releaseSpan = releaseSpan
+	
+	def updateName(self):
+		self.baseType.updateName()
+		self.name = 'owned({}, {}) {}'.format(
+			self.acquire.name if self.acquire else '<unknown>', 
+			self.release.name if self.release else '<unknown>', self.baseType.name)
 
-class PrimitiveType(TypeSymbol):
+class PrimitiveType(Type):
 	def __init__(self, name, byteSize, isIntType=False, 
 		isIntLikeType=False, isFloatType=False, isSigned=False):
 		super().__init__(
@@ -89,7 +95,7 @@ class PrimitiveType(TypeSymbol):
 			isFloatType=isFloatType, 
 			isSigned=isSigned)
 
-class OptionType(TypeSymbol):
+class OptionType(Type):
 	def __init__(self, *types):
 		align = max(t.align for t in types)
 		name = '|'.join(t.name for t in types)
@@ -101,23 +107,25 @@ class OptionType(TypeSymbol):
 			isOptionType=True)
 		self.types = types
 
-class FnType(TypeSymbol):
+class FnType(Type):
 	def __init__(self, unsafe, params, returnType, cVarArgs, cconv):
-		name = '{}fn({}{}{}) -> {}'.format(
-			'unsafe ' if unsafe else '',
-			', '.join([t.type.name for t in params]), 
-			', ' if cVarArgs and len(params) > 0 else '',
-			'...' if cVarArgs else '',
-			returnType.name)
-		super().__init__(
-			name=name, 
-			isFnType=True)
+		super().__init__(isFnType=True)
 		self.unsafe = unsafe
 		self.returnType = returnType
 		self.returnTypeModifiers = TypeModifiers(False)
 		self.params = params
 		self.cVarArgs = cVarArgs
 		self.cconv = cconv
+	
+	def updateName(self):
+		for p in self.params: p.type.updateName()
+		self.returnType.updateName()
+		self.name = '{}fn({}{}{}) -> {}'.format(
+			'unsafe ' if self.unsafe else '',
+			', '.join([t.type.name for t in self.params]), 
+			', ' if self.cVarArgs and len(self.params) > 0 else '',
+			'...' if self.cVarArgs else '',
+			self.returnType.name)
 
 class FieldInfo:
 	def __init__(self, name, symbolType, offset, isUnionField=False):
@@ -126,15 +134,13 @@ class FieldInfo:
 		self.offset = offset
 		self.isUnionField = isUnionField
 
-class PtrType(TypeSymbol):
+class PtrType(Type):
 	def __init__(self, baseType, indLevel, mut):
-		name = '{}{}{}'.format('&' * indLevel, 'mut ' if mut else '', baseType.name)
 		isTraitPtr = baseType.isTraitType and indLevel == 1
 		byteSize=PLATFORM_WORD_SIZE * (2 if isTraitPtr else 1)
 		align=PLATFORM_WORD_SIZE * (2 if isTraitPtr else 1)
 		
 		super().__init__(
-			name=name, 
 			byteSize=byteSize, 
 			align=align, 
 			isIntLikeType=not isTraitPtr, 
@@ -147,6 +153,10 @@ class PtrType(TypeSymbol):
 				FieldInfo('$self', PtrType(Void, 1, mut), PLATFORM_WORD_SIZE), 
 				FieldInfo('$vtbl', PtrType(Void, 1, False), PLATFORM_WORD_SIZE)
 			]
+			self.fieldDict = {
+				self.fields[0].name: self.fields[0], 
+				self.fields[1].name: self.fields[1]
+			}
 		self.isTraitPtr = isTraitPtr
 		self.baseType = baseType
 		self.indLevel = indLevel
@@ -154,6 +164,10 @@ class PtrType(TypeSymbol):
 		self.MIN = 0
 		self.MAX = USZ_MAX
 		self.RNG = USZ_RNG
+	
+	def updateName(self):
+		self.baseType.updateName()
+		self.name = '{}{}{}'.format('&' * self.indLevel, 'mut ' if self.mut else '', self.baseType.name)
 	
 	def typeAfterDeref(self, count=1):
 		assert count > 0 and count <= self.indLevel
@@ -182,12 +196,10 @@ class ArrayFields:
 	def __len__(self):
 		return self.count
 
-class ArrayType(TypeSymbol):
+class ArrayType(Type):
 	def __init__(self, baseType, count):
-		name = '[{} * {}]'.format(baseType.name, count)
 		byteSize = getAlignedSize(baseType) * count
 		super().__init__(
-			name=name, 
 			byteSize=byteSize, 
 			align=baseType.align, 
 			isArrayType=True, 
@@ -197,8 +209,12 @@ class ArrayType(TypeSymbol):
 		self.fields = ArrayFields(baseType, count)
 		self.fieldDict = self.fields
 		self.anon = True
+	
+	def updateName(self):
+		self.baseType.updateName()
+		self.name = '[{} * {}]'.format(self.baseType.name, self.count)
 
-# class IndefiniteIntType(TypeSymbol):
+# class IndefiniteIntType(Type):
 # 	def __init__(self, initialValue):
 		
 # 		elif access.symbol.type.isIntLikeType and implicitType.isIntLikeType:
@@ -208,11 +224,11 @@ class ArrayType(TypeSymbol):
 
 SZ = PLATFORM_WORD_SIZE
 
-UnknownType = TypeSymbol(
-	name='<unknown>', 
-	byteSize=0, 
-	align=0, 
-	isUnknown=True)
+# UnknownType = Type(
+# 	name='<unknown>', 
+# 	byteSize=0, 
+# 	align=0, 
+# 	isUnknown=True)
 
 Void    = PrimitiveType('void',    0)
 Bool    = PrimitiveType('bool',    1)
@@ -325,7 +341,9 @@ def canAccommodate(type, intValue):
 		assert 0
 
 def typesMatch(type1, type2, selfType=None):
-	if type1 == type2 or not (type1 and type2) or type1.isUnknown or type2.isUnknown:
+	assert type1 and type2 and not (type1.isUnknown or type2.isUnknown)
+	
+	if type1 == type2:
 		return True
 	elif type1.isPtrType and type2.isPtrType:
 		if type1.indLevel != type2.indLevel:
@@ -453,10 +471,10 @@ def canCoerce(fromType, toType):
 		fromType = fromType.baseType
 		toType = toType.baseType
 	
-	while fromType.isTypeDef:
-		fromType = fromType.baseType
-	while toType.isTypeDef:
-		toType = toType.baseType
+	# while fromType.isTypeDef:
+	# 	fromType = fromType.baseType
+	# while toType.isTypeDef:
+	# 	toType = toType.baseType
 	
 	fromIsInt = fromType.isIntType or fromType in (Bool, Byte, Char)
 	toIsInt = toType.isIntType or toType in (Bool, Byte, Char)

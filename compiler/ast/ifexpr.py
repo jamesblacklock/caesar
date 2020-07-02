@@ -75,7 +75,7 @@ class If(AST):
 			tempSymbol = None
 			if ifAccess and elseAccess:
 				(tempSymbol, ifWrite, elseWrite) = accessmod.createTempSymbol(ifAccess, elseAccess)
-				state.analyzeNode(tempSymbol)
+				tempSymbol.declSymbol(state.scope)
 				state.pushMIR(ifBlock)
 				state.analyzeNode(ifWrite)
 				ifBlock = state.popMIR()
@@ -84,13 +84,13 @@ class If(AST):
 				elseBlock = state.popMIR()
 			elif ifAccess:
 				(tempSymbol, ifWrite) = accessmod.createTempSymbol(ifAccess)
-				state.analyzeNode(tempSymbol)
+				tempSymbol.declSymbol(state.scope)
 				state.pushMIR(ifBlock)
 				state.analyzeNode(ifWrite)
 				ifBlock = state.popMIR()
 			elif elseAccess:
 				(tempSymbol, elseWrite) = accessmod.createTempSymbol(elseAccess)
-				state.analyzeNode(tempSymbol)
+				tempSymbol.declSymbol(state.scope)
 				state.pushMIR(elseBlock)
 				state.analyzeNode(elseWrite)
 				elseBlock = state.popMIR()

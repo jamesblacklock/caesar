@@ -1,15 +1,15 @@
 from .ast               import AST
 from .                  import valueref
-from ..symbol           import enumdecl
 from ..mir              import access as accessmod
 from .tuplelit          import TupleLit
-from ..types            import TypeSymbol, Void
+from ..types            import Void, PtrType
 from ..log              import logError
 from ..mir.fncall       import FnCall as FnCallMIR
 from ..mir.createstruct import CreateStruct
 from ..mir.primitive    import IntValue
 from ..mir.access       import SymbolAccess
 from .address           import Address
+from ..symbol.symbol    import SymbolType
 
 class FnCall(AST):
 	def __init__(self, expr, args, span):
@@ -28,8 +28,8 @@ class FnCall(AST):
 				symbol = None
 				if name in selfArg.type.symbolTable:
 					symbol = selfArg.type.symbolTable[name]
-				if selfArg.type.extern and not symbol.pub:
-					symbol = None
+					if selfArg.type.symbol and selfArg.type.symbol.isImport and not symbol.pub:
+						symbol = None
 				if symbol == None:
 					logError(state, self.expr.span, 'cannot resolve the method `{}` for type `{}`'.format(name, selfArg.type))
 				else:
@@ -44,13 +44,17 @@ class FnCall(AST):
 			if symbol:
 				enumType = None
 				variant = None
-				if type(symbol) == enumdecl.VariantDecl and symbol.type:
+				tupType = None
+				if symbol.symbolType == SymbolType.VARIANT and symbol.type:
 					enumType = symbol.enumType
 					variant = symbol
-					symbol = symbol.type
-				if isinstance(symbol, TypeSymbol):
-					if symbol.isTupleType:
-						data = TupleLit(self.args, self.span, resolvedType=symbol)
+					tupType = variant.type
+				elif symbol.symbolType == SymbolType.TYPE:
+					tupType = symbol.type
+				
+				if tupType:
+					if tupType.isTupleType:
+						data = TupleLit(self.args, self.span, resolvedType=tupType)
 						if enumType:
 							return CreateStruct.create(state, enumType, self.span, [
 								CreateStruct.initStruct('$data', [
@@ -110,9 +114,14 @@ class FnCall(AST):
 				argFailed = True
 				continue
 			
-			if not arg.type.isPrimitiveType and not arg.type.isUnknown:
+			if not arg.type.isPrimitiveType:
 				if param == None and hasCVarArgs:
-					logError(state, arg.span, 'type {} cannot be used as a C variadic argument'.format(arg.type))
+					if arg.type.isPtrType:
+						if arg.type.isTraitPtr:
+							arg.type = PtrType(Void, 1, False)
+							arg.isFieldAccess = True
+					else:
+						logError(state, arg.span, 'type {} cannot be used as a C variadic argument'.format(arg.type))
 			
 			if arg.type.isPtrType and arg.typeModifiers and arg.typeModifiers.uninit:
 				if param:

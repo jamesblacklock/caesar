@@ -1,6 +1,6 @@
-from .ast              import AST, ValueSymbol
-from ..mir             import access as accessmod
-from ..mir.localsymbol import LocalSymbol
+from .ast           import AST, ValueSymbol
+from ..mir.access   import SymbolWrite
+from ..symbol.local import Local
 
 class CVarArgsParam(AST):
 	def __init__(self, span):
@@ -12,41 +12,34 @@ class LocalDecl(ValueSymbol):
 		self.mut = mut
 		self.dropFn = None
 	
-	def analyze(self, state, implicitType, dropBlock, isParam):
+	def createSymbol(self, state, isParam=True):
 		type = None
-		if self.typeRef:
+		if self.typeRef and not isParam:
 			type = state.resolveTypeRef(self.typeRef)
-		
-		name = None if self.name == '_' else self.name
-		symbol = LocalSymbol(name, type, self.mut, isParam, self.dropFn, self.nameSpan)
-		symbol.dropBlock = dropBlock
-		state.scope.declSymbol(symbol)
-		
-		return symbol
+		return Local(self, type, isParam)
 
 class FnParam(LocalDecl):
 	def __init__(self, name, typeRef, span):
 		super().__init__(name, typeRef, False, span)
 		# self.defaultExpr = defaultExpr
-		self.symbol = None
-	
-	def analyze(self, state, implicitType):
-		self.symbol = super().analyze(state, implicitType, state.scope.fnDecl.paramDropBlock, True)
 
 class LetDecl(LocalDecl):
 	def __init__(self, name, typeRef, mut, expr, span):
 		super().__init__(name, typeRef, mut, span)
 		self.expr = expr
 	
+	def createSymbol(self, state):
+		return super().createSymbol(state, False)
+	
 	def analyze(self, state, implicitType):
-		symbol = super().analyze(state, implicitType, state.scope.dropBlock, False)
-		state.mirBlock.append(symbol)
-		result = None
+		symbol = self.createSymbol(state)
 		if self.expr:
-			access = accessmod.SymbolWrite(self.expr, self.span, self.nameSpan)
+			access = SymbolWrite(self.expr, self.span, self.nameSpan)
 			access.symbol = symbol
 			access.rvalueImplicitType = symbol.type
 			state.analyzeNode(access)
 		
 		if symbol.type or symbol.dropFn:
 			symbol.checkDropFn(state)
+		
+		symbol.declSymbol(state.scope)

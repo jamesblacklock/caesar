@@ -19,7 +19,7 @@ def getImports(mod, imports=None):
 		imports = []
 	
 	for subMod in mod.mods:
-		if subMod.isImport:
+		if subMod.topLevel:
 			imports.append(subMod)
 		else:
 			getImports(subMod, imports)

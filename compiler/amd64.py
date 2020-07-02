@@ -1660,14 +1660,14 @@ def restoreReg(state, stack, reg):
 		Operand(reg, Usage.DEST), 
 		Operand(stack, Usage.SRC))
 
-def delcareExterns(mod, output):
+def declareExterns(mod, output):
 	for decl in mod.mods:
-		delcareExterns(decl, output)
+		declareExterns(decl, output)
 	
 	for decl in mod.fns:
 		if mod.isImport and not decl.pub:
 			continue
-		if decl.extern:
+		if decl.extern or decl.isImport:
 			output.write('extern {}\n'.format(decl.mangledName))
 
 def declareFns(mod, output):
@@ -1675,7 +1675,7 @@ def declareFns(mod, output):
 		declareFns(decl, output)
 	
 	for decl in mod.fns:
-		if decl.pub and not decl.extern:
+		if decl.pub and not (decl.extern or decl.isImport):
 			output.write('global {}\n'.format(decl.mangledName))
 
 def bytesDef(bytes):
@@ -1695,6 +1695,8 @@ def bytesDef(bytes):
 
 def defineStatics(mod, output):
 	for decl in mod.mods:
+		if decl.isImport:
+			continue
 		defineStatics(decl, output)
 	
 	for decl in mod.fns:
@@ -1706,25 +1708,29 @@ def defineStatics(mod, output):
 			output.write('\t{}:{}'.format(staticDef.label, bytes))
 	
 	for decl in mod.statics:
-		if decl.extern:
+		if decl.extern or decl.isImport or decl.isConst:
 			continue
 		
+		assert not decl.isImport
 		bytes = bytesDef(decl.staticValue.toBytes())
 		output.write('\t{}:{}'.format(decl.staticValue.label, bytes))
 	
-	if not mod.extern and mod.isImpl and mod.vtbl:
+	if not mod.isImport and mod.isImpl and mod.vtbl:
 		output.write('\t{}:\n'.format(mod.vtblName))
 		for name in mod.vtbl:
 			output.write('\t\tdq {}\n'.format(name))
 
 def defineFns(mod, output):
 	for decl in mod.mods:
+		if decl.isImport:
+			continue
 		defineFns(decl, output)
 	
 	for decl in mod.fns:
 		if decl.extern:
 			continue
 		
+		assert not decl.isImport
 		state = GeneratorState(decl.ir)
 		state.omitFramePointer = False
 		state.generateAsm(output)
@@ -1768,7 +1774,7 @@ def generateAsm(mod):
 		output.write('\nextern _start\n')
 		output.write('\nextern __libc_start_main\n')
 	
-	delcareExterns(mod, output)
+	declareExterns(mod, output)
 	
 	if mod.mainFn:
 		if platform.Linux:

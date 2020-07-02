@@ -1,10 +1,8 @@
-from enum             import Enum
-from .mir.drop        import DropSymbol
-from .log             import logError, logWarning, logExplain
-from .symbol          import staticdecl, enumdecl
-from .mir.localsymbol import LocalSymbol
-from .mir.fncall      import FnCall
-from .types           import PtrType, allFields
+from enum          import Enum
+from .mir.drop     import DropSymbol
+from .mir.fncall   import FnCall
+from .types        import PtrType, allFields
+from .log          import logError, logWarning, logExplain
 
 class ScopeType(Enum):
 	MOD = "MOD"
@@ -62,10 +60,10 @@ class SymbolInfo:
 		# 		if field.resolvedSymbolType.isStructType:
 		# 			addFieldInfo(field.resolvedSymbolType.fields, fieldExpr)
 		
-		if type(symbol) == staticdecl.StaticDecl or symbol.isParam:
+		if symbol.isStatic or symbol.isParam:
 			self.typeModifiers.uninit = False
 			self.maybeUninit = False
-		elif type(symbol) == LocalSymbol:
+		elif symbol.isLocal:
 			self.typeModifiers.uninit = True
 			self.maybeUninit = False
 			# if symbol.resolvedSymbolType.isCompositeType:
@@ -660,7 +658,7 @@ class Scope:
 		return symbol
 	
 	def loadSymbolInfo(self, symbol, clone=False):
-		assert type(symbol) in (LocalSymbol, staticdecl.StaticDecl)
+		assert symbol.isLocal or symbol.isStatic
 		scope = self
 		while scope != None:
 			if symbol in scope.symbolInfo:
@@ -668,13 +666,13 @@ class Scope:
 				return info.clone() if clone and scope != self else info
 			scope = scope.parent
 		
-		assert type(symbol) == staticdecl.StaticDecl
+		assert symbol.isStatic
 		info = SymbolInfo(symbol)
 		info.wasDeclared = False
 		return info
 	
 	def loadAndSaveSymbolInfo(self, symbol):
-		if type(symbol) not in (LocalSymbol, staticdecl.StaticDecl):
+		if not symbol.isLocal and not symbol.isStatic:
 			return None
 		
 		if symbol in self.symbolInfo:

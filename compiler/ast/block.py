@@ -40,7 +40,7 @@ class Block(AST):
 				
 				if expr.hasValue and not expr.hasBlockValue:
 					(tempSymbol, tempWrite) = accessmod.createTempSymbol(expr)
-					state.analyzeNode(tempSymbol)
+					tempSymbol.declSymbol(state.scope)
 					state.analyzeNode(tempWrite)
 				else:
 					state.analyzeNode(expr, Void)
@@ -58,22 +58,29 @@ class Block(AST):
 		if state.scope.type == ScopeType.FN:
 			# need to create a return
 			if not state.scope.didReturn:
-				if access and implicitType != Void:
+				if access and not implicitType.isVoidType:
 					ret = ctlflow.Return(access, lastDropBlock, access.span)
 					state.mirBlock.append(lastDropBlock)
 					state.analyzeNode(ret)
 					access.dropBlock = lastDropBlock
 				else:
+					if access and not access.type.isVoidType:
+						(tempSymbol, tempWrite) = accessmod.createTempSymbol(access)
+						tempSymbol.declSymbol(state.scope)
+						state.scope.dropBlock = lastDropBlock
+						state.analyzeNode(tempWrite)
+						state.scope.dropBlock = None
 					ret = ctlflow.Return(None, lastDropBlock, self.span)
 					state.mirBlock.append(lastDropBlock)
 					state.analyzeNode(ret)
+			
 			access = None
 			lastDropBlock = None
 		elif state.scope.type in (ScopeType.IF, ScopeType.ELSE):
 			# need to create a result
 			if not access and implicitType != Void and not (state.scope.didReturn or state.scope.didBreak):
 				(tempSymbol, tempWrite, tempRead) = accessmod.createTempTriple(VoidValue(self.span))
-				state.analyzeNode(tempSymbol)
+				tempSymbol.declSymbol(state.scope)
 				state.analyzeNode(tempWrite)
 				tempRead.type = Void
 				access = tempRead
@@ -83,7 +90,7 @@ class Block(AST):
 				# need to prepend a symbol before the block to write the result to
 				if access.type and not access.type.isVoidType:
 					(tempSymbol, tempWrite, tempRead) = accessmod.createTempTriple(access)
-					state.analyzeNode(tempSymbol)
+					tempSymbol.declSymbol(state.scope)
 					state.pushMIR(mirBlock)
 					state.analyzeNode(tempWrite)
 					mirBlock = state.popMIR()

@@ -63,8 +63,8 @@ class StrLit(AST):
 		if state.ast.noStrImport or implicitType and types.typesMatch(implicitType, bytePtrType):
 			return state.analyzeNode(label)
 		
-		StrType = state.strMod.symbolTable['str']
-		StrDataType = state.strMod.symbolTable['StrData']
+		StrType = state.strMod.symbolTable['str'].type
+		StrDataType = state.strMod.symbolTable['StrData'].type
 		
 		size = len(staticData.data)
 		tagValue = StrDataType.symbolTable['Static'].tag.data

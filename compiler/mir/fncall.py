@@ -43,7 +43,7 @@ class FnCall(MIR):
 			selfArg = self.args[0]
 			state.appendInstr(Imm(self, IPTR, IPTR.byteSize))
 			state.appendInstr(Field(self, len(self.args), IPTR))
-			index = 1 + selfArg.type.baseType.mod.decls.index(self.access.symbol)
+			index = 1 + selfArg.type.baseType.mod.symbols.index(self.access.symbol)
 			state.appendInstr(Imm(self, IPTR, IPTR.byteSize * index))
 			state.appendInstr(Add(self))
 			state.appendInstr(Deref(self, IPTR))

@@ -1,11 +1,10 @@
-from .ast              import AST, Contract
-from ..infixops        import InfixOps
-from ..symbol.enumdecl import VariantDecl
-from ..log             import logError
-from ..mir.primitive   import IntValue
-from ..mir.infix       import InfixOp
-from .field            import Field
-from ..types           import Bool
+from .ast            import AST, Contract
+from ..infixops      import InfixOps
+from ..log           import logError
+from ..mir.primitive import IntValue
+from ..mir.infix     import InfixOp
+from ..types         import Bool
+from ..symbol.symbol import SymbolType
 
 class IsExpr(AST):
 	def __init__(self, expr, pattern, span):
@@ -23,18 +22,13 @@ class IsExpr(AST):
 			return None
 		
 		enumType = access.type
-		variant = state.lookupSymbol(self.pattern.path, enumType.symbolTable, inTypePosition=True)
+		variant = state.lookupSymbol(self.pattern.path, enumType.symbolTable)
 		if variant == None:
 			return None
+		elif not variant.symbolType == SymbolType.VARIANT or not variant in enumType.symbolTable.values():
+			logError(state, access.span, '`{}` is not a variant of `{}`'.format(variant.name, enumType.name))
+			return None
 		
-		# assert type(variant) == VariantDecl
-		
-		# if type(self.expr) == Field:
-		# 	tagField = self.expr
-		# else:
-		# 	tagField = Field(self.expr, [], self.expr.span)
-		
-		# tagField.path.append(T('$tag', self.expr.span))
 		tagField = enumType.structType.fields[1]
 		access.ref = False
 		access.isFieldAccess = True

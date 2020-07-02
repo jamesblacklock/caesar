@@ -1,18 +1,21 @@
-from ..ast.ast import Symbol, Name
-from ..types   import TypeSymbol, typesMatch
+from ..ast.ast import Symbol, Name, Attr
+from .symbol   import SymbolType
+from ..types   import typesMatch
 from ..scope   import ScopeType
 from ..log     import logError, logExplain
+from .trait    import Trait
 
 class Mod(Symbol):
 	def __init__(self, name, doccomment, decls, span):
 		super().__init__(name, span, doccomment)
+		self.topLevel = False
 		self.decls = decls
-		self.types = []
+		# self.types = []
 		self.fns = []
 		self.mods = []
 		self.statics = []
-		self.consts = []
-		self.imports = []
+		# self.consts = []
+		# self.imports = []
 		self.mainFn = None
 		self.isImpl = False
 		self.isImport = False
@@ -21,58 +24,48 @@ class Mod(Symbol):
 		self.isStrMod = False
 		self.acquireDefault = None
 		self.releaseDefault = None
-	
-	def analyzeSig(self, state):
-		from .. import attrs
+		self.symbols = []
+		self.symbolTable = {}
 		
+		self.symbolType = SymbolType.MOD
+		self.ast = self
+	
+	def createSymbol(self, state):
+		return self
+	
+	def checkSig(self, state):
+		from .. import attrs
 		state.pushScope(ScopeType.MOD, self)
 		
 		attrs.invokeAttrs(state, self)
 		
-		for decl in self.decls:
-			attrs.invokeAttrs(state, decl)
-		
-		for decl in self.imports:
-			decl.analyzeSig(state, self)
-		
-		for decl in self.types:
-			decl.analyzeSig(state)
-		
-		for decl in self.fns:
-			decl.analyzeSig(state)
-		
-		for decl in self.statics:
-			decl.analyzeSig(state)
-		
-		for decl in self.consts:
-			decl.analyzeSig(state)
-		
-		for decl in self.mods:
-			if decl.isImport:
+		for symbol in self.symbols:
+			if symbol.isImport:
 				continue
-			decl.analyzeSig(state)
+			attrs.invokeAttrs(state, symbol.ast)
+		
+		for symbol in self.symbols:
+			if symbol.isImport:
+				continue
+			symbol.checkSig(state)
 		
 		self.acquireDefault = state.scope.acquireDefault
 		self.releaseDefault = state.scope.releaseDefault
 		
 		state.popScope()
 	
-	def analyze(self, state):
+	def analyze(self, state, deps):
 		state.pushScope(ScopeType.MOD, self)
 		
-		for decl in self.mods:
-			if decl.isImport:
+		deps.push(self)
+		for symbol in self.symbols:
+			if symbol.isImport:
 				continue
-			decl.analyze(state)
+			symbol.analyze(state, deps)
+		deps.pop()
 		
-		for decl in self.statics:
-			decl.analyze(state)
-		
-		for decl in self.consts:
-			decl.analyze(state)
-		
-		for decl in self.fns:
-			decl.analyze(state)
+		for fn in self.fns:
+			fn.analyzeBody(state)
 		
 		state.popScope()
 	
@@ -98,13 +91,22 @@ class Impl(Mod):
 		self.vtbl = None
 		self.vtblName = None
 	
-	def analyzeSig(self, state):
-		super().analyzeSig(state)
-		self.type = state.lookupSymbol(self.path, inTypePosition=True)
+	def checkSig(self, state):
+		super().checkSig(state)
+		
+		symbol = state.lookupSymbol(self.path, inTypePosition=True)
+		if symbol:
+			self.type = symbol.type
+		
 		if self.traitPath:
-			self.trait = state.lookupSymbol(self.traitPath, inTypePosition=True)
-			if self.trait:
-				if type(self.trait) == TraitDecl:
+			for symbol in self.symbols:
+				symbol.pub = True
+			
+			symbol = state.lookupSymbol(self.traitPath, inTypePosition=True)
+			if symbol:
+				self.trait = symbol.type
+			if self.trait and self.type:
+				if self.trait.isTraitType:
 					if self.trait in self.type.traitImpls:
 						otherImpl = self.type.traitImpls[self.trait]
 						logError(state, self.traitPath[-1].span, 
@@ -120,7 +122,7 @@ class Impl(Mod):
 					logError(state, self.traitPath[-1].span, '`{}` is not a trait'.format(self.trait.name))
 					self.trait = None
 	
-	def analyze(self, state):
+	def analyze(self, state, deps):
 		if not self.type:
 			return
 		
@@ -132,33 +134,33 @@ class Impl(Mod):
 			symbolTable = self.type.symbolTable
 		
 		if self.type:
-			for decl in self.decls:
-				if decl.name in symbolTable:
-					otherDecl = symbolTable[decl.name]
-					logError(state, decl.nameSpan, 'cannot redeclare `{}` as a different symbol'.format(decl.name))
-					logExplain(state, otherDecl.nameSpan, '`{}` previously declared here'.format(decl.name))
+			for symbol in self.symbols:
+				if symbol.name in symbolTable:
+					otherSymbol = symbolTable[symbol.name]
+					logError(state, symbol.nameSpan, 'cannot redeclare `{}` as a different symbol'.format(symbol.name))
+					logExplain(state, otherSymbol.nameSpan, '`{}` previously declared here'.format(symbol.name))
 					continue
 				
 				if traitSymbols:
-					decl.pub = True
+					symbol.pub = True
 					
-					if decl.name not in traitSymbols:
-						logError(state, decl.nameSpan, 'trait `{}` has no symbol `{}`'.format(self.trait.name, decl.name))
+					if symbol.name not in traitSymbols:
+						logError(state, symbol.nameSpan, 'trait `{}` has no symbol `{}`'.format(self.trait.name, symbol.name))
 					
-					traitSymbol = traitSymbols[decl.name]
-					del traitSymbols[decl.name]
-					if not typesMatch(decl.type, traitSymbol.type, selfType=self.type):
-						logError(state, decl.nameSpan, ('implementation of `{}` for trait `{}` ' + 
-							'does not match the type defined by the trait').format(decl.name, self.trait.name))
+					traitSymbol = traitSymbols[symbol.name]
+					del traitSymbols[symbol.name]
+					if not typesMatch(symbol.type, traitSymbol.type, selfType=self.type):
+						logError(state, symbol.nameSpan, ('implementation of `{}` for trait `{}` ' + 
+							'does not match the type defined by the trait').format(symbol.name, self.trait.name))
 				
-				symbolTable[decl.name] = decl
+				symbolTable[symbol.name] = symbol
 		
 		if traitSymbols:
 			assert 0
 			logError()
 			return
 		
-		super().analyze(state)
+		super().analyze(state, deps)
 		
 		if self.trait:
 			self.vtbl = []
@@ -167,22 +169,17 @@ class Impl(Mod):
 				self.vtbl.append(self.type.dropFn.mangledName)
 			else:
 				self.vtbl.append(0)
-			for symbol in self.trait.mod.decls:
+			for symbol in self.trait.mod.fns:
 				implFn = symbolTable[symbol.name]
 				self.vtbl.append(implFn.mangledName)
 
-class TraitDecl(TypeSymbol):
+class TraitDecl(Symbol):
 	def __init__(self, name, doccomment, pub, decls, span):
-		super().__init__(name, span, doccomment, isTraitType=True)
-		name = Name('$traitmod__' + self.name, self.nameSpan)
-		self.mod = Mod(name, None, decls, span)
+		# super().__init__(name, span, doccomment, isTraitType=True)
+		super().__init__(name, span, doccomment)
+		self.decls = decls
 		self.isDropTrait = False
 		self.pub = pub
 	
-	def analyzeSig(self, state):
-		self.symbolTable = self.mod.symbolTable
-		self.mod.analyzeSig(state)
-	
-	def analyze(self, state):
-		self.mod.analyze(state)
-
+	def createSymbol(self, state):
+		return Trait(self)

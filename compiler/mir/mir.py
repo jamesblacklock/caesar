@@ -90,19 +90,6 @@ class MIR:
 	def __str__(self):
 		assert 0
 
-class SymbolType(Enum):
-	MOD = 'MOD'
-	VALUE = 'VALUE'
-	# FN = 'FN'
-	TYPE = 'TYPE'
-	VARIANT = 'VARIANT'
-
-class Symbol(MIR):
-	def __init__(self, name, symbolType, span):
-		self.name = name
-		self.symbolType = symbolType
-		self.span = span
-
 def indent(str):
 	return '    ' + '\n    '.join(str.split('\n'))
 

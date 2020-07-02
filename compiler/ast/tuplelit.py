@@ -1,6 +1,6 @@
 from .ast               import AST
 from ..types            import Void, ArrayType, getAlignedSize
-from ..symbol.tupledecl import TupleDecl
+from ..symbol.tuple     import TupleType
 from ..mir.createstruct import CreateStruct, FieldInit
 from ..log              import logError
 from ..span             import Span
@@ -50,7 +50,7 @@ class TupleLit(AST):
 		resolvedType = implicitType
 		if resolvedType == None:
 			layout = state.generateFieldLayout([access.type for access in accesses])
-			resolvedType = TupleDecl.generateAnonTupleDecl(layout)
+			resolvedType = TupleType.generateAnonTupleType(layout)
 		
 		inits = []
 		for (access, field) in zip(accesses, resolvedType.fields):

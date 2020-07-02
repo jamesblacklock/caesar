@@ -1,15 +1,14 @@
-from .mir         import MIR, StaticDataType
-from ..ast        import deref, valueref, field, asgn, address
-from ..symbol     import staticdecl, fndecl
-from ..types      import typesMatch, tryPromote, getAlignedSize, PtrType, USize
-from ..           import ir
-from ..scope      import ScopeType
-from ..log        import logError
-from .localsymbol import LocalSymbol
-from .block       import createDropBlock
+from .mir           import MIR, StaticDataType
+from ..ast          import deref, valueref, field, asgn, address
+from ..types        import typesMatch, tryPromote, getAlignedSize, PtrType, USize
+from ..             import ir
+from ..scope        import ScopeType
+from ..log          import logError
+from ..symbol.local import Local
+from .block         import createDropBlock
 
 def createTempSymbol(*exprs):
-	symbol = LocalSymbol.createTemp(exprs[0].span)
+	symbol = Local.createTemp(exprs[0].span)
 	writes = []
 	for expr in exprs:
 		write = SymbolWrite(expr, expr.span)
@@ -49,7 +48,7 @@ class SymbolAccess(MIR):
 	@staticmethod
 	def read(state, expr):
 		(tempSymbol, tempWrite, tempRead) = createTempTriple(expr)
-		state.analyzeNode(tempSymbol)
+		tempSymbol.declSymbol(state.scope)
 		state.analyzeNode(tempWrite)
 		tempRead.type = tempSymbol.type
 		return tempRead
@@ -80,7 +79,7 @@ class SymbolAccess(MIR):
 			(tempSymbol, tempWrite, tempRead) = createTempTriple(access.rvalue)
 			
 			access.dropBeforeAssignBlock = createDropBlock(access)
-			state.analyzeNode(tempSymbol)
+			tempSymbol.declSymbol(state.scope)
 			state.analyzeNode(tempWrite)
 			state.mirBlock.append(access.dropBeforeAssignBlock)
 			tempRead.type = tempSymbol.type
@@ -178,7 +177,7 @@ class SymbolRead(SymbolAccess):
 	
 	def analyze(access, state, implicitType):
 		access.symbol.unused = False
-		if type(access.symbol) == staticdecl.StaticDecl:
+		if access.symbol.isStatic:
 			access.deref += 1
 		
 		if access.type == None:
@@ -191,14 +190,13 @@ class SymbolRead(SymbolAccess):
 		access.dropBlock = state.scope.dropBlock
 		access = tryPromote(state, access, implicitType)
 		
-		isCopyableDrop = type(access.symbol) == LocalSymbol and access.symbol.dropFn and \
-			access.type and access.type.isCopyable
+		isCopyableDrop = access.symbol.isLocal and access.symbol.dropFn and access.type and access.type.isCopyable
 		
 		if isCopyableDrop or access.isFieldAccess:
 			(symbol, write, read) = createTempTriple(access)
 			write.analyzeRValue = False
 			
-			state.analyzeNode(symbol)
+			symbol.declSymbol(state.scope)
 			state.analyzeNode(write)
 			read.type = write.type
 			access = read
@@ -213,20 +211,20 @@ class SymbolRead(SymbolAccess):
 		scope.accessSymbol(self)
 	
 	def writeIR(expr, state):
-		if expr.noop:
+		if expr.noop or expr.type.isVoidType:
 			return
 		
 		stackTop = False
-		if type(expr.symbol) in (staticdecl.StaticDecl, fndecl.FnDecl):
+		if expr.symbol.isStatic or expr.symbol.isFn:
 			assert not expr.addr
 			state.appendInstr(ir.Global(expr, ir.IPTR, expr.symbol.mangledName))
 			stackTop = True
-		elif type(expr.symbol) == staticdecl.ConstDecl:
+		elif expr.symbol.isConst:
 			assert not expr.addr
-			expr.symbol.expr.writeIR(state)
+			expr.symbol.mir.writeIR(state)
 			stackTop = True
 		else:
-			assert type(expr.symbol) == LocalSymbol
+			assert type(expr.symbol) == Local
 			# stackOffset = state.localOffset(expr.symbol)
 		
 		if expr.isFieldAccess:
@@ -317,7 +315,7 @@ class SymbolWrite(SymbolAccess):
 					logError(state, access.rvalue.span, 
 						'expected type {}, found {}'.format(access.type, access.rvalue.type))
 		
-		if type(access.symbol) == staticdecl.StaticDecl:
+		if access.symbol.isStatic:
 			access.deref += 1
 		
 		access.copy = access.deref != 0
@@ -340,10 +338,10 @@ class SymbolWrite(SymbolAccess):
 		scope.accessSymbol(self)
 	
 	def writeIR(expr, state):
-		assert type(expr.symbol) in (LocalSymbol, staticdecl.StaticDecl)
+		assert expr.symbol.isLocal or expr.symbol.isStatic
 		
 		stackTop = False
-		if type(expr.symbol) == staticdecl.StaticDecl:
+		if expr.symbol.isStatic:
 			state.appendInstr(ir.Global(expr, ir.IPTR, expr.symbol.mangledName))
 			stackTop = True
 		# else:
@@ -461,7 +459,7 @@ def _SymbolAccess__analyzeSymbolAccess(state, expr, access, implicitType=None):
 		
 		(tempSymbol, tempWrite) = createTempSymbol(addrExpr)
 		tempSymbol.reserve = True
-		state.analyzeNode(tempSymbol)
+		tempSymbol.declSymbol(state.scope)
 		state.analyzeNode(tempWrite)
 		
 		access.symbol = tempSymbol
@@ -474,7 +472,7 @@ def _SymbolAccess__analyzeSymbolAccess(state, expr, access, implicitType=None):
 		if type(expr.expr) != valueref.ValueRef:
 			(symbol, write) = createTempSymbol(expr.expr)
 			access.symbol = symbol
-			state.analyzeNode(symbol)
+			symbol.declSymbol(state.scope)
 			state.analyzeNode(write)
 			access.type = access.symbol.type
 		else:
@@ -491,7 +489,7 @@ def _SymbolAccess__analyzeSymbolAccess(state, expr, access, implicitType=None):
 		if derefCount > 0:
 			(symbol, write) = createTempSymbol(expr)
 			access.symbol = symbol
-			state.analyzeNode(symbol)
+			symbol.declSymbol(state.scope)
 			state.analyzeNode(write)
 			access.type = symbol.type
 			assert access.type == None or access.type.isPtrType and access.type.count == 1
@@ -588,6 +586,6 @@ def _SymbolAccess__analyzeSymbolAccess(state, expr, access, implicitType=None):
 	else:
 		(symbol, write) = createTempSymbol(expr)
 		access.symbol = symbol
-		state.analyzeNode(symbol)
+		symbol.declSymbol(state.scope)
 		state.analyzeNode(write)
 		access.type = access.symbol.type

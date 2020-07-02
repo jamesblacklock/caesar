@@ -35,7 +35,7 @@ class Return(AST):
 		self.expr = expr
 	
 	def analyze(self, state, implicitType):
-		expectedReturnType = state.scope.fnDecl.returnType
+		expectedReturnType = state.scope.fnDecl.type.returnType
 		returnType = Void
 		
 		access = None

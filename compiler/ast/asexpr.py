@@ -19,7 +19,7 @@ class AsExpr(AST):
 			return access
 		elif access.type.isOwnedType and not type.isOwnedType:
 			t = access.type
-			type = OwnedType(type, t.acquire, t.release, t.acquireSpan, t.releaseSpan)
+			type = OwnedType(type, t.acquire, t.release, t.acquireSpan, t.releaseSpan, type.span)
 		
 		if not canCoerce(access.type, type):
 			logError(state, self.span, 'cannot coerce from {} to {}'.format(access.type, type))

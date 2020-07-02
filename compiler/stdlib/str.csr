@@ -2,6 +2,7 @@
 
 import drop::Drop
 import libc::memcpy
+
 extern "C"
     @acquire_default fn malloc(size: usize) -> owned &mut byte
     @release_default fn free(buf: owned &byte)
