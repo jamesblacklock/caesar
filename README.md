@@ -46,3 +46,7 @@ Currently Linux x64 and macOS x64 targets are supported. Cross-compilation is no
 Building a program:
 
 	./caesar.py input_file.csr --bin program_name
+
+# Support the development of Caesar!
+
+Visit [patreon.com/caesardev](https://www.patreon.com/caesardev) for more info.
