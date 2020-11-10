@@ -58,6 +58,8 @@ class Type:
 		return False
 	
 	def __str__(self):
+		if self.name == None:
+			self.updateName()
 		return self.name
 	
 	def pretty(self, output, indent=0):

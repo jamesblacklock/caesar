@@ -24,7 +24,7 @@ fn sayHi(entity: &SayHi)
     entity^->sayHi
 
 fn main()
-    let dog = { name: "Lego", breed: "golden retriever" }
+    let dog = { name: "Lego", breed: str::concat(&"golden ", "retriever") }
     let man = Man { name: "James", dog: &dog }
     
     sayHi(&man)

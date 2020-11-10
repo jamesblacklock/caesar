@@ -11,9 +11,14 @@ enum StrData
     Static(&byte)
     Owned(owned &byte)
 
+# import libc::printf
+
 impl StrData: Drop fn drop(self: &mut StrData)
     if self^ is Owned
+    #   unsafe printf("dropping string: %s (dynamic)\n", borrow self^.0)
         unsafe free(self^.0)
+    # else
+    #     unsafe printf("dropping string: %s (static)\n", self^.0)
 
 pub struct str
     pub size: usize
