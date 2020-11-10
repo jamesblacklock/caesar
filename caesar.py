@@ -80,6 +80,14 @@ def main(args):
 		default=False,
 		help='execute the program immediately after compilation')
 	parser.add_argument(
+		'--link',
+		'-L',
+		nargs='*',
+		metavar='INPUT_FILE_NAME', 
+		action='store',
+		default=False, 
+		help='object code to link')
+	parser.add_argument(
 		'--sources',
 		'-f',
 		nargs='*',
@@ -224,6 +232,9 @@ def main(args):
 		if args.bin or args.run:
 			imports = getImports(mod)
 			allObjFileNames = list(objFileNames)
+			if args.link != False:
+				allObjFileNames.extend(args.link)
+			
 			for mod in imports:
 				allObjFileNames.append(mod.objCodePath)
 			

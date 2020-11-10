@@ -241,8 +241,7 @@ class GeneratorState:
 		self.intRegs = [
 			self.r11, self.r10, self.rdi, self.rsi, self.rdx, 
 			self.rcx,  self.r8, self.rbx, self.rbp, self.r12, 
-			self.r13, self.r14, self.r15,  self.r9, self.rax,
-			self.rbx, self.r12, self.r13, self.r14, self.r15
+			self.r13, self.r14, self.r15,  self.r9, self.rax
 		]
 		self.intArgRegs = [
 			self.rdi, self.rsi, self.rdx, self.rcx, self.r8, 
@@ -292,14 +291,15 @@ class GeneratorState:
 		calleeSaveList = list(self.calleeSave)
 		
 		if True:#self.settings.omitFramePointer:
-			self.sp += len(self.calleeSave) * 8
+			if self.calleeSave:
+				self.sp += (len(self.calleeSave) + 1) * 8
 			if self.sp % 16 == 0:
 				self.sp += 8
 			if self.sp > 0:
 				output.write('\t\tsub rsp, {}\n'.format(self.sp))
 			
 			for (i, reg) in enumerate(calleeSaveList):
-				output.write('\t\tmov [rsp + {}], {}\n'.format(self.sp - i*8, reg.q))
+				output.write('\t\tmov [rsp + {}], {}\n'.format(self.sp - (i+1)*8, reg.q))
 		
 		for instr in self.instr:
 			output.write(instr.render(self.sp))

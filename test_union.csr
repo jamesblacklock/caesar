@@ -1,6 +1,6 @@
 import libc::printf
 
-# # extern fn testStruct(a: Test)
+extern "C" fn testStruct(a: Test)
 
 struct Test
     m: float
@@ -36,7 +36,7 @@ unsafe fn main()
     let w = afaf({a: 71, b: (1,78)}.b.0, yy, {x: 17, y: 23, z: 34}, &{ty: 5})
     printf("returned from afaf: { x: %d, y: %d, z: %d }\n", w.x, w.y, w.z)
     
-    # testStruct({ m: 1.5, b: 3.0, x: 4.5 })
+    testStruct({ m: 1.5, b: 3.0, x: 4.5 })
 
 
 unsafe fn rrr(q: StructWithUnions, p: { a: int64, b: int }) -> { a: int64, b: int }

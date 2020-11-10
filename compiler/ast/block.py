@@ -58,13 +58,13 @@ class Block(AST):
 		if state.scope.type == ScopeType.FN:
 			# need to create a return
 			if not state.scope.didReturn:
-				if access and not implicitType.isVoidType:
+				if access and implicitType and not implicitType.isVoidType:
 					ret = ctlflow.Return(access, lastDropBlock, access.span)
 					state.mirBlock.append(lastDropBlock)
 					state.analyzeNode(ret)
 					access.dropBlock = lastDropBlock
 				else:
-					if access and not access.type.isVoidType:
+					if access and implicitType and not access.type.isVoidType:
 						(tempSymbol, tempWrite) = accessmod.createTempSymbol(access)
 						tempSymbol.declSymbol(state.scope)
 						state.scope.dropBlock = lastDropBlock
