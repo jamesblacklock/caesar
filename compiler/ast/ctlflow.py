@@ -53,6 +53,9 @@ class Return(AST):
 		
 		state.scope.didReturn = True
 		
-		dropBlock = createDropBlock(self)
+		# dropBlock = createDropBlock(self)
+		assert state.scope.dropBlock
+		dropBlock = state.scope.dropBlock
+		
 		state.mirBlock.append(dropBlock)
 		return ReturnMIR(access, dropBlock, self.span)

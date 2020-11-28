@@ -189,6 +189,11 @@ class Scope:
 					for block in info.dropInBlock:
 						self.dropSymbol(info.symbol, block)
 					for (lastUse, loopExpr) in info.lastUses.items():
+						# if info.symbol.isParam and lastUse.borrows:
+						# 	for borrow in lastUse.borrows:
+						# 		if borrow.symbol != info.symbol:
+						# 			logError(self.state, lastUse.span, 'error')
+						
 						if lastUse.ref:
 							if lastUse.borrows:
 								if lastUse.copy:
@@ -279,6 +284,18 @@ class Scope:
 	def doReturn(self, access, ret):
 		symbol = access.symbol if access else None
 		
+		if symbol:
+			info = self.loadSymbolInfo(symbol)
+			if info.borrows:
+				scopeErrCount = 0
+				for borrow in info.borrows:
+					if not borrow.symbol.isParam:
+						if scopeErrCount == 0:
+							logError(self.state, access.span, 'borrowed value escapes the function in which it was defined')
+						scopeErrCount += 1
+						countStr = '' if scopeErrCount < 2 else '({}) '.format(scopeErrCount)
+						logExplain(self.state, borrow.span, 'borrow {}originally occurred here'.format(countStr))
+		
 		self.didReturn = True
 		if self.type == ScopeType.FN:
 			return
@@ -332,10 +349,14 @@ class Scope:
 			scope = scope.parent
 	
 	def setLastUse(self, info, use, isRead):
-		if use.write and not (use.deref or use.isFieldAccess) and (not info.uninit or info.maybeUninit):
-			for (lastUse, loopExpr) in info.lastUses.items():
-				if lastUse.write and not lastUse.isFieldAccess and not lastUse.deref:
-					self.dropSymbol(info.symbol, lastUse.dropBlock)
+		if use.write and (use.isFieldAccess or not use.deref and (not info.uninit or info.maybeUninit)):
+			if use.isFieldAccess:
+				if use.field:
+					self.dropField(use.symbol, use.field, use.dropBeforeAssignBlock, use.span)
+			else:
+				for (lastUse, loopExpr) in info.lastUses.items():
+					if lastUse.write and not lastUse.isFieldAccess and not lastUse.deref:
+						self.dropSymbol(info.symbol, lastUse.dropBlock)
 		elif info.moved and info.symbol.type.isCopyable and \
 			(isRead or info.symbol.dropFn):
 			for lastUse in info.lastUses:
@@ -436,8 +457,9 @@ class Scope:
 		
 		if access.write:
 			if access.deref:
-				self.readSymbol(access, info)
-			self.writeSymbol(access, info)
+				self.derefWriteSymbol(access, info)
+			else:
+				self.writeSymbol(access, info)
 		elif access.addr:
 			self.addrSymbol(access, info)
 		else:
@@ -461,12 +483,6 @@ class Scope:
 		fieldSpan = expr.fieldSpan
 		isIndex = len(expr.dynOffsets) > 0
 		isField = expr.isFieldAccess
-		
-		# if symbol not in self.symbolInfo:
-		# 	assert type(symbol) in (staticdecl.ConstDecl, fndecl.FnDecl, enumdecl.VariantDecl)
-		# 	return
-		
-		# info = self.symbolInfo[symbol]
 		
 		if info.moved:
 			if not info.symbol.type.isCopyable:
@@ -504,24 +520,43 @@ class Scope:
 		elif isField:
 			if fieldInfo:
 				fieldInfo.moved = not field.type.isCopyable
+				fieldInfo.uninit = fieldInfo.moved
 		elif isIndex:
 			pass
 		else:
 			info.moved = not expr.copy
 			info.typeModifiers.uninit = info.moved
 	
-	def writeSymbol(self, expr, info, typeModifiers=None):
+	def derefWriteSymbol(self, expr, info):
+		self.readSymbol(expr, info)
+		
 		symbol = expr.symbol
+		isField = expr.isFieldAccess
 		field = expr.field
 		fieldSpan = expr.fieldSpan
 		isIndex = len(expr.dynOffsets) > 0
 		
-		# info = self.symbolInfo[symbol]
+		if symbol.type.isPtrType and not symbol.type.mut:
+			logError(self.state, expr.lvalueSpan, 'assignment target is not mutable')
 		
-		if expr.deref:
-			if symbol.type.isPtrType and not symbol.type.mut:
-				logError(self.state, expr.lvalueSpan, 'assignment target is not mutable')
-			return
+		if isField:
+			pass
+		else:
+			self.dropInd(symbol, expr.dropBeforeAssignBlock, expr.deref)
+		
+		# assert expr.borrows
+		# for borrow in expr.borrows:
+		# 	borrowInfo = self.loadAndSaveSymbolInfo(borrow.symbol)
+		# 	if borrowInfo == None:
+		# 		continue
+		# 	self.writeSymbol(borrow, borrowInfo)
+	
+	def writeSymbol(self, expr, info, typeModifiers=None):
+		symbol = expr.symbol
+		field = expr.field
+		isField = expr.isFieldAccess
+		fieldSpan = expr.fieldSpan
+		isIndex = len(expr.dynOffsets) > 0
 		
 		if info.borrows:
 			for borrow in info.borrows:
@@ -535,6 +570,12 @@ class Scope:
 			logError(self.state, expr.lvalueSpan, 'assignment target is not mutable')
 			return
 		elif isIndex or field:
+			if field not in info.fieldInfo:
+				fieldInfo = FieldInfo(field, False)
+				info.fieldInfo[field] = fieldInfo
+			else:
+				fieldInfo = info.fieldInfo[field]
+			
 			if info.moved:
 				if not info.symbol.type.isCopyable:
 					maybeText = 'may have' if info.maybeMoved else 'has'
@@ -558,15 +599,16 @@ class Scope:
 		info.moved = False
 		info.maybeMoved = False
 		
-		if field:
-			pass
-			# info.fieldInfo[field].uninit = False
+		if isField:
+			if fieldInfo:
+				fieldInfo.moved = False
+				fieldInfo.uninit = False
 		elif isIndex:
 			pass
 		else:
 			info.typeModifiers.uninit = False
 	
-	def callDropFn(self, dropFn, symbol, field, fieldBase, exprs, span):
+	def callDropFn(self, dropFn, symbol, field, fieldBase, exprs, span, indLevel=0):
 		from .mir.access import SymbolRead
 		symbol.fixed = True
 		
@@ -579,9 +621,16 @@ class Scope:
 		# take the address of the symbol/field
 		ptr = SymbolRead(span)
 		ptr.symbol = symbol
-		ptr.addr = True
+		
+		if indLevel == 0:
+			ptr.addr = True
+		else:
+			ptr.copy = True
+			if indLevel > 1:
+				ptr.deref = indLevel - 1
+		
 		if field:
-			ptr.isFieldAccess = True
+			ptr.isFieldAccess = True if indLevel == 0 else False
 			ptr.staticOffset = fieldBase + field.offset
 			ptr.type = PtrType(field.type, 1, True)
 		else:
@@ -591,8 +640,9 @@ class Scope:
 		fnCall = FnCall(fnRef, [ptr], [], False, fnRef.type.returnType, span, isDrop=True)
 		exprs.append(fnCall)
 	
-	def dropEnum(self, symbol, field, fieldBase, exprs, span):
-		t = field.type if field else symbol.type
+	def dropEnum(self, symbol, field, fieldBase, exprs, span, indLevel=0):
+		symbolType = symbol.type.typeAfterDeref(indLevel) if indLevel > 0 else symbol.type
+		t = field.type if field else symbolType
 		assert t.isEnumType
 		parentDropFn = field.type.dropFn if field else symbol.dropFn
 		
@@ -607,12 +657,26 @@ class Scope:
 						logWarning(state, symbol.span, 
 							'I can\'t drop `enum`s properly; field `{}` will not be dropped'.format(field.name))
 	
-	def dropFields(self, symbol, field, fieldBase, exprs, span):
-		t = field.type if field else symbol.type
+	def dropField(self, symbol, field, block, span):
+		fieldInfo = self.symbolInfo[symbol].fieldInfo
+		if field not in fieldInfo or not fieldInfo[field].uninit:
+			if field.type.isOwnedType:
+				logError(self.state, symbol.span, 
+					'owned value in field `{}` was not discarded'.format(field.name))
+				logExplain(self.state, span, 'value escapes here')
+			
+			if field.type.dropFn:
+				self.callDropFn(field.type.dropFn, symbol, field, fieldBase, block.exprs, span)
+			
+			self.dropFields(symbol, field, field.offset, block.exprs, span)
+	
+	def dropFields(self, symbol, field, fieldBase, exprs, span, indLevel=0):
+		symbolType = symbol.type.typeAfterDeref(indLevel) if indLevel > 0 else symbol.type
+		t = field.type if field else symbolType
 		parentDropFn = field.type.dropFn if field else symbol.dropFn
 		
 		if t.isEnumType:
-			self.dropEnum(symbol, field, fieldBase, exprs, span)
+			self.dropEnum(symbol, field, fieldBase, exprs, span, indLevel)
 			return
 		elif not t.isCompositeType:
 			return
@@ -626,9 +690,9 @@ class Scope:
 					logExplain(self.state, span.endSpan(), 'value escapes here')
 				
 				if field.type.dropFn:
-					self.callDropFn(field.type.dropFn, symbol, field, fieldBase, exprs, span)
+					self.callDropFn(field.type.dropFn, symbol, field, fieldBase, exprs, span, indLevel)
 				
-				self.dropFields(symbol, field, fieldBase + field.offset, exprs, span)
+				self.dropFields(symbol, field, fieldBase + field.offset, exprs, span, indLevel)
 	
 	def dropSymbol(self, symbol, block):
 		exprs = []
@@ -643,6 +707,20 @@ class Scope:
 		self.dropFields(symbol, None, 0, exprs, block.span)
 		
 		exprs.append(DropSymbol(symbol, block.span))
+		block.exprs[:0] = exprs
+	
+	def dropInd(self, symbol, block, indLevel):
+		exprs = []
+		
+		# if symbol.type.isOwnedType:
+		# 	logError(self.state, symbol.span, 'owned value was not discarded')
+		# 	logExplain(self.state, block.span.endSpan(), 'value escapes here')
+		
+		if symbol.type.baseType.dropFn:
+			self.callDropFn(symbol.type.baseType.dropFn, symbol, None, 0, exprs, block.span, indLevel=indLevel)
+		
+		self.dropFields(symbol, None, 0, exprs, block.span, indLevel=indLevel)
+		
 		block.exprs[:0] = exprs
 	
 	def lookupSymbol(self, name):
@@ -666,10 +744,12 @@ class Scope:
 				return info.clone() if clone and scope != self else info
 			scope = scope.parent
 		
-		assert symbol.isStatic
-		info = SymbolInfo(symbol)
-		info.wasDeclared = False
-		return info
+		if symbol.isStatic:
+			info = SymbolInfo(symbol)
+			info.wasDeclared = False
+			return info
+		else:
+			return None
 	
 	def loadAndSaveSymbolInfo(self, symbol):
 		if not symbol.isLocal and not symbol.isStatic:
@@ -679,7 +759,8 @@ class Scope:
 			return self.symbolInfo[symbol]
 		
 		info = self.loadSymbolInfo(symbol, clone=True)
-		self.symbolInfo[symbol] = info
+		if info:
+			self.symbolInfo[symbol] = info
 		
 		return info
 	

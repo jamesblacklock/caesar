@@ -1336,9 +1336,13 @@ def parseValueExprOrAsgn(state):
 		state.skipSpace()
 		
 		lvalue = expr
-		rvalue = parseValueExpr(state)
+		span = lvalue.span
 		
-		expr = Asgn(lvalue, rvalue, infixOp, opTok.span, Span.merge(lvalue.span, rvalue.span))
+		rvalue = parseValueExpr(state)
+		if rvalue != None:
+			span = Span.merge(span, rvalue.span)
+		
+		expr = Asgn(lvalue, rvalue, infixOp, opTok.span, span)
 	
 	return expr
 

@@ -70,6 +70,9 @@ class Fn(ValueSymbol):
 		for param in self.type.params:
 			param.declSymbol(state.scope)
 		
+		alreadyFailed = state.failed
+		state.failed = False    # need to know if failure occurred within this function 
+		
 		state.analyzeNode(self.ast.body, self.type.returnType)
 		self.mirBody = state.popScope()
 		
@@ -79,6 +82,7 @@ class Fn(ValueSymbol):
 			# if self.isDropFnForType:
 			# 	self.checkDropFnScope(state)
 		
+		state.failed = state.failed or alreadyFailed
 		# print(self)
 	
 	def checkDropFnScope(self, state):

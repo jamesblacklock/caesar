@@ -75,11 +75,12 @@ class SymbolAccess(MIR):
 		
 		__analyzeSymbolAccess(state, expr, access, implicitType)
 		
-		if access.write and access.symbol and access.symbol.dropFn:
+		if access.write and access.symbol and (access.symbol.dropFn or access.deref or access.isFieldAccess):
 			(tempSymbol, tempWrite, tempRead) = createTempTriple(access.rvalue)
 			
 			access.dropBeforeAssignBlock = createDropBlock(access)
 			tempSymbol.declSymbol(state.scope)
+			tempWrite.rvalueImplicitType = access.type
 			state.analyzeNode(tempWrite)
 			state.mirBlock.append(access.dropBeforeAssignBlock)
 			tempRead.type = tempSymbol.type
@@ -435,6 +436,9 @@ def _SymbolAccess__analyzeSymbolAccess(state, expr, access, implicitType=None):
 		if implicitType and implicitType.isPtrType:
 			implicitType = implicitType.typeAfterDeref()
 		_SymbolAccess__analyzeSymbolAccess(state, expr.expr, access, implicitType)
+		
+		if access.symbol.type == None:
+			logError(state, expr.expr.span, 'cannot take address of `{}`: its type is unknown'.format(access.symbol.name))
 		
 		addrExpr = access.moveToClone()
 		
