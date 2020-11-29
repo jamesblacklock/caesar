@@ -384,6 +384,7 @@ class AnalyzerState:
 					symbol = symbol.symbolTable[name.content]
 					if not symbol.pub:# and parent.isImport:
 						symbol = None
+						break
 				else:
 					logError(self, symbolName.span, '`{}` is not a module'.format(symbol.name))
 					return None

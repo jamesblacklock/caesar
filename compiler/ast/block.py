@@ -81,6 +81,7 @@ class Block(AST):
 			if not access and implicitType != Void and not (state.scope.didReturn or state.scope.didBreak):
 				(tempSymbol, tempWrite, tempRead) = accessmod.createTempTriple(VoidValue(self.span))
 				tempSymbol.declSymbol(state.scope)
+				state.scope.dropBlock = lastDropBlock
 				state.analyzeNode(tempWrite)
 				tempRead.type = Void
 				access = tempRead

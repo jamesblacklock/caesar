@@ -57,16 +57,17 @@ class If(AST):
 		elif typesMatch(ifType, elseType):
 			type = ifType
 		else:
-			ifAccess = tryPromote(state, ifAccess, elseType)
-			ifType = ifAccess.type
+			type = Void
+			# ifAccess = tryPromote(state, ifAccess, elseType)
+			# ifType = ifAccess.type
 			
-			elseAccess = tryPromote(state, elseAccess, ifType)
-			elseType = elseAccess.type
+			# elseAccess = tryPromote(state, elseAccess, ifType)
+			# elseType = elseAccess.type
 			
-			if not typesMatch(ifType, elseType):
-				type = OptionType(ifType, elseType)
-				ifAccess = tryPromote(state, ifAccess, ifType)
-				elseAccess = tryPromote(state, elseAccess, ifType)
+			# if not typesMatch(ifType, elseType):
+			# 	type = OptionType(ifType, elseType)
+			# 	ifAccess = tryPromote(state, ifAccess, ifType)
+			# 	elseAccess = tryPromote(state, elseAccess, ifType)
 		
 		result = None
 		if type != Void:
