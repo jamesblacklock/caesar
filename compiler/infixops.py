@@ -20,8 +20,8 @@ class InfixOps(Enum):
 	LESS = '<'
 	GREATEREQ = '>='
 	LESSEQ = '<='
-	AND = '&&'
-	OR = '||'
+	AND = 'and'
+	OR = 'or'
 
 CMP_OPS = (
 	InfixOps.EQ,

@@ -4,7 +4,7 @@ from enum            import Enum
 from .token          import TokenType
 from .span           import Span
 from .log            import logError
-from .infixops       import InfixOps
+from .infixops       import InfixOps, LOGIC_OPS
 from .ast.sign       import Sign
 from .ast.structdecl import FieldDecl, StructDecl, UnionFields
 from .ast.tupledecl  import TupleDecl
@@ -25,6 +25,7 @@ from .ast.localdecl  import LetDecl, FnParam, CVarArgsParam
 from .ast.asgn       import Asgn
 from .ast.ifexpr     import If
 from .ast.infix      import InfixOp
+from .ast.logic      import LogicOp
 from .ast.valueref   import ValueRef, Borrow
 from .ast.field      import Index, Field
 from .ast.deref      import Deref
@@ -954,7 +955,11 @@ def parseInfixOps(state, l, mustIndent, spaceAroundOp):
 		return parseMethodCall(state, l, r)
 	else:
 		span = Span.merge(l.span, r.span)
-		return InfixOp(l, r, opTok.toInfixOp(), opTok.span, span)
+		op = opTok.toInfixOp()
+		if op in LOGIC_OPS:
+			return LogicOp(l, r, op, opTok.span, span)
+		else:
+			return InfixOp(l, r, op, opTok.span, span)
 
 class Path:
 	def __init__(self, path, span):

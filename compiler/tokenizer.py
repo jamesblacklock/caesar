@@ -171,8 +171,6 @@ def lexOperator(state):
 		('-=', TokenType.MINUSASGN),
 		('>=', TokenType.GREATEREQ),
 		('<=', TokenType.LESSEQ),
-		('&&', TokenType.AND),
-		('||', TokenType.OR),
 		('==', TokenType.EQ),
 		('!=', TokenType.NEQ),
 		('->', TokenType.ARROW),
@@ -342,7 +340,9 @@ def lexNameOrKeyword(state):
 		('offsetof', TokenType.OFFSETOF),
 		('void', TokenType.VOID),
 		('true', TokenType.TRUE),
-		('false', TokenType.FALSE)
+		('false', TokenType.FALSE),
+		('and', TokenType.AND),
+		('or', TokenType.OR)
 	]
 	
 	for (kw, type) in keywords:
