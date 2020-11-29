@@ -326,8 +326,9 @@ class AnalyzerState:
 			isUnionField = f.unionField if f else False
 			noOffset     =   f.noOffset if f else False
 			pub          =        f.pub if f else True
+			mut          =        f.mut if f else True
 			
-			fields.append(FieldInfo(n, t, offset, isUnionField, pub))
+			fields.append(FieldInfo(n, t, offset, isUnionField, pub, mut))
 			
 			if noOffset:
 				unionSize = max(unionSize, t.byteSize)

@@ -2,5 +2,5 @@ import libc::printf
 
 fn main()
     let cond = 2*2 > 14 or 1 == 1 and 4 <= 5
-    unsafe printf("%d %s\n", cond, if cond { "true" } else { "false" } as &byte)
+    unsafe printf("%d %s\n", cond, if cond { "true" } else { "false" })
     

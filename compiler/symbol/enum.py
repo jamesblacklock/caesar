@@ -53,7 +53,7 @@ class Enum(Symbol):
 				state.finishResolvingType(v.type)
 				fieldTypes.append(v.type)
 				fieldNames.append('$' + v.name)
-				fieldInfo.append(UnionLitFieldInfo(False))
+				fieldInfo.append(UnionLitFieldInfo(False, False))
 		
 		if len(fieldTypes) > 0:
 			layout = state.generateFieldLayout(fieldTypes, fieldNames, fieldInfo)

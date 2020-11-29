@@ -315,10 +315,15 @@ def parseFieldDecl(state, isUnion):
 		return UnionFields(unionFields.list, Span.merge(span, unionFields.span))
 	
 	pub = False
+	mut = False
 	if state.tok.type == TokenType.PUB:
 		pub = True
 		state.advance()
 		state.skipSpace()
+		if state.tok.type == TokenType.MUT:
+			mut = True
+			state.advance()
+			state.skipSpace()
 	
 	if expectType(state, TokenType.NAME) == False:
 		return None
@@ -348,7 +353,7 @@ def parseFieldDecl(state, isUnion):
 	# if not onOneLine:
 	# 	state.popIndentLevel()
 	
-	fieldDecl = FieldDecl(name, typeRef, pub, span)
+	fieldDecl = FieldDecl(name, typeRef, pub, mut, span)
 	fieldDecl.attrs = fieldAttrs
 	return fieldDecl
 

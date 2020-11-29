@@ -130,12 +130,13 @@ class FnType(Type):
 			self.returnType.name)
 
 class FieldInfo:
-	def __init__(self, name, symbolType, offset, isUnionField=False, pub=True):
+	def __init__(self, name, symbolType, offset, isUnionField=False, pub=True, mut=True):
 		self.name = name
 		self.type = symbolType
 		self.offset = offset
 		self.isUnionField = isUnionField
 		self.pub = pub
+		self.mut = mut
 
 class PtrType(Type):
 	def __init__(self, baseType, indLevel, mut):

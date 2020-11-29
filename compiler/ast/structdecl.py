@@ -7,7 +7,7 @@ class UnionFields(AST):
 		self.fieldDecls = fields
 
 class FieldDecl(AST):
-	def __init__(self, name, typeRef, pub, span):
+	def __init__(self, name, typeRef, pub, mut, span):
 		super().__init__(span)
 		self.nameSpan = name.span
 		self.name = name.content
@@ -17,6 +17,7 @@ class FieldDecl(AST):
 		self.unionField = False
 		self.noOffset = False
 		self.pub = pub
+		self.mut = mut
 
 class StructDecl(Symbol):
 	def __init__(self, name, isUnion, doccomment, fields, pub, span):

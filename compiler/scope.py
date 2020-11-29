@@ -222,7 +222,7 @@ class Scope:
 										self.dropSymbol(info.symbol, br.dropBlock)
 							else:
 								self.dropSymbol(info.symbol, lastUse.dropBlock)
-			elif not (self.didReturn or self.didBreak) or info.didDropInBlock:
+			elif not self.didReturn or info.didDropInBlock:
 				outerSymbolInfo[info.symbol] = info
 		
 		if self.type in (ScopeType.IF, ScopeType.ELSE):
@@ -288,7 +288,7 @@ class Scope:
 					continue
 				
 				parentInfo = self.parent.loadSymbolInfo(info.symbol)
-				if not parentInfo.moved:
+				if not (parentInfo.moved or info.symbol.type.isCopyable):
 					logError(self.state, list(info.lastUses)[0].span, 
 						'value was moved out; `{}` must be reinitialized before next loop iteration'.format(info.symbol.name))
 		
@@ -600,7 +600,7 @@ class Scope:
 		
 		info.borrows = expr.rvalue.borrows
 		
-		if not symbol.mut and not info.uninit:
+		if not symbol.mut and (not info.uninit or info.moved):
 			logError(self.state, expr.lvalueSpan, 'assignment target is not mutable')
 			return
 		elif isIndex or field:

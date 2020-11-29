@@ -21,7 +21,7 @@ unsafe fn main(argc: usize, argv: &&byte)
 		exit(1)
 	
 	printf("raw args:\n")
-	let o=0usz
+	let mut o=0usz
 	while o < argc
 		printf("   %s\n", (argv+o)^)
 		o = o+1

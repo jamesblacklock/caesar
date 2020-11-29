@@ -14,10 +14,11 @@ class FieldLit(AST):
 		self.expr = expr
 
 class UnionLitFieldInfo:
-	def __init__(self, pub):
+	def __init__(self, pub, mut):
 		self.noOffset = True
 		self.unionField = True
 		self.pub = pub
+		self.mut = mut
 
 class StructLit(AST):
 	def __init__(self, typeRef, isUnion, fields, span):
@@ -48,22 +49,21 @@ class StructLit(AST):
 					implicitType = None
 		
 		fieldDict =  None
-		if implicitType:
-			if implicitType.isStructType:
-				fieldDict = implicitType.fieldDict
-			else:
-				implicitType = None
-		
-		if implicitType.symbol.hasPrivateFields:
-			symbolScope = implicitType.symbol.scope
-			scope = state.scope
-			while True:
-				if scope.mod == symbolScope.mod:
-					break
-				scope = scope.parent
-				if scope == None:
-					logError(state, self.span, 'cannot construct type `{}` because it has private fields'.format(implicitType.name))
-					break
+		if implicitType and implicitType.isStructType:
+			fieldDict = implicitType.fieldDict
+			
+			if implicitType.symbol.hasPrivateFields:
+				symbolScope = implicitType.symbol.scope
+				scope = state.scope
+				while True:
+					if scope.mod == symbolScope.mod:
+						break
+					scope = scope.parent
+					if scope == None:
+						logError(state, self.span, 'cannot construct type `{}` because it has private fields'.format(implicitType.name))
+						break
+		else:
+			implicitType = None
 		
 		fieldFailed = False
 		initFields = {}
@@ -105,7 +105,7 @@ class StructLit(AST):
 			
 			fieldInfo = None
 			if self.isUnion:
-				fieldInfo = [UnionLitFieldInfo(f.pub) for f in self.fields]
+				fieldInfo = [UnionLitFieldInfo(f.pub, f.mut) for f in self.fields]
 			layout = state.generateFieldLayout(fieldTypes, fieldNames, fieldInfo)
 			resolvedType = StructType.generateAnonStructType(layout)
 		

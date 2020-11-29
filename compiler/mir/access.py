@@ -543,7 +543,8 @@ def _SymbolAccess__analyzeSymbolAccess(state, expr, access, implicitType=None):
 			
 			fieldInfo = t.fieldDict[fieldName.content]
 			
-			if not fieldInfo.pub:
+			pub = (fieldInfo.pub and fieldInfo.mut) if access.write else fieldInfo.pub
+			if not pub:
 				symbolScope = t.symbol.scope
 				scope = state.scope
 				while True:
@@ -551,7 +552,10 @@ def _SymbolAccess__analyzeSymbolAccess(state, expr, access, implicitType=None):
 						break
 					scope = scope.parent
 					if scope == None:
-						logError(state, fieldName.span, 'field `{}` is private'.format(fieldName.content))
+						if access.write and fieldInfo.pub:
+							logError(state, fieldName.span, 'field `{}` is read-only'.format(fieldName.content))
+						else:
+							logError(state, fieldName.span, 'field `{}` is private'.format(fieldName.content))
 						break
 			
 			offset += fieldInfo.offset
