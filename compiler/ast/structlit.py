@@ -14,10 +14,10 @@ class FieldLit(AST):
 		self.expr = expr
 
 class UnionLitFieldInfo:
-	def __init__(self):
+	def __init__(self, pub):
 		self.noOffset = True
 		self.unionField = True
-		self.pub = True
+		self.pub = pub
 
 class StructLit(AST):
 	def __init__(self, typeRef, isUnion, fields, span):
@@ -105,7 +105,7 @@ class StructLit(AST):
 			
 			fieldInfo = None
 			if self.isUnion:
-				fieldInfo = [UnionLitFieldInfo() for _ in self.fields]
+				fieldInfo = [UnionLitFieldInfo(f.pub) for f in self.fields]
 			layout = state.generateFieldLayout(fieldTypes, fieldNames, fieldInfo)
 			resolvedType = StructType.generateAnonStructType(layout)
 		
