@@ -2,7 +2,7 @@ from .ast               import AST
 from .                  import valueref
 from ..mir              import access as accessmod
 from .tuplelit          import TupleLit
-from ..types            import Void, PtrType
+from ..types            import Void, PtrType, Byte
 from ..log              import logError
 from ..mir.fncall       import FnCall as FnCallMIR
 from ..mir.createstruct import CreateStruct
@@ -105,7 +105,7 @@ class FnCall(AST):
 		argFailed = False
 		isSelfArg = self.isMethodCall
 		for (param, arg) in zip(params, self.args):
-			expectedType = param.type if param else None
+			expectedType = param.type if param else PtrType(Byte, 1, False)
 			if isSelfArg:
 				arg = selfArg
 				isSelfArg = False
@@ -130,7 +130,8 @@ class FnCall(AST):
 					assert cVarArgs
 					logError(state, arg.span, 'reference to uninit symbol passed as C variadic argument')
 			
-			arg = state.typeCheck(arg, expectedType)
+			if param:
+				arg = state.typeCheck(arg, expectedType)
 			args.append(arg)
 		
 		cVarArgs = []

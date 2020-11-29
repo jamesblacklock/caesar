@@ -542,6 +542,18 @@ def _SymbolAccess__analyzeSymbolAccess(state, expr, access, implicitType=None):
 				return
 			
 			fieldInfo = t.fieldDict[fieldName.content]
+			
+			if not fieldInfo.pub:
+				symbolScope = t.symbol.scope
+				scope = state.scope
+				while True:
+					if scope.mod == symbolScope.mod:
+						break
+					scope = scope.parent
+					if scope == None:
+						logError(state, fieldName.span, 'field `{}` is private'.format(fieldName.content))
+						break
+			
 			offset += fieldInfo.offset
 			t = fieldInfo.type
 		

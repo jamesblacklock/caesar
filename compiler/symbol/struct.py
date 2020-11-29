@@ -10,12 +10,14 @@ class Struct(Symbol):
 		self.types = None
 		self.fieldNames = None
 		self.fieldDecls = None
+		self.scope = None
 	
 	@property
 	def symbolTable(self):
 		return self.type.symbolTable
 	
 	def checkSig(self, state):
+		self.scope = state.scope
 		self.fieldDecls = self.ast.flattenedFieldDecls()
 		declaredFields = {}
 		fieldNames = []

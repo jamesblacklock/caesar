@@ -17,6 +17,7 @@ class UnionLitFieldInfo:
 	def __init__(self):
 		self.noOffset = True
 		self.unionField = True
+		self.pub = True
 
 class StructLit(AST):
 	def __init__(self, typeRef, isUnion, fields, span):
@@ -31,19 +32,20 @@ class StructLit(AST):
 		if self.typeRef:
 			variants = implicitType.symbolTable if implicitType and implicitType.isEnumType else None
 			symbol = state.lookupSymbol(self.typeRef.path, variants, inTypePosition=True)
-			if symbol.symbolType == SymbolType.VARIANT:
-				variant = symbol
-				enumType = variant.enumType
-				implicitType = variant.type
-			else:
-				implicitType = symbol.type
-				if implicitType.isUnknown:
+			if symbol:
+				if symbol.symbolType == SymbolType.VARIANT:
+					variant = symbol
+					enumType = variant.enumType
+					implicitType = variant.type
+				else:
+					implicitType = symbol.type
+					if implicitType.isUnknown:
+						implicitType = None
+				
+				if implicitType and not implicitType.isStructType:
+					span = self.path[-1].span if self.path else self.span
+					logError(state, span, 'type `{}` is not a struct type'.format(implicitType.name))
 					implicitType = None
-			
-			if implicitType and not implicitType.isStructType:
-				span = self.path[-1].span if self.path else self.span
-				logError(state, span, 'type `{}` is not a struct type'.format(implicitType.name))
-				implicitType = None
 		
 		fieldDict =  None
 		if implicitType:

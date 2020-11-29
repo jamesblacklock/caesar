@@ -107,6 +107,7 @@ class Scope:
 		self.didBreak = False
 		self.didReturn = False
 		self.fnDecl = None
+		self.mod = None
 		self.loopDepth = 0
 		self.ifExpr = None
 		self.loopExpr = None
@@ -125,6 +126,8 @@ class Scope:
 			self.releaseDefault = parent.releaseDefault
 			if not self.fnDecl:
 				self.fnDecl = parent.fnDecl
+			if not self.mod:
+				self.mod = parent.mod
 			if parent.allowUnsafe:
 				self.allowUnsafe = True
 			if not self.loopExpr:
@@ -145,6 +148,7 @@ class Scope:
 	def setMod(self, mod):
 		self.symbolTable = mod.symbolTable
 		self.name = mod.name
+		self.mod = mod
 		if mod.acquireDefault:
 			self.acquireDefault = mod.acquireDefault
 		if mod.releaseDefault:

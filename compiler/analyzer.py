@@ -325,8 +325,9 @@ class AnalyzerState:
 			
 			isUnionField = f.unionField if f else False
 			noOffset     =   f.noOffset if f else False
+			pub          =        f.pub if f else True
 			
-			fields.append(FieldInfo(n, t, offset, isUnionField))
+			fields.append(FieldInfo(n, t, offset, isUnionField, pub))
 			
 			if noOffset:
 				unionSize = max(unionSize, t.byteSize)
@@ -381,7 +382,7 @@ class AnalyzerState:
 					
 					parent = symbol
 					symbol = symbol.symbolTable[name.content]
-					if parent.isImport and not symbol.pub:
+					if not symbol.pub:# and parent.isImport:
 						symbol = None
 				else:
 					logError(self, symbolName.span, '`{}` is not a module'.format(symbol.name))
