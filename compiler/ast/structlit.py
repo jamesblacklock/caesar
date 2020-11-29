@@ -52,7 +52,7 @@ class StructLit(AST):
 		if implicitType and implicitType.isStructType:
 			fieldDict = implicitType.fieldDict
 			
-			if implicitType.symbol.hasPrivateFields:
+			if implicitType.symbol.hasPrivateFields or implicitType.symbol.hasReadOnlyFields:
 				symbolScope = implicitType.symbol.scope
 				scope = state.scope
 				while True:
@@ -60,7 +60,9 @@ class StructLit(AST):
 						break
 					scope = scope.parent
 					if scope == None:
-						logError(state, self.span, 'cannot construct type `{}` because it has private fields'.format(implicitType.name))
+						s = 'private' if implicitType.symbol.hasPrivateFields else 'read-only'
+						logError(state, self.span, 
+							'cannot construct type `{}` because it has {} fields'.format(implicitType.name, s))
 						break
 		else:
 			implicitType = None

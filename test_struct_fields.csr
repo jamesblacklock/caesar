@@ -10,5 +10,5 @@ fn main()
     let s = module::Struct::new()
     let t = s.a
     s.a = 1
-    "".size
+    "".size = 2
     "".data

@@ -12,6 +12,7 @@ class Struct(Symbol):
 		self.fieldDecls = None
 		self.scope = None
 		self.hasPrivateFields = False
+		self.hasReadOnlyFields = False
 	
 	@property
 	def symbolTable(self):
@@ -25,6 +26,7 @@ class Struct(Symbol):
 		types = []
 		for field in self.fieldDecls:
 			self.hasPrivateFields = self.hasPrivateFields or not field.pub
+			self.hasReadOnlyFields = self.hasReadOnlyFields or not field.mut
 			if field.name in declaredFields:
 				logError(state, field.nameSpan, 'duplicate field name')
 				logExplain(state, declaredFields[field.name].nameSpan, 
