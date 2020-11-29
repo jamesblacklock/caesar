@@ -1,0 +1,54 @@
+import libc { printf, malloc, free }
+
+
+#=== escaping borrows ===#
+# fn explicit_return_escaping_borrow() -> &int
+#     let x = 5
+#     let m = &x
+    
+#     return m
+
+# fn implicit_return_escaping_borrow() -> &int
+#     let x = 5
+#     &x
+
+# fn param_return_escaping_borrow(param: &int) -> &int
+#     param
+
+# fn param_escaping_borrow(param: &&mut int)
+#     let mut x = 5
+#     param^ = &mut x
+
+# fn drop_old_ptr_value(s: &mut str)
+#     s^ = "duh"
+
+# struct FieldDropTest
+#     s1: str
+#     s2: str
+
+# struct OwnedFieldDropTest
+#     m1: owned(malloc, free) &void
+
+struct Thing { a: int }
+
+fn moved_val_in_loop()
+    let mut x = 0
+    let mut s = Thing { a: 42 }
+    while x < 5
+        let t = s
+        unsafe printf("%d: %d\n", x, t.a)
+        x = x+1
+
+fn main()
+    # let mut s = "asdf"->concat("qwer")
+    # drop_old_ptr_value(&mut s)
+    
+    # let mut fdt = FieldDropTest { s1: "string 1", s2: "string 2" }
+    # fdt.s2 = "qqq"
+    
+    # let mut ofdt = OwnedFieldDropTest { m1: malloc(1024) }
+    # free(ofdt.m1)
+    # ofdt.m1 = malloc(128)
+    # free(ofdt.m1)
+    
+    void

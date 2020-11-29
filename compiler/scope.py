@@ -218,7 +218,7 @@ class Scope:
 										self.dropSymbol(info.symbol, br.dropBlock)
 							else:
 								self.dropSymbol(info.symbol, lastUse.dropBlock)
-			elif not self.didReturn or info.didDropInBlock:
+			elif not (self.didReturn or self.didBreak) or info.didDropInBlock:
 				outerSymbolInfo[info.symbol] = info
 		
 		if self.type in (ScopeType.IF, ScopeType.ELSE):
@@ -226,10 +226,10 @@ class Scope:
 				if info.didDropInBlock:
 					info.dropInBlock.add(self.ifExpr.block if ScopeType.IF else self.ifExpr.elseBlock)
 		
-		if self.type == ScopeType.IF and self.didReturn:
+		if self.type == ScopeType.IF and (self.didReturn or self.didBreak):
 			outerSymbolInfo = None
 		elif self.type == ScopeType.ELSE:
-			if self.didReturn:
+			if self.didReturn or self.didBreak:
 				outerSymbolInfo = self.ifBranchOuterSymbolInfo
 			elif self.ifBranchOuterSymbolInfo:
 				ifInfo = self.ifBranchOuterSymbolInfo
@@ -278,6 +278,15 @@ class Scope:
 						if parentInfo.uninit != info.uninit:
 							info.typeModifiers.uninit = True
 							info.maybeUninit = True
+		elif self.type == ScopeType.LOOP:
+			for info in self.symbolInfo.values():
+				if info.wasDeclared or not info.moved:
+					continue
+				
+				parentInfo = self.parent.loadSymbolInfo(info.symbol)
+				if not parentInfo.moved:
+					logError(self.state, list(info.lastUses)[0].span, 
+						'value was moved out; `{}` must be reinitialized before next loop iteration'.format(info.symbol.name))
 		
 		return outerSymbolInfo
 	
@@ -291,10 +300,23 @@ class Scope:
 				for borrow in info.borrows:
 					if not borrow.symbol.isParam:
 						if scopeErrCount == 0:
-							logError(self.state, access.span, 'borrowed value escapes the function in which it was defined')
+							logError(self.state, access.span, 
+								'borrowed value in return may escape the function in which it was defined')
 						scopeErrCount += 1
 						countStr = '' if scopeErrCount < 2 else '({}) '.format(scopeErrCount)
 						logExplain(self.state, borrow.span, 'borrow {}originally occurred here'.format(countStr))
+		
+		for param in self.fnDecl.type.params:
+			info = self.loadSymbolInfo(param)
+			if info.borrows:
+				scopeErrCount = 0
+				for borrow in info.borrows:
+					if scopeErrCount == 0:
+						logError(self.state, param.span, 
+							'borrowed value in `{}` may escape the function in which it was defined'.format(param.name))
+					scopeErrCount += 1
+					countStr = '' if scopeErrCount < 2 else '({}) '.format(scopeErrCount)
+					logExplain(self.state, borrow.span, 'borrow {}originally occurred here'.format(countStr))
 		
 		self.didReturn = True
 		if self.type == ScopeType.FN:
@@ -538,6 +560,14 @@ class Scope:
 		
 		if symbol.type.isPtrType and not symbol.type.mut:
 			logError(self.state, expr.lvalueSpan, 'assignment target is not mutable')
+		
+		if info.borrows:
+			for borrow in info.borrows:
+				if borrow.symbol in self.symbolInfo:
+					borrowInfo = self.symbolInfo[borrow.symbol]
+					borrowInfo.borrowedBy.remove(info.symbol)
+		
+		info.borrows = expr.rvalue.borrows
 		
 		if isField:
 			pass
