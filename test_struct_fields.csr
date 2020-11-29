@@ -1,0 +1,14 @@
+mod module
+    pub struct Struct
+        pub a: int
+    
+    impl Struct
+        pub fn new() -> Struct
+            Struct { a: 5 }
+
+fn main()
+    let s = module::Struct::new()
+    let t = s.a
+    s.a = 1
+    "".size
+    "".data
