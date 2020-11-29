@@ -33,7 +33,7 @@
 			"patterns": [
 				{
 					"name": "keyword.control.caesar",
-					"match": "\\b(if|else|while|for|return|break|continue|loop|match)\\b"
+					"match": "\\b(if|else|and|or|while|for|return|break|continue|loop|match)\\b"
 				},
 				{
 					"name": "keyword.other.caesar",
