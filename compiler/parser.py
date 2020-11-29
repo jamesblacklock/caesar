@@ -1718,7 +1718,7 @@ def parseExpr(state, exprClass, precedence=0, noSkipSpace=False, allowSimpleFnCa
 		state.advance()
 		state.skipSpace()
 		expectType(state, 
-			TokenType.FN, TokenType.STRUCT, TokenType.TRAIT, 
+			TokenType.UNSAFE, TokenType.FN, TokenType.STRUCT, TokenType.TRAIT, 
 			TokenType.UNION, TokenType.EXTERN, TokenType.TUPLE)
 	
 	extern = False
