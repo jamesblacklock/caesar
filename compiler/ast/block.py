@@ -2,7 +2,7 @@ from .ast            import AST
 from ..types         import Void
 from .               import ifexpr
 from ..mir           import access as accessmod, ctlflow
-from ..mir.access           import createTempSymbol
+from ..mir.access    import createTempSymbol
 from ..scope         import ScopeType
 from ..log           import logWarning
 from ..span          import Span
