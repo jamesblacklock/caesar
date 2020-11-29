@@ -54,6 +54,17 @@ class StructLit(AST):
 			else:
 				implicitType = None
 		
+		if implicitType.symbol.hasPrivateFields:
+			symbolScope = implicitType.symbol.scope
+			scope = state.scope
+			while True:
+				if scope.mod == symbolScope.mod:
+					break
+				scope = scope.parent
+				if scope == None:
+					logError(state, self.span, 'cannot construct type `{}` because it has private fields'.format(implicitType.name))
+					break
+		
 		fieldFailed = False
 		initFields = {}
 		accesses = {}
