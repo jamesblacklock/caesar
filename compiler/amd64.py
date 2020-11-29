@@ -1193,15 +1193,15 @@ def cmp(state, ir):
 		if type(ir) == Eq:
 			l.value = 1 if l.value == r.value else 0
 		elif type(ir) == NEq:
-			l.value = 1 if l.value == r.value else 0
+			l.value = 1 if l.value != r.value else 0
 		elif type(ir) == Less:
-			l.value = 1 if l.value == r.value else 0
+			l.value = 1 if l.value <  r.value else 0
 		elif type(ir) == LessEq:
-			l.value = 1 if l.value == r.value else 0
+			l.value = 1 if l.value <= r.value else 0
 		elif type(ir) == Greater:
-			l.value = 1 if l.value == r.value else 0
+			l.value = 1 if l.value >  r.value else 0
 		elif type(ir) == GreaterEq:
-			l.value = 1 if l.value == r.value else 0
+			l.value = 1 if l.value >= r.value else 0
 		else:
 			assert 0
 		l.type = I8
