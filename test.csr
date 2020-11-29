@@ -18,7 +18,7 @@ unsafe fn doTheThing(n: int16) -> int16 #=hello=#
 fn theMeaningOfLifeTheUniverseAndEverything() -> int16 { if true {-42} else {return 42} }
 
 mod testMod
-	unsafe fn otherFn() -> int { printf("enter a char: "), getchar() }
+	pub unsafe fn otherFn() -> int { printf("enter a char: "), getchar() }
 
 static myStatic = 17
 
