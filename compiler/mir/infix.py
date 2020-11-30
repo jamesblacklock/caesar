@@ -25,6 +25,16 @@ class InfixOp(MIR):
 			self.writeDivIR(state)
 		elif self.op == InfixOps.MODULO:
 			self.writeModuloIR(state)
+		elif self.op == InfixOps.LSHIFT:
+			self.writeLShiftIR(state)
+		elif self.op == InfixOps.RSHIFT:
+			self.writeRShiftIR(state)
+		elif self.op == InfixOps.BITAND:
+			self.writeBitAndIR(state)
+		elif self.op == InfixOps.BITOR:
+			self.writeBitOrIR(state)
+		elif self.op == InfixOps.BITXOR:
+			self.writeBitXOrIR(state)
 		elif self.op in CMP_OPS:
 			self.writeCmpIR(state)
 		else:
@@ -97,6 +107,31 @@ class InfixOp(MIR):
 		self.l.writeIR(state)
 		self.r.writeIR(state)
 		state.appendInstr(ir.Mod(self))
+	
+	def writeLShiftIR(self, state):
+		self.l.writeIR(state)
+		self.r.writeIR(state)
+		state.appendInstr(ir.LShift(self))
+	
+	def writeRShiftIR(self, state):
+		self.l.writeIR(state)
+		self.r.writeIR(state)
+		state.appendInstr(ir.RShift(self))
+	
+	def writeBitAndIR(self, state):
+		self.l.writeIR(state)
+		self.r.writeIR(state)
+		state.appendInstr(ir.BitAnd(self))
+	
+	def writeBitOrIR(self, state):
+		self.l.writeIR(state)
+		self.r.writeIR(state)
+		state.appendInstr(ir.BitOr(self))
+	
+	def writeBitXOrIR(self, state):
+		self.l.writeIR(state)
+		self.r.writeIR(state)
+		state.appendInstr(ir.BitXOr(self))
 	
 	def writeCmpIR(self, state):
 		self.l.writeIR(state)

@@ -2,7 +2,8 @@ import ctypes
 from io       import StringIO
 from enum     import Enum
 from .mir.mir import StaticData, StaticDataType
-from .ir      import Dup, Global, Imm, Static, Deref, DerefW, Add, Sub, Mul, Div, Mod, Eq, NEq, Less, LessEq, \
+from .ir      import Dup, Global, Imm, Static, Deref, DerefW, Add, Sub, Mul, Div, Mod, LShift, RShift, BitAnd, \
+                     BitOr, BitXOr, Eq, NEq, Less, LessEq, \
                      Greater, GreaterEq, FAdd, FSub, FMul, FDiv, FEq, FNEq, FLess, FLessEq, FGreater, FGreaterEq, \
                      Call, Extend, IExtend, Truncate, FExtend, FTruncate, IToF, UToF, FToI, FToU, Ret, BrIf, \
                      Br, Swap, Write, Pop, Raise, Neg, Res, Field, FieldW, DerefField, DerefFieldW, Fix, Addr, \
@@ -572,6 +573,16 @@ def irToAsm(state, ir, nextIR):
 		div(state, ir)
 	elif type(ir) == Mod:
 		mod(state, ir)
+	elif type(ir) == LShift:
+		lshift(state, ir)
+	elif type(ir) == RShift:
+		rshift(state, ir)
+	elif type(ir) == BitAnd:
+		bitand(state, ir)
+	elif type(ir) == BitOr:
+		bitor(state, ir)
+	elif type(ir) == BitXOr:
+		bitxor(state, ir)
 	elif type(ir) in (Eq, NEq, Less, LessEq, Greater, GreaterEq):
 		cmp(state, ir)
 	elif type(ir) == FAdd:
@@ -1188,6 +1199,88 @@ def div(state, ir):
 
 def mod(state, ir):
 	mulDivMod(state, ir, False, True)
+
+def lshift(state, ir):
+	lrshift(state, ir, False)
+
+def rshift(state, ir):
+	lrshift(state, ir, True)
+
+def lrshift(state, ir, right):
+	shift = state.getOperand(0)
+	target = state.getOperand(1)
+	
+	if shift.storage == Storage.IMM and target.storage == Storage.IMM:
+		state.popOperand()
+		shift.value = (shift.value % 0x100000000) >> target.value if right else shift.value << target.value
+		return
+	
+	if shift.storage != Storage.IMM and shift != state.rcx:
+		if state.rcx.active:
+			stack = saveReg(state, state.rcx)
+			state.moveOperand(state.rcx, stack)
+		moveData(state, shift, state.rcx, type=I8)
+		shift = state.rcx
+	
+	assert target.storage in (Storage.REG, Storage.STACK)
+	
+	state.appendInstr('shr' if right else 'sal',
+			Operand(target, Usage.DEST), 
+			Operand(shift, Usage.SRC, I8))
+	
+	state.popOperand()
+	state.popOperand()
+	state.pushOperand(target)
+
+def bitand(state, ir):
+	bitwise(state, ir, 'and')
+
+def bitor(state, ir):
+	bitwise(state, ir, 'or')
+
+def bitxor(state, ir):
+	bitwise(state, ir, 'xor')
+
+def bitwise(state, ir, opcode):
+	restoreRAX = None
+	
+	src = state.getOperand(0)
+	dest = state.getOperand(1)
+	
+	if src.storage == Storage.IMM and dest.storage == Storage.IMM:
+		state.popOperand()
+		if opcode == 'and':
+			dest.value = dest.value & src.value
+		elif opcode == 'or':
+			dest.value = dest.value | src.value
+		elif opcode == 'xor':
+			dest.value = dest.value ^ src.value
+		else:
+			assert 0
+		return
+	
+	if src.storage == Storage.STACK and dest.storage == Storage.STACK:
+		reg = state.findReg()
+		if reg == None:
+			restoreRAX = saveReg(state, state.rax)
+			reg = state.rax
+		reg.type = src.type
+		moveData(state, src, reg)
+		src = reg
+	
+	assert src.storage in (Storage.REG, Storage.STACK, Storage.IMM)
+	assert dest.storage in (Storage.REG, Storage.STACK)
+	
+	state.appendInstr(opcode,
+			Operand(dest, Usage.DEST), 
+			Operand(src, Usage.SRC, dest.type))
+	
+	if restoreRAX:
+		restoreReg(state, restoreRAX, state.rax)
+	
+	state.popOperand()
+	state.popOperand()
+	state.pushOperand(dest)
 
 def cmp(state, ir):
 	if state.rcx.active:

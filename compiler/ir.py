@@ -593,6 +593,56 @@ class Mod(Instr):
 	def __str__(self):
 		return 'mod'
 
+class LShift(Instr):
+	def __init__(self, ast):
+		super().__init__(ast)
+		
+	def affectStack(self, state):
+		state.popOperand()
+	
+	def __str__(self):
+		return 'lshift'
+
+class BitAnd(Instr):
+	def __init__(self, ast):
+		super().__init__(ast)
+		
+	def affectStack(self, state):
+		state.popOperand()
+	
+	def __str__(self):
+		return 'bitand'
+
+class BitOr(Instr):
+	def __init__(self, ast):
+		super().__init__(ast)
+		
+	def affectStack(self, state):
+		state.popOperand()
+	
+	def __str__(self):
+		return 'bitor'
+
+class BitXOr(Instr):
+	def __init__(self, ast):
+		super().__init__(ast)
+		
+	def affectStack(self, state):
+		state.popOperand()
+	
+	def __str__(self):
+		return 'bitxor'
+
+class RShift(Instr):
+	def __init__(self, ast):
+		super().__init__(ast)
+		
+	def affectStack(self, state):
+		state.popOperand()
+	
+	def __str__(self):
+		return 'rshift'
+
 class FEq(Instr):
 	def __init__(self, ast):
 		super().__init__(ast)

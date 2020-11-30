@@ -39,7 +39,7 @@ from .ast.sizeof     import Sizeof, Offsetof
 from .scope          import ScopeType
 
 INFIX_PRECEDENCE = {
-	TokenType.AS:     1000, TokenType.IS:       1000, TokenType.ARROW:   900, TokenType.LSHIFT:    800, 
+	TokenType.ARROW:  1000, TokenType.AS:        900, TokenType.IS:      900, TokenType.LSHIFT:    800, 
 	TokenType.RSHIFT:  800, TokenType.TIMES:     700, TokenType.DIV:     700, TokenType.MODULO:    700, 
 	TokenType.PLUS:    600, TokenType.MINUS:     600, TokenType.AMP:     500, TokenType.PIPE:      500, 
 	TokenType.CARET:   500, TokenType.ELLIPSIS:  400, TokenType.RNGOPEN: 400, TokenType.EQ:        300, 
@@ -1357,6 +1357,12 @@ def parseValueExprOrAsgn(state):
 				infixOp = InfixOps.PLUS
 			elif opTok.type == TokenType.MINUSASGN:
 				infixOp = InfixOps.MINUS
+			elif opTok.type == TokenType.ANDASGN:
+				infixOp = InfixOps.BITAND
+			elif opTok.type == TokenType.ORASGN:
+				infixOp = InfixOps.BITOR
+			elif opTok.type == TokenType.XORASGN:
+				infixOp = InfixOps.BITXOR
 			else:
 				assert 0
 		
@@ -1713,7 +1719,10 @@ ASGN_OPER_TOKS = (
 	TokenType.DIVASGN, 
 	TokenType.MODULOASGN, 
 	TokenType.PLUSASGN, 
-	TokenType.MINUSASGN
+	TokenType.MINUSASGN,
+	TokenType.ANDASGN, 
+	TokenType.ORASGN, 
+	TokenType.XORASGN
 )
 
 class ModBlockInfo:
