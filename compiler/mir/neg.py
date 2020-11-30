@@ -5,12 +5,13 @@ class Neg(MIR):
 	def __init__(self, access, span):
 		super().__init__(span, True)
 		self.access = access
+		self.type = access.type
 	
 	def checkFlow(self, scope):
 		self.access.checkFlow(scope)
 	
 	def writeIR(self, state):
-		self.expr.writeIR(state)
+		self.access.writeIR(state)
 		if self.type.isFloatType:
 			state.appendInstr(FNeg(self))
 		else:

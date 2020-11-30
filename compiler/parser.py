@@ -105,17 +105,32 @@ class ParserState:
 	
 	def skipEmptyLines(self):
 		line = self.tok.span.startLine
+		offset = self.offset
 		while True:
-			self.skip(TokenType.NEWLINE, TokenType.SPACE, TokenType.COMMENT)
+			# skip to beginning of first non-empty line
+			while self.tok.type in (TokenType.NEWLINE, TokenType.SPACE, TokenType.COMMENT):
+				wasNewline = self.tok.type == TokenType.NEWLINE
+				self.advance()
+				if wasNewline:
+					offset = self.offset
+			self.rollback(offset)
+			
+			# if this is an indented but empty line, skip that, too
 			if self.tok.type == TokenType.INDENT:
-				offset = self.offset
 				self.skip(TokenType.INDENT, TokenType.SPACE, TokenType.COMMENT)
 				if self.tok.type == TokenType.NEWLINE or self.tok.type == TokenType.EOF:
+					self.advance()
+					offset = self.offset
 					continue
 				else:
 					self.rollback(offset)
 			break
-		return self.tok.span.startLine > line
+		
+		if self.tok.span.startLine > line:
+			return True
+		else:
+			self.skipSpace()
+			return False
 	
 	def skipSpace(self):
 		return self.skip(TokenType.SPACE, TokenType.COMMENT)

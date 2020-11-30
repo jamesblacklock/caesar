@@ -12,7 +12,7 @@ class AsExpr(AST):
 	def analyze(self, state, implicitType):
 		type = state.resolveTypeRef(self.typeRef)
 		access = state.analyzeNode(self.expr, type)
-		if access == None:
+		if access == None or access.type == None:
 			return None
 		
 		if not type or typesMatch(type, access.type):

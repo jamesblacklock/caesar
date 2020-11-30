@@ -1,5 +1,6 @@
 from .ast      import AST
 from ..mir.neg import Neg
+from ..log     import logError
 
 class Sign(AST):
 	def __init__(self, expr, negate, span):
@@ -7,7 +8,7 @@ class Sign(AST):
 		self.expr = expr
 		self.negate = negate
 
-	def analyze(self, state):
+	def analyze(self, state, implicitType):
 		access = state.analyzeNode(self.expr)
 		if not access or access.type == None:
 			return access

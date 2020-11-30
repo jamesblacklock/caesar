@@ -1083,8 +1083,13 @@ def addOrSub(state, ir, isAdd):
 		state.popOperand()
 		dest.value = (dest.value + src.value) if isAdd else (dest.value - src.value)
 		return
-	elif dest.storage == Storage.IMM and isAdd:
-		dest, src = src, dest
+	elif dest.storage == Storage.IMM:
+		if isAdd:
+			dest, src = src, dest
+		else:
+			newDest = state.findTarget(dest.type)
+			moveData(state, dest, newDest)
+			dest = newDest
 	
 	if src.storage == Storage.GLOBAL or Storage.REG not in (dest.storage, src.storage):
 		reg = state.findReg()
@@ -1105,8 +1110,8 @@ def addOrSub(state, ir, isAdd):
 	assert Storage.REG in (dest.storage, src.storage)
 	
 	state.appendInstr('add' if isAdd else 'sub',
-			Operand(dest, Usage.DEST), 
-			Operand(src, Usage.SRC))
+		Operand(dest, Usage.DEST), 
+		Operand(src, Usage.SRC))
 	
 	if restoreRAX:
 		restoreReg(state, restoreRAX, state.rax)
@@ -1141,9 +1146,14 @@ def mulDivMod(state, ir, isMul, isMod):
 	if isMul and src == state.rax:
 		dest, src = src, dest
 	
-	if src != state.rdx and state.rdx.active:
+	if state.rdx.active and not (isMul and src == state.rdx):
 		stack = saveReg(state, state.rdx)
 		state.moveOperand(state.rdx, stack)
+	
+	if not isMul:
+		state.appendInstr('xor', 
+			Operand(state.rdx, Usage.DEST, I64), 
+			Operand(state.rdx, Usage.SRC, I64))
 	
 	if dest != state.rax:
 		if state.rax.active:
