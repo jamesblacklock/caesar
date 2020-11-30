@@ -22,6 +22,7 @@ class Fn(ValueSymbol):
 		self.analyzed = False
 		self.extern = False
 		self.isFn = True
+		self.unsafe = False
 	
 	def checkSig(self, state):
 		returnType = Void
@@ -67,13 +68,14 @@ class Fn(ValueSymbol):
 		
 		self.paramDropBlock = createDropBlock(self)
 		state.mirBlock.append(self.paramDropBlock)
-		for param in self.type.params:
-			param.declSymbol(state.scope)
+		if self.type:
+			for param in self.type.params:
+				param.declSymbol(state.scope)
 		
 		alreadyFailed = state.failed
 		state.failed = False    # need to know if failure occurred within this function 
 		
-		state.analyzeNode(self.ast.body, self.type.returnType)
+		state.analyzeNode(self.ast.body, self.type.returnType if self.type else None)
 		self.mirBody = state.popScope()
 		
 		if not state.failed:
