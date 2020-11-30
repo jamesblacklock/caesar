@@ -45,6 +45,7 @@ class LogicOp(AST):
 			self.generateRighthand(state, symbol)
 		else:
 			self.generateShortCircuit(state, symbol, True)
+		state.mirBlock.append(state.scope.dropBlock)
 		ifBlock = state.popScope()
 		
 		state.pushScope(ScopeType.ELSE)
@@ -53,6 +54,7 @@ class LogicOp(AST):
 			self.generateShortCircuit(state, symbol, False)
 		else:
 			self.generateRighthand(state, symbol)
+		state.mirBlock.append(state.scope.dropBlock)
 		elseBlock = state.popScope()
 		
 		didReturn = ifBlock.scope.didReturn and elseBlock.scope.didReturn
@@ -62,6 +64,8 @@ class LogicOp(AST):
 		state.scope.didBreak = state.scope.didBreak or didBreak
 		
 		mir = IfMIR(l, ifBlock, elseBlock, types.Bool, self.span)
+		ifBlock.scope.ifExpr = mir
+		elseBlock.scope.ifExpr = mir
 		state.mirBlock.append(mir)
 		
 		result = SymbolRead(self.span)
