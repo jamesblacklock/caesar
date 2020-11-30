@@ -1,5 +1,5 @@
 from .mir import MIR, indent
-from ..ir import getInputInfo, beginBlock, Br, BrIf, Ret, BlockMarker
+from ..ir import getInputInfo, beginBlock, Br, BrIf, Ret, BlockMarker, Raise
 
 class If(MIR):
 	def __init__(self, access, ifBlock, elseBlock, type, span):
@@ -55,6 +55,11 @@ class If(MIR):
 			if endIfBlock == None:
 				endInputTypes, endInputNames = getInputInfo(state)
 				endIfBlock = state.defBlock(endInputTypes)
+			else:
+				for expectedSymbol in endInputNames:
+					offset = state.localOffset(expectedSymbol)
+					if offset > 0:
+						state.appendInstr(Raise(self, state.localOffset(expectedSymbol)))
 			state.appendInstr(Br(self, endIfBlock.index))
 		
 		if endIfBlock != None:
