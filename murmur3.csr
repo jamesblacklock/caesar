@@ -285,22 +285,15 @@ pub unsafe fn MurmurHash3_x86_128(key: &void, len: uint, seed: uint, out: &mut v
 
 
 
-import libc::printf
-
-unsafe fn main()
-    let key = "Is this a dagger which I see before me? The handle toward my hand?? Come, let me clutch thee!!"
-    let expectedHash: [uint64 * 2] = [1578671598674234516, 8165211537893185768]
-    let mut hash: [uint64 * 2] = [0, 0]
+# @test
+# unsafe fn test_MurmurHash3_x64_128() -> bool
+#     let key = "Is this a dagger which I see before me? The handle toward my hand?? Come, let me clutch thee!!"
+#     let expectedHash: [uint64 * 2] = [1578671598674234516, 8165211537893185768]
+#     let mut hash: [uint64 * 2] = [0, 0]
     
-    MurmurHash3_x64_128(key->data() as &void, key.size as uint - 1, 1, &mut hash)
+#     MurmurHash3_x64_128(key->data() as &void, key.size as uint - 1, 1, &mut hash)
     
-    printf("[%llu, %llu] %s [%llu, %llu]\n"
-        hash[0], hash[1]
-        if hash[0] == expectedHash[0] and hash[1] == expectedHash[1]
-            "=="
-        else
-            "!="
-        expectedHash[0], expectedHash[1])
+#     return hash[0] == expectedHash[0] and hash[1] == expectedHash[1]
 
 pub unsafe fn MurmurHash3_x64_128(key: &void, len: uint, seed: uint, out: &mut void)
     let data = key as &uint8
