@@ -274,6 +274,12 @@ def parseFnDeclParams(state):
 			
 			return ret
 		
+		mut = False
+		if state.tok.type == TokenType.MUT:
+			mut = True
+			state.advance()
+			state.skipSpace()
+		
 		if expectType(state, TokenType.NAME) == False:
 			return None
 		
@@ -284,7 +290,7 @@ def parseFnDeclParams(state):
 		state.skipSpace()
 		
 		if expectType(state, TokenType.COLON) == False:
-			return FnParam(name, None, span)
+			return FnParam(name, None, mut, span)
 		
 		Span.merge(span, state.tok.span)
 		
@@ -299,7 +305,7 @@ def parseFnDeclParams(state):
 		if not onOneLine:
 			state.popIndentLevel()
 		
-		return FnParam(name, typeRef, span)
+		return FnParam(name, typeRef, mut, span)
 	
 	return parseBlock(state, parseFnParam, BlockMarkers.PAREN, True)
 

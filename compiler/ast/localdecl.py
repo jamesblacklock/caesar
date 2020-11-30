@@ -19,8 +19,8 @@ class LocalDecl(ValueSymbol):
 		return Local(self, type, isParam)
 
 class FnParam(LocalDecl):
-	def __init__(self, name, typeRef, span):
-		super().__init__(name, typeRef, False, span)
+	def __init__(self, name, typeRef, mut, span):
+		super().__init__(name, typeRef, mut, span)
 		# self.defaultExpr = defaultExpr
 
 class LetDecl(LocalDecl):
