@@ -65,7 +65,7 @@ class Import(AST):
 		return Import.importItem(state, mod, item)
 	
 	@staticmethod
-	def locateImportItem(item, baseDir):
+	def locateImportFile(item, baseDir):
 		importInfo = None
 		filePath = baseDir
 		for i in range(0, len(item.path)):
@@ -91,7 +91,7 @@ class Import(AST):
 		]
 		
 		for path in searchPaths:
-			importInfo = Import.locateImportItem(item, path)
+			importInfo = Import.locateImportFile(item, path)
 			if importInfo:
 				break
 		
