@@ -47,16 +47,20 @@
     k ^= k >> 33
     return k
 
-# import libc::printf
 
-# unsafe fn main()
+
+
+# @test
+# unsafe fn test_MurmurHash3_x86_32() -> bool
 #     let key = "O, she misused me past the endurance of a block!!"
 #     let expectedHash: uint = 1292149900
-#     let hash = murmurhash3_x86_32(key->data() as &void, key.size as uint - 1, 1)
+#     let mut hash: uint = 0
     
-#     printf("%d %s %d\n", hash, if hash == expectedHash {"=="} else {"!="}, expectedHash)
+#     MurmurHash3_x86_32(key->data() as &void, key.size as uint - 1, 1, &mut hash)
+    
+#     return hash == expectedHash
 
-pub unsafe fn murmurhash3_x86_32(key: &void, len: uint, seed: uint) -> uint
+pub unsafe fn MurmurHash3_x86_32(key: &void, len: uint, seed: uint, out: &mut void)
     let data = key as &uint8
     let nblocks = (len / 4) as isize
     
@@ -67,7 +71,7 @@ pub unsafe fn murmurhash3_x86_32(key: &void, len: uint, seed: uint) -> uint
     
     let blocks = (data + nblocks*4) as &uint
     
-    # for i in -nblocks...0
+    # for i in -nblocks..<0
     let mut i = -nblocks
     while i < 0
         let mut k1 = getblock32(blocks, i)
@@ -88,129 +92,196 @@ pub unsafe fn murmurhash3_x86_32(key: &void, len: uint, seed: uint) -> uint
     
     # match len & 3
         # case 3
-    if len & 3 == 3
+    let b = len & 3
+    if b == 3
             k1 ^= (tail + 2)^ << 16
-            k1 ^= (tail + 1)^ << 8
-            k1 ^= tail^
-            k1 *= c1, k1 = rotl32(k1, 15), k1 *= c2
-            h1 ^= k1
-    else if len & 3 == 2
+    if b >= 2
         # case 2
             k1 ^= (tail + 1)^ << 8
-            k1 ^= tail^
-            k1 *= c1, k1 = rotl32(k1, 15), k1 *= c2
-            h1 ^= k1
-    else
+    if b >= 1
         # case 1
             k1 ^= tail^
             k1 *= c1, k1 = rotl32(k1, 15), k1 *= c2
             h1 ^= k1
-        # else:
-        #     unreachable?!?
+        # else
+        #     void
     
     h1 ^= len
     h1 = fmix32(h1)
-    return h1
+    (out as &mut uint)^ = h1
 
 
 
 
-# void MurmurHash3_x86_128 ( const void * key, const int len,
-#                            uint32_t seed, void * out )
-# {
-#   const uint8_t * data = (const uint8_t*)key;
-#   const int nblocks = len / 16;
+# @test
+# unsafe fn test_MurmurHash3_x86_128() -> bool
+#     let key = "To be or not to be; THAT is the question."
+#     let expectedHash: [uint64 * 2] = [15477012313004019722, 6472313844439364959]
+#     let mut hash: [uint64 * 2] = [0, 0]
+    
+#     MurmurHash3_x86_128(key->data() as &void, key.size as uint - 1, 1, &mut hash)
+    
+#     return hash[0] == expectedHash[0] and hash[1] == expectedHash[1]
 
-#   uint32_t h1 = seed;
-#   uint32_t h2 = seed;
-#   uint32_t h3 = seed;
-#   uint32_t h4 = seed;
+pub unsafe fn MurmurHash3_x86_128(key: &void, len: uint, seed: uint, out: &mut void)
+    let data = key as &uint8
+    let nblocks = (len / 16) as isize
+    
+    let mut h1 = seed
+    let mut h2 = seed
+    let mut h3 = seed
+    let mut h4 = seed
 
-#   const uint32_t c1 = 0x239b961b; 
-#   const uint32_t c2 = 0xab0e9789;
-#   const uint32_t c3 = 0x38b34ae5; 
-#   const uint32_t c4 = 0xa1e38b93;
+    let c1: uint = 0x239b961b
+    let c2: uint = 0xab0e9789
+    let c3: uint = 0x38b34ae5
+    let c4: uint = 0xa1e38b93
+    
+    let blocks = (data + nblocks*16) as &uint
+    
+    # for i in -nblocks..<0
+    let mut i = -nblocks
+    while i < 0
+        let mut k1 = getblock32(blocks, i * 4 + 0)
+        let mut k2 = getblock32(blocks, i * 4 + 1)
+        let mut k3 = getblock32(blocks, i * 4 + 2)
+        let mut k4 = getblock32(blocks, i * 4 + 3)
 
-#   //----------
-#   // body
+        k1 *= c1
+        k1 = rotl32(k1, 15)
+        k1 *= c2
+        h1 ^= k1
+        
+        h1 = rotl32(h1, 19)
+        h1 += h2
+        h1 = h1 * 5 + 0x561ccd1b
+        
+        k2 *= c2
+        k2 = rotl32(k2, 16)
+        k2 *= c3
+        h2 ^= k2;
+        
+        h2 = rotl32(h2, 17)
+        h2 += h3
+        h2 = h2 * 5 + 0x0bcaa747
+        
+        k3 *= c3
+        k3 = rotl32(k3, 17)
+        k3 *= c4
+        h3 ^= k3
+        
+        h3 = rotl32(h3,15)
+        h3 += h4
+        h3 = h3*5+0x96cd1c35
+        
+        k4 *= c4
+        k4 = rotl32(k4, 18)
+        k4 *= c1
+        h4 ^= k4;
+        
+        h4 = rotl32(h4, 13)
+        h4 += h1
+        h4 = h4 * 5 + 0x32ac3b17
+        #---
+        i += 1
+    
+    let tail = (data + nblocks*16) as &uint8
+    
+    let mut k1: uint = 0
+    let mut k2: uint = 0
+    let mut k3: uint = 0
+    let mut k4: uint = 0
 
-#   const uint32_t * blocks = (const uint32_t *)(data + nblocks*16);
+    # match len & 15
+    let b = len & 15
+        # case 15:
+    if b == 15
+            k4 ^= (tail + 4)^ << 16
+        # case 14:
+    if b >= 14
+            k4 ^= (tail + 3)^ << 8
+        # case 13:
+    if b >= 13
+            k4 ^= (tail + 2)^ << 0
+            k4 *= c4
+            k4  = rotl32(k4, 18)
+            k4 *= c1
+            h4 ^= k4
+        
+        # case 12:
+    if b >= 12
+            k3 ^= (tail + 1)^ << 24
+        # case 11:
+    if b >= 11
+            k3 ^= (tail + 0)^ << 16
+        # case 10:
+    if b >= 10
+            k3 ^= (tail + 9)^ << 8
+        # case 9:
+    if b >= 9
+            k3 ^= (tail + 8)^ << 0
+            k3 *= c3
+            k3  = rotl32(k3, 17)
+            k3 *= c4
+            h3 ^= k3
+        
+        # case 8:
+    if b >= 8
+            k2 ^= (tail + 7)^ << 24
+        # case 7:
+    if b >= 7
+            k2 ^= (tail + 6)^ << 16
+        # case 6:
+    if b >= 6
+            k2 ^= (tail + 5)^ << 8
+        # case 5:
+    if b >= 5
+            k2 ^= (tail + 4)^ << 0
+            k2 *= c2
+            k2  = rotl32(k2, 16)
+            k2 *= c3
+            h2 ^= k2
+        
+        # case 4:
+    if b >= 4
+            k1 ^= (tail + 3)^ << 24
+        # case 3:
+    if b >= 3
+            k1 ^= (tail + 2)^ << 16
+        # case 2:
+    if b >= 2
+            k1 ^= (tail + 1)^ << 8
+        # case 1:
+    if b >= 1
+            k1 ^= (tail + 0)^ << 0
+            k1 *= c1
+            k1  = rotl32(k1, 15)
+            k1 *= c2
+            h1 ^= k1
+        # else
+            # void
+    
+    h1 ^= len
+    h2 ^= len
+    h3 ^= len
+    h4 ^= len
+    
+    h1 += h2; h1 += h3; h1 += h4
+    h2 += h1; h3 += h1; h4 += h1
+    
+    h1 = fmix32(h1)
+    h2 = fmix32(h2)
+    h3 = fmix32(h3)
+    h4 = fmix32(h4)
+    
+    h1 += h2; h1 += h3; h1 += h4
+    h2 += h1; h3 += h1; h4 += h1
+    
+    (out as &mut uint + 0)^ = h1
+    (out as &mut uint + 1)^ = h2
+    (out as &mut uint + 2)^ = h3
+    (out as &mut uint + 3)^ = h4
 
-#   for(int i = -nblocks; i; i++)
-#   {
-#     uint32_t k1 = getblock32(blocks,i*4+0);
-#     uint32_t k2 = getblock32(blocks,i*4+1);
-#     uint32_t k3 = getblock32(blocks,i*4+2);
-#     uint32_t k4 = getblock32(blocks,i*4+3);
-
-#     k1 *= c1; k1  = rotl32(k1,15); k1 *= c2; h1 ^= k1;
-
-#     h1 = rotl32(h1,19); h1 += h2; h1 = h1*5+0x561ccd1b;
-
-#     k2 *= c2; k2  = rotl32(k2,16); k2 *= c3; h2 ^= k2;
-
-#     h2 = rotl32(h2,17); h2 += h3; h2 = h2*5+0x0bcaa747;
-
-#     k3 *= c3; k3  = rotl32(k3,17); k3 *= c4; h3 ^= k3;
-
-#     h3 = rotl32(h3,15); h3 += h4; h3 = h3*5+0x96cd1c35;
-
-#     k4 *= c4; k4  = rotl32(k4,18); k4 *= c1; h4 ^= k4;
-
-#     h4 = rotl32(h4,13); h4 += h1; h4 = h4*5+0x32ac3b17;
-#   }
-
-#   //----------
-#   // tail
-
-#   const uint8_t * tail = (const uint8_t*)(data + nblocks*16);
-
-#   uint32_t k1 = 0;
-#   uint32_t k2 = 0;
-#   uint32_t k3 = 0;
-#   uint32_t k4 = 0;
-
-#   switch(len & 15)
-#   {
-#   case 15: k4 ^= tail[14] << 16;
-#   case 14: k4 ^= tail[13] << 8;
-#   case 13: k4 ^= tail[12] << 0;
-#            k4 *= c4; k4  = rotl32(k4,18); k4 *= c1; h4 ^= k4;
-
-#   case 12: k3 ^= tail[11] << 24;
-#   case 11: k3 ^= tail[10] << 16;
-#   case 10: k3 ^= tail[ 9] << 8;
-#   case  9: k3 ^= tail[ 8] << 0;
-#            k3 *= c3; k3  = rotl32(k3,17); k3 *= c4; h3 ^= k3;
-
-#   case  8: k2 ^= tail[ 7] << 24;
-#   case  7: k2 ^= tail[ 6] << 16;
-#   case  6: k2 ^= tail[ 5] << 8;
-#   case  5: k2 ^= tail[ 4] << 0;
-#            k2 *= c2; k2  = rotl32(k2,16); k2 *= c3; h2 ^= k2;
-
-#   case  4: k1 ^= tail[ 3] << 24;
-#   case  3: k1 ^= tail[ 2] << 16;
-#   case  2: k1 ^= tail[ 1] << 8;
-#   case  1: k1 ^= tail[ 0] << 0;
-#            k1 *= c1; k1  = rotl32(k1,15); k1 *= c2; h1 ^= k1;
-#   };
-
-#   //----------
-#   // finalization
-
-#   h1 ^= len; h2 ^= len; h3 ^= len; h4 ^= len;
-
-#   h1 += h2; h1 += h3; h1 += h4;
-#   h2 += h1; h3 += h1; h4 += h1;
-
-#   h1 = fmix32(h1);
-#   h2 = fmix32(h2);
-#   h3 = fmix32(h3);
-#   h4 = fmix32(h4);
-
-#   h1 += h2; h1 += h3; h1 += h4;
-#   h2 += h1; h3 += h1; h4 += h1;
 
 #   ((uint32_t*)out)[0] = h1;
 #   ((uint32_t*)out)[1] = h2;
