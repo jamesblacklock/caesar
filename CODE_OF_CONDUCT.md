@@ -1,7 +1,8 @@
 # Code of Conduct
-We're all adults here. Just don't be a jerk. Unless you are really pissed off and have legitimate 
-reason to be a jerk. Then you can be a little bit of a jerk. But if you don't feel at least a 
-little bit bad after being a jerk, you're probably too much of a jerk and had best fuck off.
+We're all adults here. Just don't be a jerk. Unless you are really pissed off
+and have legitimate reason to be a jerk. Then you can be a little bit of a
+jerk. But if you don't feel at least a little bit bad after being a jerk,
+you're probably too much of a jerk and had best fuck off.
 
 Also fuck off if you:
 - like offending people a lot
