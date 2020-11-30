@@ -47,6 +47,8 @@ class ImportTree(AST):
 		self.imports = imports
 		self.rename = rename
 
+class ImportInfo:
+	pass
 class Import(AST):
 	def __init__(self, importTree, span):
 		super().__init__(span)
@@ -63,35 +65,54 @@ class Import(AST):
 		return Import.importItem(state, mod, item)
 	
 	@staticmethod
-	def importItem(state, mod, item):
-		importFileName = None
-		symbolPath = []
-		
+	def locateImportItem(item, baseDir):
+		importInfo = None
+		filePath = baseDir
 		for i in range(0, len(item.path)):
 			name = item.path[i]
-			testFileName = 'compiler/stdlib/{}.csr'.format(name.content)
-			if os.path.exists(testFileName):
-				importFileName = testFileName
-				if i + 1 < len(item.path):
-					symbolPath = item.path[i + 1:]
+			fileDir = filePath
+			filePath = '{}/{}'.format(filePath, name.content)
+			fileName = '{}.csr'.format(filePath)
+			if os.path.exists(fileName):
+				importInfo = ImportInfo()
+				importInfo.fileName = fileName
+				importInfo.dir = fileDir
+				importInfo.name = name
+				importInfo.symbolPath = item.path[i + 1:]
 				break
 		
-		if importFileName == None:
-			logError(state, item.span, '`{}`: could not locate the module'.format(name.content))
+		return importInfo
+	
+	@staticmethod
+	def importItem(state, mod, item):
+		searchPaths = [
+			'compiler/stdlib',
+			'.'
+		]
+		
+		for path in searchPaths:
+			importInfo = Import.locateImportItem(item, path)
+			if importInfo:
+				break
+		
+		if importInfo == None:
+			logError(state, item.span, '`{}`: could not locate the module'.format(item.path[0].content))
 			return (None, None)
 		
-		if importFileName in ALL_IMPORTS:
-			importedMod = ALL_IMPORTS[importFileName]
+		name = importInfo.name
+		
+		if importInfo.fileName in ALL_IMPORTS:
+			importedMod = ALL_IMPORTS[importInfo.fileName]
 		else:
-			source = SourceFile(importFileName)
+			source = SourceFile(importInfo.fileName)
 			tok = tokenizer.tokenize(source)
 			ast = parser.parse(source, tok)
 			importedMod = state.analyze(ast)
 			ir.generateIR(importedMod)
 			asm = amd64.generateAsm(importedMod)
 			
-			asmFileName = 'compiler/stdlib/{}.asm'.format(name.content)
-			objFileName = 'compiler/stdlib/{}.o'.format(name.content)
+			asmFileName = '{}/{}.asm'.format(importInfo.dir, name.content)
+			objFileName = '{}/{}.o'.format(importInfo.dir, name.content)
 			
 			try:
 				outfile = open(asmFileName, 'w')
@@ -104,13 +125,13 @@ class Import(AST):
 			importedMod.mainFn = None
 			importedMod.objCodePath = objFileName
 			setImportFlags(state, importedMod)
-			ALL_IMPORTS[importFileName] = importedMod
+			ALL_IMPORTS[importInfo.fileName] = importedMod
 		
 		if importedMod not in mod.mods:
 			mod.mods.append(importedMod)
 		symbol = importedMod
 		
-		for name in symbolPath:
+		for name in importInfo.symbolPath:
 			if name.content == '_':
 				logError(state, name.span, '`_` is not a valid symbol name')
 				return (None, None)
