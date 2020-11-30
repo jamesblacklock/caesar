@@ -3,7 +3,7 @@ from ..ir import FundamentalType, FExtend, IExtend, Extend, Imm, Add, Deref, Cal
 
 class FnCall(MIR):
 	def __init__(self, access, args, cVarArgs, dynDispatch, type, span, isDrop=False):
-		super().__init__(span, True)
+		super().__init__(span, not isDrop)
 		self.access = access
 		self.args = args
 		self.cVarArgs = cVarArgs

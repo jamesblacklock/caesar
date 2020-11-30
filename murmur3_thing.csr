@@ -1,0 +1,22 @@
+import
+    murmur3
+        MurmurHash3_x86_32
+        MurmurHash3_x86_128
+        MurmurHash3_x64_128
+    libc::printf
+
+fn main()
+    let mut h = 0
+    let mut i = [0i64, 0i64]
+    let mut j = [0i64, 0i64]
+    
+    unsafe MurmurHash3_x86_32("qwerty"->data(), 6, 0, &mut h)
+    unsafe MurmurHash3_x86_128("qwerty"->data(), 6, 0, &mut i)
+    unsafe MurmurHash3_x64_128("qwerty"->data(), 6, 0, &mut j)
+    
+    printf("%u == %u\n", h, 1672039191)
+    printf("%llu == %llu\n", i[0], 2152401580533395158)
+    printf("%llu == %llu\n", i[1], 3004167661034730130)
+    printf("%llu == %llu\n", j[0], 1930011722761476950)
+    printf("%llu == %llu\n", j[1], 3859836453028625463)
+    
