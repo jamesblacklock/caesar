@@ -989,6 +989,7 @@ def extend(state, ir, signed=False):
 			stack = saveReg(state, state.rax)
 			state.moveOperand(state.rax, stack)
 			dest = state.rax
+		moveData(state, src, dest)
 	
 	if signed:
 		state.appendInstr('movsxd' if src.type.byteSize == 4 else 'movsx', 
