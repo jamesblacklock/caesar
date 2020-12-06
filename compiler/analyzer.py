@@ -3,7 +3,7 @@ from .symbol.symbol  import SymbolType, Deps
 from .ast.typeref    import NamedTypeRef, PtrTypeRef, ArrayTypeRef, OwnedTypeRef
 from .types          import FieldInfo, PtrType, ArrayType, OwnedType, \
                             Void, Bool, Byte, Char, Int8, UInt8, Int16, UInt16, Int32, UInt32, \
-                            Int64, UInt64, ISize, USize, Float32, Float64, typesMatch, canCoerce, tryPromote
+                            Int64, UInt64, ISize, USize, Float32, Float64, typesMatch, canCoerce, tryPromote2
 from .log            import logError, logExplain
 from .ast.ast        import ValueSymbol, Attr
 from .scope          import Scope, ScopeType
@@ -19,6 +19,15 @@ from .mir.access     import SymbolAccess, SymbolRead
 from .ast.importexpr import Import
 from .               import platform
 from .mir.block      import Block, createDropBlock
+from .span           import Span
+
+
+
+from .mir.cfg        import CFGBlock, CFGDropPoint
+
+__exit = exit
+def exit(_):
+	__exit(0)
 
 BUILTIN_TYPES = {
 	Void.name:    Void,
@@ -166,6 +175,14 @@ class AnalyzerState:
 		self.mirBlockStack = []
 		self.ast = None
 		self.discardLevel = 0
+		
+		
+		
+		
+		self.block = None
+		self.fnBlocks = None
+		self.mod = None
+		self.scope2 = None
 	
 	@property
 	def mirBlock(self):
@@ -190,33 +207,34 @@ class AnalyzerState:
 		return ast
 	
 	def analyzeNode(self, ast, implicitType=None, isWrite=False, discard=False):
-		assert not ast.analyzed
-		if discard:
-			if self.discardLevel == 0:
-				self.pushScope(ScopeType.BLOCK)
-				self.scope.dropBlock = createDropBlock(ast)
-			self.discardLevel += 1
+		return self.analyzeNode2(ast, implicitType, isWrite)
+		# assert not ast.analyzed
+		# if discard:
+		# 	if self.discardLevel == 0:
+		# 		self.pushScope(ScopeType.BLOCK)
+		# 		self.scope.dropBlock = createDropBlock(ast)
+		# 	self.discardLevel += 1
 		
-		invokeAttrs(self, ast)
-		mir = ast.analyze(self, implicitType)
-		if mir:
-			if self.scope.fnDecl == None:
-				assert mir.hasValue
-			elif mir.hasValue:
-				if not isWrite and type(mir) != SymbolRead:
-					mir = SymbolAccess.read(self, mir)
-			else:
-				self.mirBlock.append(mir)
-				mir = None
+		# invokeAttrs(self, ast)
+		# mir = ast.analyze(self, implicitType)
+		# if mir:
+		# 	if self.scope.fnDecl == None:
+		# 		assert mir.hasValue
+		# 	elif mir.hasValue:
+		# 		if not isWrite and type(mir) != SymbolRead:
+		# 			mir = SymbolAccess.read(self, mir)
+		# 	else:
+		# 		self.mirBlock.append(mir)
+		# 		mir = None
 		
-		if discard:
-			self.discardLevel -= 1
-			if self.discardLevel == 0:
-				self.popScope()
-		elif self.discardLevel == 0:
-			ast.setAnalyzed()
+		# if discard:
+		# 	self.discardLevel -= 1
+		# 	if self.discardLevel == 0:
+		# 		self.popScope()
+		# elif self.discardLevel == 0:
+		# 	ast.setAnalyzed()
 		
-		return mir
+		# return mir
 	
 	def resolveTypeRefSig(state, typeRef):
 		if type(typeRef) == NamedTypeRef:
@@ -267,7 +285,7 @@ class AnalyzerState:
 		if not (expr.type and expectedType):
 			return expr
 		
-		expr = tryPromote(state, expr, expectedType)
+		expr = tryPromote2(state, expr, expectedType)
 		if not typesMatch(expr.type, expectedType):
 			logError(state, expr.span, 'expected type `{}`, found `{}`'.format(expectedType, expr.type))
 		
@@ -364,8 +382,17 @@ class AnalyzerState:
 		if symbolName.content == '_':
 			logError(self, symbolName.span, '`_` is not a valid symbol name')
 			return None
+		elif self.scope2 and symbolName.content in self.scope2.symbolTable:
+			symbol = self.scope2.symbolTable[symbolName.content]
 		else:
-			symbol = self.scope.lookupSymbol(symbolName.content)
+			s = self.scope
+			symbol = None
+			while s:
+				if symbolName.content in s.mod.symbolTable:
+					symbol = s.mod.symbolTable[symbolName.content]
+					break
+				s = s.parent
+			# symbol = self.scope.lookupSymbol(symbolName.content)
 		
 		if symbol == None and symbolTable and symbolName.content in symbolTable:
 			symbol = symbolTable[symbolName.content]
@@ -412,3 +439,147 @@ class AnalyzerState:
 				symbol = None
 		
 		return symbol
+	
+	
+	
+	
+	
+	def beginFn(self, fn):
+		self.fn = fn
+		self.fnBlocks = []
+		self.branchEnds = []
+		self.startBlock = None
+		self.scope2 = None
+		self.breakBlocks = []
+		self.continueBlocks = []
+		self.endSpan = fn.span.endSpan()
+	
+	def endFn(self):
+		fnBlocks = self.fnBlocks
+		# self.fnBlocks = None
+		return fnBlocks
+	
+	def ifBranch(self, branchOn, span):
+		self.block.branchOn = branchOn
+		ifBranch = CFGBlock([self.block], span)
+		elseBranch = CFGBlock([self.block], span)
+		self.block.successors = [elseBranch, ifBranch]
+		return (ifBranch, elseBranch)
+	
+	def endBranch(self, branches, span):
+		self.block = None
+		self.beginBlock(span.endSpan(), [b for b in branches if not b.successors])
+	
+	def beginBlock(self, span, ancestors=None):
+		if self.block:
+			ancestors = [self.block]
+			self.block.span = Span.merge(self.block.span.startSpan(), span.startSpan())
+		blockSpan = Span.merge(span.startSpan(), self.endSpan)
+		self.block = CFGBlock(ancestors, blockSpan)
+		self.dropPoint = CFGDropPoint(blockSpan)
+		self.fnBlocks.append(self.block)
+	
+	def doBreak(self):
+		self.scope2.didBreak = True
+		self.block.successors = []
+		self.breakBlocks[-1].addAncestor(self.block)
+	
+	def doContinue(self):
+		self.scope2.didBreak = True
+		self.block.successors = []
+		self.continueBlocks[-1].addReverseAncestor(self.block)
+	
+	def beginScope(self, span, branch=None, loop=False):
+		lastBlock = self.block
+		
+		if branch:
+			if self.block:
+				self.block.span = Span.merge(self.block.span.startSpan(), span.startSpan())
+			self.block = branch
+			branch.span = span
+			self.fnBlocks.append(branch)
+		else:
+			self.beginBlock(span)
+		
+		if loop:
+			self.continueBlocks.append(self.block)
+			self.breakBlocks.append(CFGBlock([], Span.merge(span.endSpan(), self.endSpan)))
+		
+		if self.scope2 == None:
+			self.startBlock = self.block
+		self.scope2 = Scope2(self.scope2, span, self.block if branch else None, loop)
+		
+		return self.block
+	
+	def endScope(self):
+		endBlock = self.block
+		
+		# self.block.span = Span.merge(self.block.span.startSpan(), span.endSpan())
+		
+		if self.scope2.parent == None or self.scope2.branchPoint:
+			# self.fnBlocks.append(self.block)
+			# if self.scope2.parent:# and not self.scope2.branchPoint:
+			# 	self.block = CFGBlock(self.block, span.endSpan())
+			# else:
+			self.block = None
+		elif self.scope2.loop:
+			startBlock = self.continueBlocks.pop()
+			if not self.scope2.didBreak:
+				startBlock.addReverseAncestor(self.block)
+			self.block.span = Span.merge(self.block.span.startSpan(), self.scope2.span.endSpan())
+			self.block = self.breakBlocks.pop()
+			self.fnBlocks.append(self.block)
+		else:
+			self.beginBlock(self.scope2.span.endSpan())
+		
+		if self.scope2.didBreak and not self.scope2.parent.loop:
+			self.scope2.parent.didBreak = True
+		self.scope2 = self.scope2.parent
+		
+		return endBlock
+	
+	def analyzeNode2(self, ast, implicitType=None, isRValue=False):
+		invokeAttrs(self, ast)
+		access = ast.analyze2(self, implicitType)
+		if access:
+			assert access.hasValue
+			if type(access) != SymbolRead and not isRValue:
+				access = SymbolAccess.read2(self, access)
+		return access
+	
+	def decl(self, symbol):
+		self.scope2.symbolTable[symbol.name] = symbol
+		self.scope2.symbols.append(symbol)
+		self.scope2.declaredSymbols.append(symbol)
+		self.block.decl(symbol)
+	
+	def access(self, access):
+		self.block.access(access)
+	
+	def append(self, mir):
+		mir.checkFlow(self)
+		self.block.append(mir)
+	
+	def appendDropPoint(self):
+		self.block.append(self.dropPoint)
+		self.dropPoint = CFGDropPoint(self.block.span)
+	
+	def printBlocks(self, block=None):
+		if self.fnBlocks:
+			for block in self.fnBlocks:
+				block.span.reveal()
+				if block.finalized:
+					print('\033[32;1m')
+				print(block)
+				print('\033[0m')
+
+class Scope2:
+	def __init__(self, parent, span, branchPoint=None, loop=False):
+		self.parent = parent
+		self.symbols = list(parent.symbols) if parent else []
+		self.symbolTable = dict(parent.symbolTable) if parent else {}
+		self.declaredSymbols = []
+		self.branchPoint = branchPoint
+		self.loop = loop
+		self.didBreak = False
+		self.span = span

@@ -388,7 +388,7 @@ class GeneratorState:
 	def appendInstr(self, opcode, *operands, isLabel=False, isComment=False):
 		instr = Instr(opcode, operands, isLabel, isComment)
 		self.instr.append(instr)
-		# print(instr)
+		print(instr)
 	
 	def findReg(self, type=None, exclude=[]):
 		for reg in self.intRegs:
@@ -1190,7 +1190,12 @@ def mulDivMod(state, ir, isMul, isMod):
 	
 	state.popOperand()
 	state.popOperand()
-	state.pushOperand(state.rdx if isMod else dest)
+	
+	if isMod:
+		state.rdx.type = dest.type
+		state.pushOperand(state.rdx)
+	else:
+		state.pushOperand(dest)
 
 def mul(state, ir):
 	mulDivMod(state, ir, True, False)

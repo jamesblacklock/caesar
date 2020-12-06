@@ -14,17 +14,21 @@ from compiler.ir         import generateIR
 from compiler.amd64      import generateAsm
 from compiler.build      import buildObjFile
 
+__exit = exit
+def exit(_):
+	__exit(0)
+
 def getImports(mod, imports=None):
 	if imports == None:
-		imports = []
+		imports = set()
 	
 	for subMod in mod.mods:
 		if subMod.topLevel:
-			imports.append(subMod)
-		else:
-			getImports(subMod, imports)
+			imports.add(subMod)
+		
+		getImports(subMod, imports)
 	
-	return imports
+	return list(imports)
 
 def main(args):
 	parser = argparse.ArgumentParser(description='Compiler for the Caesar programming language')

@@ -35,7 +35,12 @@ class LogicOp(AST):
 		symbol = Local.createTemp(self.span)
 		symbol.declSymbol(state.scope)
 		
+		
+		oldDropBlock = state.scope.dropBlock
+		state.scope.dropBlock = createDropBlock(self)
 		l = state.analyzeNode(self.l, types.Bool)
+		state.mirBlock.append(state.scope.dropBlock)
+		state.scope.dropBlock = oldDropBlock
 		if l:
 			l = state.typeCheck(l, types.Bool)
 		

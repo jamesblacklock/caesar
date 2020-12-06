@@ -78,6 +78,9 @@ class MIR:
 	def analyze(self, state, implicitType):
 		return self
 	
+	def analyze2(self, state, implicitType):
+		return self
+	
 	def checkFlow(self, scope):
 		assert 0
 	

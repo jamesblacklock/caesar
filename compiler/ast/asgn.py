@@ -10,6 +10,9 @@ class Asgn(AST):
 		self.infixOp = infixOp
 		self.opSpan = opSpan
 	
+	def analyze2(self, state, ignoredImplicitType):
+		self.analyze(state, ignoredImplicitType)
+	
 	def analyze(self, state, ignoredImplicitType):
 		asgn = self
 		if self.infixOp:

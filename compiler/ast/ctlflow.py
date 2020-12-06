@@ -5,28 +5,33 @@ from ..log         import logError
 from ..mir.ctlflow import LoopCtl, Return as ReturnMIR
 
 def analyzeBreakOrContinue(state, expr, isContinue):
-	if state.scope.loopDepth == 0:
+	# if state.scope.loopDepth == 0:
+	if len(state.breakBlocks) == 0:
 		logError(state, expr.span, '`{}` expression is not inside a loop'
 			.format('continue' if isContinue else 'break'))
 		return None
 	
-	state.scope.didBreak = True
-	dropBlock = createDropBlock(expr)
-	state.mirBlock.append(dropBlock)
-	return LoopCtl(isContinue, dropBlock, expr.span)
+	# state.scope.didBreak = True
+	# dropBlock = createDropBlock(expr)
+	# state.mirBlock.append(dropBlock)
+	# return LoopCtl(isContinue, dropBlock, expr.span)
+	if isContinue:
+		state.doContinue()
+	else:
+		state.doBreak()
 
 class Break(AST):
 	def __init__(self, span):
 		super().__init__(span)
 	
-	def analyze(self, state, implicitType):
+	def analyze2(self, state, implicitType):
 		return analyzeBreakOrContinue(state, self, False)
 
 class Continue(AST):
 	def __init__(self, span):
 		super().__init__(span)
 	
-	def analyze(self, state, implicitType):
+	def analyze2(self, state, implicitType):
 		return analyzeBreakOrContinue(state, self, True)
 
 class Return(AST):
@@ -56,6 +61,7 @@ class Return(AST):
 		# dropBlock = createDropBlock(self)
 		assert state.scope.dropBlock
 		dropBlock = state.scope.dropBlock
+		state.scope.dropBlock = None
 		
 		state.mirBlock.append(dropBlock)
 		return ReturnMIR(access, dropBlock, self.span)

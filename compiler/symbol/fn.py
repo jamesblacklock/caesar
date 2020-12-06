@@ -85,7 +85,40 @@ class Fn(ValueSymbol):
 			# 	self.checkDropFnScope(state)
 		
 		state.failed = state.failed or alreadyFailed
-		# print(self)
+		print(self)
+	
+	def analyzeBody2(self, state):
+		if not self.ast.body:
+			return
+		
+		state.beginFn(self)
+		state.beginScope(self.ast.body.span)
+		
+		if self.type and self.type.params:
+			# self.paramDropBlock = createDropBlock(self)
+			# state.append(self.paramDropBlock)
+			for param in self.type.params:
+				state.decl(param)
+		
+		self.ast.body.hasScope = False
+		state.analyzeNode2(self.ast.body, self.type.returnType if self.type else None)
+		
+		state.endScope()
+		self.cfg = state.endFn()
+		
+		# if not state.failed:
+		# 	self.mirBody.checkFlow(None)
+		# 	assert self.mirBody.scope.didReturn
+		# 	# if self.isDropFnForType:
+		# 	# 	self.checkDropFnScope(state)
+		
+		# state.failed = state.failed or alreadyFailed
+		
+		self.cfg[-1].finalize()
+		for block in self.cfg:
+			assert block.finalized
+		state.printBlocks()
+		
 	
 	def checkDropFnScope(self, state):
 		if not self.isDropFnForType.isCompositeType:

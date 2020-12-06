@@ -582,7 +582,7 @@ def parseBlock(state, parseItem, blockMarkers=BlockMarkers.BRACE,
 		state.rollback(offset)
 		
 		# check if we need to increase the indent level (only happens once in a block)
-		if state.skipEmptyLines():
+		if not isBlockStart(state) and  state.skipEmptyLines():
 			if not indentedBlock and not topLevelBlock:
 				indentedBlock = expectIndentIncrease(state)
 				if not indentedBlock:
@@ -820,7 +820,7 @@ def parseIf(state):
 		
 		span = Span.merge(span, elseBlock.span)
 	else:
-		elseBlock = Block([], ScopeType.ELSE, span)
+		elseBlock = Block([], ScopeType.ELSE, span.endSpan())
 		state.rollback(offset)
 	
 	return If(expr, ifBlock, elseBlock, span)
@@ -1959,6 +1959,10 @@ def parseTopLevelModule(state):
 	mod = Mod(Name(name, block.span.startSpan()), None, block.list, block.span)
 	mod.topLevel = True
 	return mod
+
+__exit = exit
+def exit(_):
+	__exit(0)
 
 def parse(source, tokens):
 	state = ParserState(source, tokens)

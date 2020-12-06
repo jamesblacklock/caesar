@@ -37,6 +37,9 @@ class Mod(Symbol):
 		from .. import attrs
 		state.pushScope(ScopeType.MOD, self)
 		
+		parent = state.mod
+		state.mod = self
+		
 		attrs.invokeAttrs(state, self)
 		
 		for symbol in self.symbols:
@@ -52,10 +55,15 @@ class Mod(Symbol):
 		self.acquireDefault = state.scope.acquireDefault
 		self.releaseDefault = state.scope.releaseDefault
 		
+		state.mod = parent
+		
 		state.popScope()
 	
 	def analyze(self, state, deps):
 		state.pushScope(ScopeType.MOD, self)
+		
+		parent = state.mod
+		state.mod = self
 		
 		deps.push(self)
 		for symbol in self.symbols:
@@ -65,7 +73,10 @@ class Mod(Symbol):
 		deps.pop()
 		
 		for fn in self.fns:
-			fn.analyzeBody(state)
+			# fn.analyzeBody(state)
+			fn.analyzeBody2(state)
+		
+		state.mod = parent
 		
 		state.popScope()
 	

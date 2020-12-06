@@ -797,9 +797,9 @@ class IRState:
 		
 		self.setupLocals(self.paramTypes, inputSymbols)
 		
-		# print('{}({}){}'.format(self.name,
-		# 	', '.join([str(t) for t in self.paramTypes]),
-		# 	' -> {}'.format(self.retType) if self.retType else ''))
+		print('{}({}){}'.format(self.name,
+			', '.join([str(t) for t in self.paramTypes]),
+			' -> {}'.format(self.retType) if self.retType else ''))
 		
 		if not fnDecl.type.returnType.isVoidType:
 			self.retType = FundamentalType.fromResolvedType(fnDecl.type.returnType)
@@ -808,11 +808,11 @@ class IRState:
 		self.instr.append(instr)
 		instr.affectStack(self)
 		
-		# instrText = '{}{}'.format(
-		# 	'   ' if type(instr) != BlockMarker else '', instr.pretty(self))
-		# space = ' ' * (72 - len(instrText))
-		# print('{}{}# [{}]'.format(instrText, space, 
-		# 	', '.join([(t.symbol.name + ': ' if t.symbol else '') + str(t.type) for t in self.operandStack])))
+		instrText = '{}{}'.format(
+			'   ' if type(instr) != BlockMarker else '', instr.pretty(self))
+		space = ' ' * (72 - len(instrText))
+		print('{}{}# [{}]'.format(instrText, space, 
+			', '.join([(t.symbol.name + ': ' if t.symbol else '') + str(t.type) for t in self.operandStack])))
 	
 	def defBlock(self, inputs, hasBackwardsCallers=False):
 		index = len(self.blockDefs)
@@ -978,7 +978,9 @@ def fnToIR(fnDecl):
 		if param.fixed:
 			state.appendInstr(Fix(param, i))
 	
-	fnDecl.mirBody.writeIR(state)
+	# fnDecl.mirBody.writeIR(state)
+	for block in fnDecl.cfg:
+		block.writeIR(state)
 	
 	lastType = type(state.instr[-1])
 	assert lastType != Br and lastType != BrIf

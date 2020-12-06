@@ -27,7 +27,7 @@ class StructLit(AST):
 		self.isUnion = isUnion
 		self.fields = fields
 
-	def analyze(self, state, implicitType):
+	def analyze2(self, state, implicitType):
 		enumType = None
 		variant = None
 		if self.typeRef:
@@ -87,7 +87,7 @@ class StructLit(AST):
 					logError(state, fieldInit.nameSpan, 
 						'type `{}` has no field `{}`'.format(implicitType.name, fieldInit.name))
 			
-			access = state.analyzeNode(fieldInit.expr, fieldType)
+			access = state.analyzeNode2(fieldInit.expr, fieldType)
 			if access:
 				access = state.typeCheck(access, fieldType)
 				accesses[fieldInit.name] = access

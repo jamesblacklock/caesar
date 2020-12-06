@@ -10,6 +10,9 @@ class VoidLit(AST):
 	
 	def analyze(self, state, implicitType):
 		return VoidValue(self.span)
+	
+	def analyze2(self, state, implicitType):
+		return self.analyze(state, implicitType)
 
 class BoolLit(AST):
 	def __init__(self, value, span):
@@ -18,6 +21,9 @@ class BoolLit(AST):
 	
 	def analyze(self, state, implicitType):
 		return BoolValue(self.value, self.span)
+	
+	def analyze2(self, state, implicitType):
+		return self.analyze(state, implicitType)
 
 class IntLit(AST):
 	def __init__(self, strValue, negate, span, value=None, type=None):
@@ -79,6 +85,9 @@ class IntLit(AST):
 			logError(state, self.span, 'integer value out of range for type {}'.format(type))
 		
 		return IntValue(self.value, type, self.span)
+	
+	def analyze2(self, state, implicitType):
+		return self.analyze(state, implicitType)
 
 class FloatLit(AST):
 	def __init__(self, strValue, negate, span):
@@ -112,3 +121,6 @@ class FloatLit(AST):
 		# 	logError(state, self.span, 'floating point value out of range for type {}'.format(self.type))
 		
 		return FloatValue(self.value, type, self.span)
+	
+	def analyze2(self, state, implicitType):
+		return self.analyze(state, implicitType)

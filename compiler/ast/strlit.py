@@ -50,9 +50,10 @@ class StrLit(AST):
 		super().__init__(span, True)
 		self.value = value
 	
-	def analyze(self, state, implicitType):
+	def analyze2(self, state, implicitType):
 		global STR_COUNTER
-		label = '{}_str{}'.format(state.scope.fnDecl.mangledName, STR_COUNTER)
+		# label = '{}_str{}'.format(state.scope.fnDecl.mangledName, STR_COUNTER)
+		label = '{}_str{}'.format(state.fn.mangledName, STR_COUNTER)
 		STR_COUNTER += 1
 		
 		value = strEsc(self.value)
@@ -61,7 +62,7 @@ class StrLit(AST):
 		label = Label(staticData.label, bytePtrType, staticData, self.span)
 		
 		if state.ast.noStrImport or implicitType and types.typesMatch(implicitType, bytePtrType):
-			return state.analyzeNode(label)
+			return state.analyzeNode2(label)
 		
 		StrType = state.strMod.symbolTable['str'].type
 		StrDataType = state.strMod.symbolTable['StrData'].type

@@ -8,6 +8,9 @@ class ValueRef(AST):
 	
 	def analyze(valueRef, state, implicitType):
 		return access.SymbolAccess.analyzeSymbolAccess(state, valueRef, implicitType)
+	
+	def analyze2(self, state, implicitType):
+		return access.SymbolAccess.analyzeSymbolAccess(state, self, implicitType)
 
 class Borrow(AST):
 	def __init__(self, expr, span):
@@ -15,4 +18,7 @@ class Borrow(AST):
 		self.expr = expr
 	
 	def analyze(self, state, implicitType):
+		return access.SymbolAccess.analyzeSymbolAccess(state, self, implicitType)
+	
+	def analyze2(self, state, implicitType):
 		return access.SymbolAccess.analyzeSymbolAccess(state, self, implicitType)

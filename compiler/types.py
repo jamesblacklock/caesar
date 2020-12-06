@@ -465,6 +465,62 @@ def tryPromote(state, access, toType):
 	
 	return access
 
+def tryPromote2(state, access, toType):
+	fromType = access.type
+	if not fromType or not toType or fromType == toType:
+		return access
+	
+	# int/float promotions
+	intToInt = fromType.isIntType and toType.isIntType
+	intOrFloatToFloat = (fromType.isIntType or fromType.isFloatType) and toType.isFloatType
+	if intToInt or intOrFloatToFloat:
+		signsMatch = fromType.isSigned == toType.isSigned
+		sizeDoesIncrease = fromType.byteSize < toType.byteSize
+		if signsMatch and sizeDoesIncrease:
+			access = state.analyzeNode2(Coerce(access, toType, access.span))
+			access.dropBlock = state.scope.dropBlock
+			return access
+	
+	# pointer promotions
+	fromBaseType = fromType
+	toBaseType = toType
+	if fromBaseType.isOwnedType and toBaseType.isOwnedType and \
+		fromBaseType.release == toBaseType.release and \
+		fromBaseType.acquire == toBaseType.acquire:
+		fromBaseType = fromBaseType.baseType
+		toBaseType = toBaseType.baseType
+	
+	if fromBaseType.isPtrType and toBaseType.isPtrType:
+		toDerefType = toBaseType.typeAfterDeref()
+		fromDerefType = fromBaseType.typeAfterDeref()
+		if toDerefType == Void and (fromBaseType.mut or not toBaseType.mut):
+			access.type = toType
+			return access
+		elif typesMatch(fromDerefType, toDerefType) and not toBaseType.mut:
+			access.type = toType
+			return access
+		elif toDerefType.isTraitType and toDerefType in fromDerefType.traitImpls:
+			access = state.analyzeNode2(Coerce(access, toType, access.span))
+			access.dropBlock = state.scope.dropBlock
+			return access
+	
+	# promote scalar to tuple
+	if toType.isTupleType and len(toType.fields) == 1 and typesMatch(toType.fields[0].type, fromType):
+		access.type = toType
+		return access
+	
+	# if type(access) == SymbolAccess and access.ref and indefiniteMatch(access.type, expectedType):
+	# 	access.symbol.type = expectedType
+	# 	access.type = expectedType
+	# 	return access
+	
+	# if toType.isOptionType:
+	# 	for t in toType.types:
+	# 		if typesMatch(fromType, t):
+	# 			return constructOptionInstance(access)
+	
+	return access
+
 def canCoerce(fromType, toType):
 	if fromType.isOwnedType or toType.isOwnedType:
 		if not (fromType.isOwnedType and toType.isOwnedType):

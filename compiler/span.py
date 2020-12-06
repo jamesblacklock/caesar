@@ -15,10 +15,6 @@ class Span:
 		if span2 == None: return span1
 		return Span(span1.source, span1.startLine, span1.startColumn, span2.endLine, span2.endColumn)
 	
-	@staticmethod
-	def cursor(span):
-		return Span(span.source, span.startLine, span.startColumn, span.startLine, span.startColumn)
-	
 	def clone(self):
 		return Span(self.source, self.startLine, self.startColumn, self.endLine, self.endColumn)
 	
@@ -30,9 +26,24 @@ class Span:
 	
 	def endSpan(self):
 		other = self.clone()
+		other.endColumn += 1
 		other.startLine = other.endLine
 		other.startColumn = other.endColumn
 		return other
+	
+	# def advance(self):
+	# 	self.endColumn += 1
+	# 	line = self.source.lines[self.startLine]
+	# 	if len(line) < self.endColumn and len(self.source.lines) >= self.endLine+1:
+	# 		self.endLine += 1
+	# 		self.endColumn = 1
+		
+	# 	self.startLine = self.endLine
+	# 	self.startColumn = self.endColumn
+	# 	return self
+	
+	def reveal(self):
+		print(revealSpan(self))
 
 class AnsiColor:
 	BLACK = '30'

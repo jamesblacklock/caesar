@@ -54,6 +54,14 @@ class SymbolAccess(MIR):
 		return tempRead
 	
 	@staticmethod
+	def read2(state, expr):
+		(tempSymbol, tempWrite, tempRead) = createTempTriple(expr)
+		state.block.decl(tempSymbol)
+		state.analyzeNode2(tempWrite)
+		tempRead.type = tempSymbol.type
+		return tempRead
+	
+	@staticmethod
 	def noop(symbol, dropBlock, span):
 		ref = SymbolRead(span)
 		ref.symbol = symbol
@@ -176,7 +184,7 @@ class SymbolRead(SymbolAccess):
 		
 		return other
 	
-	def analyze(access, state, implicitType):
+	def analyze2(access, state, implicitType):
 		access.symbol.unused = False
 		if access.symbol.isStatic:
 			access.deref += 1
@@ -186,9 +194,11 @@ class SymbolRead(SymbolAccess):
 		if access.isFieldAccess and access.field and access.field.isUnionField and not state.scope.allowUnsafe:
 			logError(state, access.span, 'reading union fields is unsafe; context is safe')
 		
-		access.ref = not access.addr and not access.isFieldAccess
+		if not access.addr and not access.isFieldAccess:
+			access.ref = True
+			access.copy = access.type.isCopyable
 		
-		access.dropBlock = state.scope.dropBlock
+		access.dropPoint = state.dropPoint
 		access = tryPromote(state, access, implicitType)
 		
 		isCopyableDrop = access.symbol.isLocal and access.symbol.dropFn and access.type and access.type.isCopyable
@@ -201,15 +211,18 @@ class SymbolRead(SymbolAccess):
 			state.analyzeNode(write)
 			read.type = write.type
 			access = read
-			access.dropBlock = state.scope.dropBlock
+			access.dropPoint = state.dropPoint
 		
 		access.contracts = access.symbol.contracts
+		
+		# state.access(access)
 		return access
 	
-	def checkFlow(self, scope):
+	def checkFlow(self, state):
 		for off in self.dynOffsets:
-			off.expr.checkFlow(scope)
-		scope.accessSymbol(self)
+			off.expr.checkFlow(state)
+		# scope.accessSymbol(self)
+		state.access(self)
 	
 	def writeIR(expr, state):
 		if expr.noop or expr.type.isVoidType:
@@ -332,11 +345,52 @@ class SymbolWrite(SymbolAccess):
 			access.rvalue.dropBlock = state.scope.dropBlock
 		return access
 	
-	def checkFlow(self, scope):
-		self.rvalue.checkFlow(scope)
+	def analyze2(access, state, ignoredImplicitType):
+		access.symbol.unused = False
+		if access.type == None:
+			access.type = access.symbol.type
+		if access.rvalueImplicitType == None:
+			access.rvalueImplicitType = access.type
+		
+		if access.analyzeRValue:
+			access.rvalue = state.analyzeNode2(access.rvalue, access.rvalueImplicitType, isRValue=True)
+		
+		if access.rvalue:
+			access.symbol.contracts = access.rvalue.contracts
+			if access.symbol.type == None:
+				access.symbol.type = access.rvalue.type
+				access.type = access.rvalue.type
+				access.symbol.checkDropFn(state)
+			elif access.type and access.rvalue.type:
+				access.rvalue = tryPromote(state, access.rvalue, access.rvalueImplicitType)
+				
+				if not typesMatch(access.type, access.rvalue.type):
+					logError(state, access.rvalue.span, 
+						'expected type {}, found {}'.format(access.type, access.rvalue.type))
+		
+		if access.symbol.isStatic:
+			access.deref += 1
+		
+		access.copy = access.deref != 0
+		
+		if access.type == None:
+			access.type = access.symbol.type
+		if access.field and access.field.isUnionField and not state.scope.allowUnsafe:
+			logError(state, fnCall.expr.span, 'writing union fields is unsafe; context is safe')
+		
+		access.dropPoint = state.dropPoint
+		if access.rvalue:
+			access.rvalue.dropPoint = state.dropPoint
+		
+		# state.access(access)
+		state.append(access)
+	
+	def checkFlow(self, state):
+		self.rvalue.checkFlow(state)
 		for off in self.dynOffsets:
-			off.expr.checkFlow(scope)
-		scope.accessSymbol(self)
+			off.expr.checkFlow(state)
+		# scope.accessSymbol(self)
+		state.access(self)
 	
 	def writeIR(expr, state):
 		assert expr.symbol.isLocal or expr.symbol.isStatic
