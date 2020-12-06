@@ -9,9 +9,9 @@ class AsExpr(AST):
 		self.expr = expr
 		self.typeRef = typeRef
 	
-	def analyze(self, state, implicitType):
+	def analyze2(self, state, implicitType):
 		type = state.resolveTypeRef(self.typeRef)
-		access = state.analyzeNode(self.expr, type)
+		access = state.analyzeNode2(self.expr, type)
 		if access == None or access.type == None:
 			return None
 		

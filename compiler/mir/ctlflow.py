@@ -10,16 +10,16 @@ class LoopCtl(MIR):
 	def checkFlow(self, scope):
 		scope.doBreak(self, self.isContinue)
 	
-	def writeIR(self, state):
-		state.didBreak = True
-		if self.isContinue:
-			for symbol in state.loopInfo.inputSymbols:
-				offset = state.localOffset(symbol)
-				if offset > 0:
-					state.appendInstr(Raise(self, offset))
+	# def writeIR(self, state):
+	# 	state.didBreak = True
+	# 	if self.isContinue:
+	# 		for symbol in state.loopInfo.inputSymbols:
+	# 			offset = state.localOffset(symbol)
+	# 			if offset > 0:
+	# 				state.appendInstr(Raise(self, offset))
 		
-		blockDef = state.loopInfo.continueBlock if self.isContinue else state.loopInfo.breakBlock
-		state.appendInstr(Br(self, blockDef.index))
+	# 	blockDef = state.loopInfo.continueBlock if self.isContinue else state.loopInfo.breakBlock
+	# 	state.appendInstr(Br(self, blockDef.index))
 	
 	def __str__(self):
 		return 'continue' if self.isContinue else 'break'

@@ -468,7 +468,11 @@ class AnalyzerState:
 	
 	def endBranch(self, branches, span):
 		self.block = None
-		self.beginBlock(span.endSpan(), [b for b in branches if not b.successors])
+		branches = [b for b in branches if not b.successors]
+		if branches:
+			self.beginBlock(span.endSpan(), branches)
+		else:
+			self.block = self.breakBlocks[-1]
 	
 	def beginBlock(self, span, ancestors=None):
 		if self.block:
@@ -524,7 +528,7 @@ class AnalyzerState:
 			self.block = None
 		elif self.scope2.loop:
 			startBlock = self.continueBlocks.pop()
-			if not self.scope2.didBreak:
+			if not self.scope2.didBreak and self.block != self.breakBlocks[-1]:
 				startBlock.addReverseAncestor(self.block)
 			self.block.span = Span.merge(self.block.span.startSpan(), self.scope2.span.endSpan())
 			self.block = self.breakBlocks.pop()

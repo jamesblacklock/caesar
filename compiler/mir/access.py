@@ -215,7 +215,6 @@ class SymbolRead(SymbolAccess):
 		
 		access.contracts = access.symbol.contracts
 		
-		# state.access(access)
 		return access
 	
 	def checkFlow(self, state):

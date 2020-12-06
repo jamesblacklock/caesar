@@ -114,10 +114,11 @@ class Fn(ValueSymbol):
 		
 		# state.failed = state.failed or alreadyFailed
 		
-		self.cfg[-1].finalize()
-		for block in self.cfg:
-			assert block.finalized
-		state.printBlocks()
+		if not state.failed:
+			self.cfg[-1].finalize()
+			for block in self.cfg:
+				assert block.finalized
+			state.printBlocks()
 		
 	
 	def checkDropFnScope(self, state):
