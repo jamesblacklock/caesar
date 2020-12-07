@@ -1,5 +1,4 @@
 from .ast               import AST
-from .typeref           import NamedTypeRef
 from ..symbol.struct    import StructType
 from ..symbol.symbol    import SymbolType
 from ..mir.createstruct import CreateStruct, FieldInit
@@ -27,7 +26,7 @@ class StructLit(AST):
 		self.isUnion = isUnion
 		self.fields = fields
 
-	def analyze2(self, state, implicitType):
+	def analyze(self, state, implicitType):
 		enumType = None
 		variant = None
 		if self.typeRef:
@@ -53,13 +52,13 @@ class StructLit(AST):
 			fieldDict = implicitType.fieldDict
 			
 			if implicitType.symbol.hasPrivateFields or implicitType.symbol.hasReadOnlyFields:
-				symbolScope = implicitType.symbol.scope
-				scope = state.scope
+				symbolMod = implicitType.mod
+				mod = state.mod
 				while True:
-					if scope.mod == symbolScope.mod:
+					if mod == symbolMod:
 						break
-					scope = scope.parent
-					if scope == None:
+					mod = mod.parent
+					if mod == None:
 						s = 'private' if implicitType.symbol.hasPrivateFields else 'read-only'
 						logError(state, self.span, 
 							'cannot construct type `{}` because it has {} fields'.format(implicitType.name, s))
@@ -87,7 +86,7 @@ class StructLit(AST):
 					logError(state, fieldInit.nameSpan, 
 						'type `{}` has no field `{}`'.format(implicitType.name, fieldInit.name))
 			
-			access = state.analyzeNode2(fieldInit.expr, fieldType)
+			access = state.analyzeNode(fieldInit.expr, fieldType)
 			if access:
 				access = state.typeCheck(access, fieldType)
 				accesses[fieldInit.name] = access

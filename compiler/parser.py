@@ -36,7 +36,6 @@ from .ast.typedecl   import TypeDecl
 from .ast.isexpr     import Pattern, IsExpr
 from .ast.importexpr import Import, ImportTree
 from .ast.sizeof     import Sizeof, Offsetof
-from .scope          import ScopeType
 
 INFIX_PRECEDENCE = {
 	TokenType.ARROW:  1000, TokenType.AS:        900, TokenType.IS:      900, TokenType.LSHIFT:    800, 
@@ -794,7 +793,7 @@ def parseIf(state):
 	if expr == None:
 		return None
 	
-	ifBlock = Block.fromInfo(parseBlock(state, parseFnBodyExpr), ScopeType.IF)
+	ifBlock = Block.fromInfo(parseBlock(state, parseFnBodyExpr))
 	span = Span.merge(span, ifBlock.span)
 	
 	offset = state.offset
@@ -814,13 +813,13 @@ def parseIf(state):
 			elseIf = parseIf(state)
 			exprs = [elseIf] if elseIf else []
 			span = elseIf.span if elseIf else tok.span
-			elseBlock = Block(exprs, ScopeType.ELSE, span)
+			elseBlock = Block(exprs, span)
 		else:
-			elseBlock = Block.fromInfo(parseBlock(state, parseFnBodyExpr), ScopeType.ELSE)
+			elseBlock = Block.fromInfo(parseBlock(state, parseFnBodyExpr))
 		
 		span = Span.merge(span, elseBlock.span)
 	else:
-		elseBlock = Block([], ScopeType.ELSE, span.endSpan())
+		elseBlock = Block([], span.endSpan())
 		state.rollback(offset)
 	
 	return If(expr, ifBlock, elseBlock, span)
@@ -836,7 +835,7 @@ def parseWhile(state):
 	blockInfo = parseBlock(state, parseFnBodyExpr)
 	span = Span.merge(span, blockInfo.span)
 	
-	return While(expr, Block.fromInfo(blockInfo, ScopeType.LOOP), span)
+	return While(expr, Block.fromInfo(blockInfo), span)
 
 def parseLoop(state):
 	span = state.tok.span
@@ -844,7 +843,7 @@ def parseLoop(state):
 	blockInfo = parseBlock(state, parseFnBodyExpr)
 	span = Span.merge(span, blockInfo.span)
 	
-	return Loop(Block.fromInfo(blockInfo, ScopeType.LOOP), span)
+	return Loop(Block.fromInfo(blockInfo), span)
 
 def parseLoopCtl(state):
 	span = state.tok.span
@@ -1203,7 +1202,7 @@ def parseUnsafeBlock(state):
 	state.skipSpace()
 	expr = parseExpr(state, ExprClass.FN, allowSimpleFnCall=True)
 	if type(expr) != Block:
-		expr = Block([expr], ScopeType.BLOCK, expr.span)
+		expr = Block([expr], expr.span)
 	
 	expr.span = Span.merge(span, expr.span)
 	expr.unsafe = True
@@ -1217,7 +1216,7 @@ def parseBlockOrAnonStructLit(state):
 	if len(block.list) == 1 and block.list[0].hasValue:
 		return block.list[0]
 	else:
-		return Block.fromInfo(block, ScopeType.BLOCK)
+		return Block.fromInfo(block)
 
 def parseValueExpr(state, precedence=0, noSkipSpace=False, allowSimpleFnCall=False):
 	return parseExpr(state, ExprClass.VALUE_EXPR, precedence, noSkipSpace, allowSimpleFnCall)
@@ -1309,24 +1308,31 @@ def parseValueExprImpl(state, precedence, noSkipSpace, allowSimpleFnCall):
 	
 	while True:
 		if state.tok.type == TokenType.LBRACK:
+			expr.hasValue = True
 			expr = parseIndex(state, expr)
 		elif state.tok.type == TokenType.LPAREN:
+			expr.hasValue = True
 			expr = parseFnCall(state, expr)
 		elif state.tok.type in (TokenType.DOT, TokenType.DEREFDOT):
+			expr.hasValue = True
 			expr = parseField(state, expr)
 		else:
 			offset = state.offset
 			spaceBeforeOp = False if noSkipSpace else state.skipSpace()
 			if state.tok.type in INFIX_PRECEDENCE and INFIX_PRECEDENCE[state.tok.type] > precedence:
+				expr.hasValue = True
 				expr = parseInfixOps(state, expr, expr.span.startLine == expr.span.endLine, spaceBeforeOp)
 			elif state.tok.type == TokenType.CARET:
+				expr.hasValue = True
 				expr = parseDeref(state, expr)
 			elif allowSimpleFnCall and type(expr) == ValueRef and state.tok.type != TokenType.NEWLINE and \
 				state.tok.type in VALUE_EXPR_TOKS:
+				expr.hasValue = True
 				expr = parseSimpleFnCall(state, expr)
 			else:
 				spaceBeforeOp = state.skipSpace()
 				if state.tok.type == TokenType.AS and INFIX_PRECEDENCE[state.tok.type] > precedence:
+					expr.hasValue = True
 					expr = parseInfixOps(state, expr, expr.span.startLine == expr.span.endLine, spaceBeforeOp)
 				else:
 					state.rollback(offset)
@@ -1377,6 +1383,7 @@ def parseValueExprOrAsgn(state):
 		
 		rvalue = parseValueExpr(state)
 		if rvalue != None:
+			rvalue.hasValue = True
 			span = Span.merge(span, rvalue.span)
 		
 		expr = Asgn(lvalue, rvalue, infixOp, opTok.span, span)
@@ -1443,6 +1450,7 @@ def parseVarDecl(state, isConst, isModLevel, isExtern):
 		state.skipSpace()
 		expr = parseValueExpr(state)
 		if expr != None:
+			expr.hasValue = True
 			span = Span.merge(span, expr.span)
 	
 	if isModLevel:
@@ -1555,7 +1563,7 @@ def parseFnDecl(state, doccomment, pub, extern, cconv, traitDecl=False):
 	body = None
 	if not (extern or traitDecl):
 		blockInfo = parseBlock(state, parseFnBodyExpr)
-		body = Block.fromInfo(blockInfo, ScopeType.FN)
+		body = Block.fromInfo(blockInfo)
 		span = Span.merge(span, body.span)
 	
 	return FnDecl(name, doccomment, pub, extern, cconv, unsafe, 

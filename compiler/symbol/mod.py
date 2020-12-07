@@ -1,7 +1,6 @@
-from ..ast.ast import Symbol, Name, Attr
+from ..ast.ast import Symbol, Name
 from .symbol   import SymbolType
 from ..types   import typesMatch
-from ..scope   import ScopeType
 from ..log     import logError, logExplain
 from .trait    import Trait
 
@@ -24,21 +23,28 @@ class Mod(Symbol):
 		self.isStrMod = False
 		self.acquireDefault = None
 		self.releaseDefault = None
+		self.acquireDefaultSet = False
+		self.releaseDefaultSet = False
 		self.symbols = []
 		self.symbolTable = {}
+		self.isFnMod = False
 		
 		self.symbolType = SymbolType.MOD
 		self.ast = self
+		self.parent = None
 	
 	def createSymbol(self, state):
 		return self
 	
 	def checkSig(self, state):
 		from .. import attrs
-		state.pushScope(ScopeType.MOD, self)
 		
-		parent = state.mod
+		self.parent = state.mod
 		state.mod = self
+		
+		if self.parent:
+			self.acquireDefault = self.parent.acquireDefault
+			self.releaseDefault = self.parent.releaseDefault
 		
 		attrs.invokeAttrs(state, self)
 		
@@ -52,17 +58,9 @@ class Mod(Symbol):
 				continue
 			symbol.checkSig(state)
 		
-		self.acquireDefault = state.scope.acquireDefault
-		self.releaseDefault = state.scope.releaseDefault
-		
-		state.mod = parent
-		
-		state.popScope()
+		state.mod = self.parent
 	
 	def analyze(self, state, deps):
-		state.pushScope(ScopeType.MOD, self)
-		
-		parent = state.mod
 		state.mod = self
 		
 		deps.push(self)
@@ -76,15 +74,9 @@ class Mod(Symbol):
 			# fn.analyzeBody(state)
 			fn.analyzeBody2(state)
 		
-		state.mod = parent
+		state.mod = self.parent
 		
-		state.popScope()
-	
-	def pretty(self, output, indent=0):
-		output.write('mod {}\n'.format(self.name), indent)
-		for decl in self.decls:
-			decl.pretty(output, indent + 1)
-			output.write('\n\n')
+		# state.popScope()
 
 IMPL_COUNTER = 0
 

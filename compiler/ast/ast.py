@@ -31,9 +31,6 @@ class AST:
 		self.analyzed = False
 		self.attrsInvoked = False
 	
-	def setAnalyzed(self):
-		self.analyzed = True
-	
 	def analyze(self, state, implicitType):
 		assert 0
 

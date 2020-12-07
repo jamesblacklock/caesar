@@ -18,7 +18,7 @@ class FnCall(AST):
 		self.expr = expr
 		self.args = args
 	
-	def analyze2(self, state, implicitType):
+	def analyze(self, state, implicitType):
 		access = None
 		dynDispatch = False
 		if self.isMethodCall:
@@ -98,8 +98,6 @@ class FnCall(AST):
 		for _ in range(len(params), len(self.args)):
 			params.append(None)
 		
-		# assert state.scope.dropBlock
-		
 		hasCVarArgs = fnType.cVarArgs if fnType else False
 		args = []
 		argFailed = False
@@ -147,8 +145,6 @@ class FnCall(AST):
 		
 		for arg in args:
 			if arg.borrows:
-				# lateRef = SymbolAccess.noop(arg.symbol, state.scope.dropBlock, arg.span)
-				# state.scope.dropBlock.append(lateRef)
 				lateRef = SymbolAccess.noop(arg.symbol, state.dropPoint, arg.span)
 				state.dropPoint.append(lateRef)
 		

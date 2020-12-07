@@ -2,7 +2,6 @@ import os
 from .ast            import AST, Name
 from ..sourcefile    import SourceFile
 from ..symbol.symbol import SymbolType
-from ..symbol.mod    import Mod
 from ..log           import logError, logExplain
 from ..              import tokenizer, parser, ir, amd64, build
 

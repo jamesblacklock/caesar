@@ -8,7 +8,7 @@ class VoidValue(MIR):
 		self.type = Void
 		self.hasValue = True
 	
-	def checkFlow(self, scope):
+	def commit(self, state):
 		pass
 	
 	def writeIR(lit, state):
@@ -24,7 +24,7 @@ class BoolValue(MIR):
 		self.type = Bool
 		self.hasValue = True
 	
-	def checkFlow(self, scope):
+	def commit(self, state):
 		pass
 	
 	def writeIR(self, state):
@@ -40,7 +40,7 @@ class IntValue(MIR):
 		self.type = type
 		self.hasValue = True
 	
-	def checkFlow(self, scope):
+	def commit(self, state):
 		pass
 	
 	def staticEval(self, state):
@@ -60,7 +60,7 @@ class FloatValue(MIR):
 		self.value = value
 		self.type = type
 	
-	def checkFlow(self, scope):
+	def commit(self, state):
 		pass
 	
 	def writeIR(self, state):

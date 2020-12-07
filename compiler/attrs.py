@@ -20,22 +20,22 @@ class AttrArg:
 		self.optional = optional
 
 def acquireDefaultAttr(state, decl, params, span):
-	if state.scope.acquireDefaultSet:
+	if state.mod.acquireDefaultSet:
 		logError(state, span, '`acquire_default` was already set in this scope')
-		logExplain(state, state.scope.acquireDefault.span, '`acquire_default` was set here')
+		logExplain(state, state.mod.acquireDefault.span, '`acquire_default` was set here')
 		return
 	
-	state.scope.acquireDefaultSet = True
-	state.scope.acquireDefault = decl
+	state.mod.acquireDefaultSet = True
+	state.mod.acquireDefault = decl
 
 def releaseDefaultAttr(state, decl, params, span):
-	if state.scope.releaseDefaultSet:
+	if state.mod.releaseDefaultSet:
 		logError(state, span, '`release_default` was already set in this scope')
-		logExplain(state, state.scope.releaseDefault.span, '`release_default` was set here')
+		logExplain(state, state.mod.releaseDefault.span, '`release_default` was set here')
 		return
 	
-	state.scope.releaseDefaultSet = True
-	state.scope.releaseDefault = decl
+	state.mod.releaseDefaultSet = True
+	state.mod.releaseDefault = decl
 
 def cconvAttr(state, decl, params, span):
 	if params[0].value != '"C"':

@@ -1,4 +1,4 @@
-from enum import Enum
+from enum      import Enum
 from .infixops import InfixOps
 
 class TokenType(Enum):

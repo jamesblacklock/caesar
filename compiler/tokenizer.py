@@ -1,7 +1,7 @@
 import re
 from enum   import Enum
 from .span  import Span
-from .token import *
+from .token import Token, TokenType
 from .log   import logError
 
 class IndentMode(Enum):
@@ -105,7 +105,7 @@ def lexSpace(state):
 			regex = r"^\t+$"
 			expected = 'tabs'
 			found = 'spaces'
-		test = testSpaceIndent if state.char == ' ' else testTabIndent
+		test = testSpace#testSpaceIndent if state.char == ' ' else testTabIndent
 	else:
 		test = testSpace
 	

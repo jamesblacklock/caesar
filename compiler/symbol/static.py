@@ -1,5 +1,5 @@
 from .symbol   import ValueSymbol
-from ..types   import typesMatch, Void
+from ..types   import typesMatch
 from ..log     import logError
 from ..mir.mir import TypeModifiers
 

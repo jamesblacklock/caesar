@@ -33,26 +33,13 @@ class LetDecl(LocalDecl):
 	
 	def analyze(self, state, implicitType):
 		symbol = self.createSymbol(state)
-		if self.expr:
-			access = SymbolWrite(self.expr, self.span, self.nameSpan)
-			access.symbol = symbol
-			access.rvalueImplicitType = symbol.type
-			state.analyzeNode(access)
-		
-		if symbol.type or symbol.dropFn:
-			symbol.checkDropFn(state)
-		
-		symbol.declSymbol(state.scope)
-	
-	def analyze2(self, state, implicitType):
-		symbol = self.createSymbol(state)
 		state.decl(symbol)
 		
 		if self.expr:
 			access = SymbolWrite(self.expr, self.span, self.nameSpan)
 			access.symbol = symbol
 			access.rvalueImplicitType = symbol.type
-			state.analyzeNode2(access)
+			state.analyzeNode(access)
 		
 		if symbol.type or symbol.dropFn:
 			symbol.checkDropFn(state)

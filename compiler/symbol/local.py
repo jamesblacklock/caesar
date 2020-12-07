@@ -52,10 +52,6 @@ class Local(ValueSymbol):
 		if self.type or self.dropFn:
 			self.checkDropFn(state)
 	
-	def declSymbol(self, scope):
-		self.dropBlock = scope.fnDecl.paramDropBlock if self.isParam else scope.dropBlock
-		scope.declSymbol(self)
-	
 	def checkDropFn(self, state):
 		if self.type and self.type.dropFn:
 			if self.attrDropFn:

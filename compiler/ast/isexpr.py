@@ -13,7 +13,7 @@ class IsExpr(AST):
 		self.pattern = pattern
 	
 	def analyze(self, state, implicitType):
-		access = state.analyzeNode(self.expr)#, discard=True)
+		access = state.analyzeNode(self.expr, discard=True)
 		if not access or not access.type:
 			return None
 		

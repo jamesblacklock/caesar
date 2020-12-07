@@ -6,7 +6,7 @@ class DropSymbol(MIR):
 		super().__init__(span)
 		self.symbol = symbol
 	
-	def checkFlow(self, scope):
+	def commit(self, state):
 		pass
 	
 	def writeIR(expr, state):

@@ -1,5 +1,4 @@
-from re   import findall
-from enum import Enum
+from re import findall
 
 class Span:
 	def __init__(self, source, startLine, startColumn, endLine, endColumn):

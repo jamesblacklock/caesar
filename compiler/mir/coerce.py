@@ -7,8 +7,8 @@ class Coerce(MIR):
 		self.access = access
 		self.type = type
 	
-	def checkFlow(self, scope):
-		self.access.checkFlow(scope)
+	def commit(self, state):
+		self.access.commit(state)
 		if self.access.borrows:
 			self.borrows = self.access.borrows
 	
