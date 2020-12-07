@@ -21,8 +21,6 @@ class FnCall(MIR):
 	def writeIR(self, state):
 		for access in self.args:
 			access.writeIR(state)
-			if self.isDrop and state.loopInfo:
-				state.loopInfo.droppedSymbols.add(access.symbol)
 		
 		for access in self.cVarArgs:
 			access.writeIR(state)

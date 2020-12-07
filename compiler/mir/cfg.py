@@ -1,7 +1,7 @@
 from .mir    import MIR
 from .access import SymbolAccess
 from .drop   import DropSymbol
-from ..ir    import Br, BrIf, Ret, BlockMarker, beginBlock, getInputInfo
+from ..ir    import Br, BrIf, Ret, BlockMarker, getInputInfo
 
 class SymbolState:
 	def __init__(self, symbol):
@@ -249,9 +249,9 @@ class CFGBlock:
 	
 	def __str__(self):
 		lines = [str(mir) for mir in self.mir]
-		block = '\n\t'.join(line for line in lines if line)
+		block = '\n    '.join(line for line in lines if line)
 		if block:
-			block = '\t' + block + '\n'
+			block = '    ' + block + '\n'
 		
 		start = '@{}'.format(self.id)
 		if self.ancestors:

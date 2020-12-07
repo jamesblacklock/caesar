@@ -13,9 +13,6 @@ class DropSymbol(MIR):
 		if expr.symbol.type.isVoidType:
 			return
 		
-		if state.loopInfo:
-			state.loopInfo.droppedSymbols.add(expr.symbol)
-		
 		offset = state.localOffset(expr.symbol)
 		if offset > 0:
 			state.appendInstr(Raise(expr, offset))

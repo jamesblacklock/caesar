@@ -418,9 +418,6 @@ class SymbolWrite(SymbolAccess):
 				state.nameTopOperand(expr.symbol)
 				if expr.symbol.fixed:
 					state.appendInstr(ir.Fix(expr, 0))
-			
-			if state.loopInfo:
-				state.loopInfo.droppedSymbols.discard(expr.symbol)
 
 def _SymbolAccess__analyzeSymbolAccess(state, expr, access, implicitType=None):
 	if type(expr) == valueref.ValueRef:

@@ -762,22 +762,12 @@ class OperandInfo:
 		self.type = fType
 		self.symbol = symbol
 
-class LoopInfo:
-	def __init__(self, parent, ast, continueBlock, breakBlock, inputSymbols):
-		self.ast = ast
-		self.continueBlock = continueBlock
-		self.breakBlock = breakBlock
-		self.droppedSymbols = set()
-		self.inputSymbols = inputSymbols
-		self.parent = parent
-
 class IRState:
 	def __init__(self, fnDecl):
 		self.ast = fnDecl
 		self.name = fnDecl.mangledName
 		self.cVarArgs = fnDecl.cVarArgs
 		self.instr = []
-		self.loopInfo = None
 		self.staticDefs = []
 		self.retType = None
 		self.paramTypes = []
@@ -821,12 +811,6 @@ class IRState:
 		self.blockDefs.append(blockDef)
 		return blockDef
 	
-	def pushLoopInfo(self, ast, continueBlock, breakBlock, inputSymbols):
-		self.loopInfo = LoopInfo(self.loopInfo, ast, continueBlock, breakBlock, inputSymbols)
-	
-	def popLoopInfo(self):
-		self.loopInfo = self.loopInfo.parent
-	
 	def setupLocals(self, inputTypes, inputSymbols):
 		operandStack = []
 		operandsBySymbol = {}
@@ -838,9 +822,6 @@ class IRState:
 		
 		self.operandStack = operandStack
 		self.operandsBySymbol = operandsBySymbol
-	
-	def localIsLoopInput(self, symbol):
-		return self.loopInfo and symbol in self.loopInfo.inputSymbols
 	
 	def localOffset(self, symbol):
 		i = len(self.operandStack) - 1 - self.operandsBySymbol[symbol].index
@@ -958,16 +939,6 @@ def getInputInfo(state):
 		inputSymbols.append(localInfo.symbol)
 	
 	return inputTypes, inputSymbols
-
-def beginBlock(state, ast, blockDef):
-	inputTypes, inputSymbols = getInputInfo(state)
-	
-	assert len(inputTypes) == len(blockDef.inputs)
-	for t, u in zip(inputTypes, blockDef.inputs):
-		assert t == u
-	
-	state.setupLocals(inputTypes, inputSymbols)
-	state.appendInstr(BlockMarker(ast, blockDef.index))
 
 def fnToIR(fnDecl):
 	state = IRState(fnDecl)
