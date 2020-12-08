@@ -49,16 +49,12 @@ class CFGBlock:
 		self.id = None
 		self.span = span
 		self.inputs = set()
-		self.decls = set()
 		self.outputs = set()
 		self.mir = []
 		self.symbolState = {}
 		self.branchOn = None
 		self.ancestors = []
 		self.successors = []
-		self.finalized = False
-		self.finalizedInputs = False
-		self.finalizedCount = 0
 		self.irBlockDef = None
 		self.irInputSymbols = None
 		self.didReturn = False
@@ -66,9 +62,13 @@ class CFGBlock:
 		self.unreachable = False
 		self.hasReverseSuccessor = False
 		self.reverseAncestorCount = 0
+		self.finalized = False
+		self.finalizedInputs = False
+		self.finalizedCount = 0
 		
 		if ancestors:
 			self.ancestors = ancestors
+			# !!! what about divergent input symbol state???
 			self.symbolState = { k: v.cloneForNewBlock() for (k, v) in ancestors[0].symbolState.items() }
 			for ancestor in ancestors:
 				ancestor.successors.append(self)
@@ -83,18 +83,19 @@ class CFGBlock:
 		ancestor.hasReverseSuccessor = True
 		self.ancestors.append(ancestor)
 		ancestor.successors.append(self)
+		# !!! what about divergent input symbol state???
 		ancestor.symbolState.update({ k: v.cloneForNewBlock() for (k, v) in self.symbolState.items() })
 	
 	def addAncestor(self, ancestor):
 		self.ancestors.append(ancestor)
 		ancestor.successors.append(self)
+		# !!! what about divergent input symbol state???
 		self.symbolState.update({ k: v.cloneForNewBlock() for (k, v) in ancestor.symbolState.items() })
 	
 	def append(self, mir):
 		self.mir.append(mir)
 	
 	def decl(self, symbol):
-		self.decls.add(symbol)
 		self.symbolState[symbol] = SymbolState(symbol)
 	
 	def access(self, state, access):
@@ -120,9 +121,7 @@ class CFGBlock:
 			self.readSymbol(state, access, info)
 		
 		info.recordTouch(access)
-		if info.wasRedeclared:
-			self.decls.add(access.symbol)
-		elif not info.wasDeclared:
+		if not (info.wasDeclared or info.wasRedeclared):
 			self.inputs.add(access.symbol)
 	
 	def writeSymbol(self, state, access, info):
@@ -332,7 +331,6 @@ class CFGBlock:
 	
 	def finalizeInputs(self, state, indent=0):
 		# print('  ' * indent, self.id)
-		
 		if self.finalizedInputs:
 			return
 		
@@ -347,7 +345,7 @@ class CFGBlock:
 		
 		self.inputs.update(symbol for symbol in self.outputs if not self.symbolState[symbol].wasTouched)
 	
-	def finalize(self, state, indent=0):
+	def finalize(self, state):
 		if self.finalized:
 			return
 		
@@ -370,8 +368,6 @@ class CFGBlock:
 				self.dropSymbol(state, info.symbol, info.symbol.dropPoint)
 	
 	def writeIR(self, state):
-		assert not self.unreachable
-		
 		if self.ancestors:
 			assert self.irBlockDef
 			state.setupLocals(self.irBlockDef.inputs, self.irInputSymbols)
