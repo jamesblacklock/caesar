@@ -581,7 +581,7 @@ def parseBlock(state, parseItem, blockMarkers=BlockMarkers.BRACE,
 		state.rollback(offset)
 		
 		# check if we need to increase the indent level (only happens once in a block)
-		isNewBlock = indentedBlock and isBlockStart(state)
+		isNewBlock = indentedBlock and isBlockStart(state, indentOnly=True)
 		if not isNewBlock and state.skipEmptyLines():
 			if not indentedBlock and not topLevelBlock:
 				indentedBlock = expectIndentIncrease(state)
@@ -1156,18 +1156,18 @@ def parseField(state, expr):
 	
 	return Field(expr, path, span)
 
-def isBlockStart(state):
+def isBlockStart(state, indentOnly=False):
 	offset = state.offset
 	state.skipSpace()
 	result = False
 	expectBrace = False
 	
-	if state.tok.type == TokenType.LBRACE:
+	if not indentOnly and state.tok.type == TokenType.LBRACE:
 		result = True
 	elif state.skipEmptyLines():
 		if isIndentIncrease(state):
 			result = True
-		elif isIndentMatch(state):
+		elif not indentOnly and isIndentMatch(state):
 			if state.tok.type == TokenType.INDENT:
 				state.advance()
 			state.skipSpace()

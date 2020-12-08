@@ -225,6 +225,9 @@ class CFGBuilder:
 	def staticRead(self, symbol):
 		return self.block.symbolState[symbol].staticValue
 	
+	def generateFieldLayout(self, types, fieldNames=None, fieldInfo=None):
+		return self.ssstate.generateFieldLayout(types, fieldNames, fieldInfo)
+	
 	def lookupSymbol(self, path, symbolTable=None, inTypePosition=False, inValuePosition=False):
 		symbolTable = {**symbolTable, **self.scope.symbolTable} if symbolTable else self.scope.symbolTable
 		return self.ssstate.lookupSymbol(path, symbolTable, inTypePosition, inValuePosition)

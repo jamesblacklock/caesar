@@ -112,6 +112,8 @@ class CFGBlock:
 		if access.write:
 			if access.deref:
 				self.derefWriteSymbol(state, access, info)
+			elif access.isFieldAccess:
+				self.fieldWriteSymbol(state, access, info)
 			else:
 				self.writeSymbol(state, access, info)
 		elif access.addr:
@@ -133,6 +135,9 @@ class CFGBlock:
 		
 		info.init = True
 		info.moved = False
+	
+	def fieldWriteSymbol(self, state, access, info):
+		pass
 	
 	def derefWriteSymbol(self, state, access, info):
 		self.readSymbol(state, access, info)
