@@ -5,9 +5,9 @@ from .access import SymbolAccess, SymbolRead
 class Scope:
 	def __init__(self, parent, span, loop, branch, unsafe, contracts):
 		self.parent = parent
-		self.symbols = list(parent.symbols) if parent else []
+		self.symbols = set(parent.symbols) if parent else set()
 		self.symbolTable = dict(parent.symbolTable) if parent else {}
-		self.declaredSymbols = []
+		self.declaredSymbols = set()
 		self.loop = loop
 		self.branch = branch
 		self.didBreak = False
@@ -167,8 +167,8 @@ class CFGBuilder:
 	
 	def decl(self, symbol):
 		self.scope.symbolTable[symbol.name] = symbol
-		self.scope.symbols.append(symbol)
-		self.scope.declaredSymbols.append(symbol)
+		self.scope.symbols.add(symbol)
+		self.scope.declaredSymbols.add(symbol)
 		self.block.decl(symbol)
 	
 	def access(self, access):

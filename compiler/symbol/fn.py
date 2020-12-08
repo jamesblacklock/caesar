@@ -32,9 +32,9 @@ class Fn(ValueSymbol):
 			param.checkSig(state)
 		
 		self.cVarArgs = self.ast.cVarArgs
-		self.unsafe = self.ast.unsafe
+		self.unsafe = self.ast.unsafe or self.ast.extern
 		if self.ast.cconv == CConv.C:
-			unsafe = True
+			self.unsafe = True
 		elif self.ast.cVarArgs:
 			logError(state, self.ast.cVarArgsSpan, 'may not use C variadic parameter without the C calling convention')
 		

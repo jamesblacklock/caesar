@@ -18,6 +18,7 @@ class SymbolState:
 		self.unused = True
 		self.init = symbol.isParam
 		self.moved = False
+		self.borrows = set()
 	
 	def cloneForNewBlock(self):
 		other = SymbolState(self.symbol)
@@ -30,6 +31,7 @@ class SymbolState:
 		other.unused = self.unused
 		other.init = self.init
 		other.moved = self.moved
+		other.borrows = set(self.borrows)
 		return other
 	
 	def recordTouch(self, access):
@@ -112,6 +114,8 @@ class CFGBlock:
 				self.writeSymbol(state, access, info)
 		elif access.addr:
 			self.addrSymbol(state, access, info)
+		elif access.deref:
+			self.derefSymbol(state, access, info)
 		else:
 			self.readSymbol(state, access, info)
 		
@@ -124,6 +128,8 @@ class CFGBlock:
 	def writeSymbol(self, state, access, info):
 		if info.init and not info.moved and info.lastUse:
 			self.dropLastUse(state, info)
+		
+		info.borrows = access.rvalue.borrows
 		
 		info.init = True
 		info.moved = False
@@ -160,6 +166,36 @@ class CFGBlock:
 		# 		continue
 		# 	self.writeSymbol(borrow, borrowInfo)
 	
+	def derefSymbol(self, state, access, info):
+		self.readSymbol(state, access, info)
+		
+		symbol = access.symbol
+		
+		if not info.init:
+			if info.moved:
+				logError(state, access.span, 'the value in `{}` has been moved'.format(symbol.name))
+				for use in info.lastUses:
+					if use.ref:
+						logExplain(state, use.span, '`{}` was moved here'.format(symbol.name))
+			else:
+				logError(state, access.span, '`{}` has not been initialized'.format(symbol.name))
+		
+		for borrow in info.borrows:
+			errCount = 0
+			if borrow not in state.scope.symbols:
+				if errCount == 0:
+					logError(state, access.span, 'borrowed value has gone out of scope')
+				errCount += 1
+				countStr = '' if errCount < 2 else '({}) '.format(errCount)
+				logExplain(state, borrow.span, 'borrow {}originally occurred here'.format(countStr))
+			# elif info.symbol != borrow.symbol:
+			# 	# borrowInfo = self.symbolInfo[borrow.symbol]
+			# 	borrowInfo.borrowedBy.add(info.symbol)
+			# 	self.setLastUse(borrowInfo, use, isRead)
+		
+		if access.ref:
+			info.moved = not access.copy
+	
 	def readSymbol(self, state, access, info):
 		symbol = access.symbol
 		
@@ -171,6 +207,8 @@ class CFGBlock:
 						logExplain(state, use.span, '`{}` was moved here'.format(symbol.name))
 			else:
 				logError(state, access.span, '`{}` has not been initialized'.format(symbol.name))
+		
+		access.borrows = info.borrows
 		
 		if access.ref:
 			info.moved = not access.copy
@@ -330,64 +368,6 @@ class CFGBlock:
 				self.dropLastUse(state, info)
 			elif self.id == 1 and info.symbol.unused and info.symbol.isParam:
 				self.dropSymbol(state, info.symbol, info.symbol.dropPoint)
-	
-	def finalize1(self, state, successorSymbols=set(), indent=0):
-		print('  ' * indent, self.id)
-		assert not self.unreachable
-		if self.finalized:
-			return
-		
-		# if self.hasReverseSuccessor:
-		# 	assert len(self.successors) == 1
-		# 	self.finalized = True
-		# else:
-		
-		self.outputs.update(successorSymbols)
-		self.inputs.update(symbol for symbol in self.outputs if not self.symbolState[symbol].wasTouched)
-		for block in self.ancestors:
-			block.finalize(state, self.inputs, indent+1)
-		
-		self.finalized = len([s for s in self.successors if not s.finalized]) == 0
-		if not self.finalized:
-			return
-		
-		for block in self.successors:
-			# assert block.inputs == self.outputs
-			dropInBlock = self.outputs - block.inputs
-			if dropInBlock:
-				block.inputs.update(dropInBlock)
-				dropPoint = CFGDropPoint(block.span)
-				for symbol in dropInBlock:
-					block.dropSymbol(state, symbol, dropPoint)
-				block.mir.insert(0, dropPoint)
-		
-		for info in self.symbolState.values():
-			if info.init and not info.moved and info.lastUse and info.symbol != self.branchOn and not (info.symbol in self.outputs):
-				self.dropLastUse(state, info)
-			elif self.id == 1 and info.symbol.unused and info.symbol.isParam:
-				self.dropSymbol(state, info.symbol, info.symbol.dropPoint)
-		# 	for block in reversed(self.fnBlocks):
-		# 		info = block.symbolState[symbol]
-				
-		# 		if wasTouchedLater:
-		# 			block.outputs.append(symbol)
-				
-		# 		if info.wasRedeclared:
-		# 			block.decls.append(symbol)
-		# 			wasTouchedLater = False
-		# 			continue
-		# 		elif info.wasDeclared:
-		# 			if info.init and not info.moved:
-		# 				for use in lastUses:
-		# 					if use.ref and use.copy:# and not use.symbol.dropFn
-		# 						use.copy = False
-		# 					else:
-		# 						self.block.dropSymbol(info, use.dropPoint)
-		# 			break
-				
-		# 		wasTouchedLater = wasTouchedLater or info.wasTouched
-		# 		if wasTouchedLater:
-		# 			block.inputs.append(symbol)
 	
 	def writeIR(self, state):
 		assert not self.unreachable
