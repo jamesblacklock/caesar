@@ -148,7 +148,7 @@ class CFGBuilder:
 			self.scope.parent.didBreak = True
 		
 		for symbol in self.scope.declaredSymbols:
-			if symbol.unused:
+			if symbol.unused and not symbol.isParam:
 				logWarning(self, symbol.span, 'unused symbol: `{}`'.format(symbol.name))
 		
 		self.scope = self.scope.parent

@@ -349,7 +349,7 @@ class CFGBlock:
 			return
 		
 		self.finalizedCount += 1
-		self.finalizedInputs = self.finalizedCount > self.reverseAncestorCount
+		self.finalizedInputs = self.finalizedCount > self.reverseAncestorCount + 1
 		
 		for block in self.successors:
 			# if not self.hasReverseSuccessor:

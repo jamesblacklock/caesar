@@ -10,7 +10,7 @@ fn main(argc: int, argv: &&byte) -> int
 	unsafe printf("What is your name? ")
 	
 	let size: usize = 128
-	let buf = unsafe malloc(size) as &mut byte
+	let buf = unsafe malloc(size) as owned(malloc, free) &mut byte
 	let mut pt = borrow buf
 	
 	let mut i = 1usz, while {let j=i, i=i+1, j} <= size # for _ in 1...size
