@@ -41,7 +41,7 @@ unsafe fn main(argc: usize, argv: &&byte)
 	# let arr: [int * 10] = [_, 2, 3, 4, _, _, 7, 8, 9, 10]
 	# let arr: [int * 10] = [1, _ * 5, 7, 8, 9, 10]
 	
-	let dynarr: owned(malloc, free) &mut [byte * 6] = malloc(6) as &mut [byte * 6]
+	let dynarr = malloc(6) as owned(malloc, free) &mut [byte * 6]
 	# dynarr^ = ['a' as byte, 's' as byte, 'd' as byte, 'f' as byte, 0 as byte, '!' as byte]
 	dynarr^[0] = 'a' as byte
 	dynarr^[1] = 's' as byte
@@ -49,9 +49,9 @@ unsafe fn main(argc: usize, argv: &&byte)
 	dynarr^[3] = 'f' as byte
 	dynarr^[4] =  0  as byte
 	printf("Please enter '5': ")
-	let n = if getchar() - '0' as int == 5 { 5 } else { printf("You did it wrong!\n"), free(dynarr as &byte), return }
+	let n = if getchar() - '0' as int == 5 { 5 } else { printf("You did it wrong!\n"), free(dynarr as owned(malloc, free) &byte), return }
 	dynarr^[n as usize] = '!' as byte
 	
 	printf("%d%c %s%c\n", arr[9], tup.0, borrow dynarr, dynarr^[5])
 	
-	free(dynarr as &byte)
+	free(dynarr as owned(malloc, free) &byte)

@@ -36,7 +36,7 @@ class SymbolState:
 		return other
 	
 	def recordTouch(self, access):
-		if self.wasTouched == False and access.write:
+		if self.wasTouched == False and access.write and not (access.deref or access.isFieldAccess):
 			self.wasRedeclared = True
 		
 		self.unused = False

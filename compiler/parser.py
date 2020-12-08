@@ -1307,37 +1307,34 @@ def parseValueExprImpl(state, precedence, noSkipSpace, allowSimpleFnCall):
 	
 	indentsCount = len(state.indentLevels)
 	
-	while True:
+	lastExpr = expr
+	while expr:
 		if state.tok.type == TokenType.LBRACK:
-			expr.hasValue = True
 			expr = parseIndex(state, expr)
 		elif state.tok.type == TokenType.LPAREN:
-			expr.hasValue = True
 			expr = parseFnCall(state, expr)
 		elif state.tok.type in (TokenType.DOT, TokenType.DEREFDOT):
-			expr.hasValue = True
 			expr = parseField(state, expr)
 		else:
 			offset = state.offset
 			spaceBeforeOp = False if noSkipSpace else state.skipSpace()
 			if state.tok.type in INFIX_PRECEDENCE and INFIX_PRECEDENCE[state.tok.type] > precedence:
-				expr.hasValue = True
 				expr = parseInfixOps(state, expr, expr.span.startLine == expr.span.endLine, spaceBeforeOp)
 			elif state.tok.type == TokenType.CARET:
-				expr.hasValue = True
 				expr = parseDeref(state, expr)
 			elif allowSimpleFnCall and type(expr) == ValueRef and state.tok.type != TokenType.NEWLINE and \
 				state.tok.type in VALUE_EXPR_TOKS:
-				expr.hasValue = True
 				expr = parseSimpleFnCall(state, expr)
 			else:
 				spaceBeforeOp = state.skipSpace()
 				if state.tok.type == TokenType.AS and INFIX_PRECEDENCE[state.tok.type] > precedence:
-					expr.hasValue = True
 					expr = parseInfixOps(state, expr, expr.span.startLine == expr.span.endLine, spaceBeforeOp)
 				else:
 					state.rollback(offset)
 					break
+		
+		lastExpr.hasValue = True
+		lastExpr = expr
 	
 	while indentsCount < len(state.indentLevels):
 		state.popIndentLevel()
