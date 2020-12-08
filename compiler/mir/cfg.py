@@ -230,7 +230,7 @@ class CFGBlock:
 		symbol.fixed = True
 	
 	def dropLastUse(self, state, info):
-		if info.lastUse.ref and info.lastUse.copy and not info.symbol.dropFn:
+		if info.lastUse.ref and info.lastUse.copy and not (info.symbol.dropFn or info.lastUse.borrow):
 			info.lastUse.copy = False
 		else:
 			self.dropSymbol(state, info.symbol, info.lastUse.dropPoint)
