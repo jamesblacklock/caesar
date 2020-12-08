@@ -3,7 +3,7 @@ from .symbol.symbol  import SymbolType, Deps
 from .ast.typeref    import NamedTypeRef, PtrTypeRef, ArrayTypeRef, OwnedTypeRef
 from .types          import FieldInfo, PtrType, ArrayType, OwnedType, \
                             Void, Bool, Byte, Char, Int8, UInt8, Int16, UInt16, Int32, UInt32, \
-                            Int64, UInt64, ISize, USize, Float32, Float64, typesMatch, canCoerce, tryPromote2
+                            Int64, UInt64, ISize, USize, Float32, Float64, typesMatch, canCoerce, tryPromote
 from .log            import logError, logExplain
 from .ast.ast        import Attr
 from .attrs          import invokeAttrs
@@ -156,24 +156,24 @@ def buildSymbolTable(state, mod):
 			mod.symbolTable[symbol.name] = symbol
 			mod.symbols.append(symbol)
 
-def analyze(ast):
-	return AnalyzerState.analyze(None, ast)
+def analyze(ast, forceRebuilds=False):
+	return AnalyzerState.analyze(None, ast, forceRebuilds)
 
 class AnalyzerState:
-	def __init__(self, ast):
+	def __init__(self, ast, forceRebuilds):
 		self.failed = False
-		self.strMod = None
+		self.forceRebuilds = forceRebuilds
 		self.ast = ast
 		self.mod = None
 	
-	def analyze(_, ast):
-		state = AnalyzerState(ast)
+	def analyze(state, ast, forceRebuilds=False):
+		state = AnalyzerState(ast, state.forceRebuilds if state else forceRebuilds)
 		
 		buildSymbolTable(state, ast)
 		
 		invokeAttrs(state, ast)
 		if not ast.noStrImport:
-			(state.strMod, _) = Import.doImport(state, ast, ['str', 'str'])
+			(state.ast.strMod, _) = Import.doImport(state, ast, ['str', 'str'])
 		
 		ast.checkSig(state)
 		ast.analyze(state, Deps(ast))
@@ -232,13 +232,15 @@ class AnalyzerState:
 		if not (expr.type and expectedType):
 			return expr
 		
-		expr = tryPromote2(state, expr, expectedType)
+		expr = tryPromote(state, expr, expectedType)
 		if not typesMatch(expr.type, expectedType):
 			logError(state, expr.span, 'expected type `{}`, found `{}`'.format(expectedType, expr.type))
 		
 		return expr
 	
 	def mangleName(state, decl):
+		mod = state.mod
+		
 		if type(decl) == Fn and decl.type.cconv == CConv.C:
 			prefix = '_' if platform.MacOS or platform.Windows else ''
 			return '{}{}'.format(prefix, decl.name)
@@ -248,11 +250,13 @@ class AnalyzerState:
 				letter = 'F'
 			elif type(decl) == Static:
 				letter = 'S'
+			elif type(decl) in (Mod, Impl):
+				letter = 'M'
+				mod = mod.parent
 			else:
 				assert 0
 			
 			mangled = '{}{}{}'.format(letter, len(decl.name), decl.name)
-			mod = state.mod
 			while mod:
 				if mod.isFnMod:
 					mangled = 'F{}{}{}'.format(len(mod.name), mod.name, mangled)

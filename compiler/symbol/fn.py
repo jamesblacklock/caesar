@@ -1,9 +1,10 @@
-from enum        import Enum
-from .symbol     import ValueSymbol
-from ..log       import logError, logExplain
-from ..types     import Void
-from ..types     import FnType
-from ..mir.flow  import CFGBuilder
+from enum       import Enum
+from .symbol    import ValueSymbol
+from ..log      import logError, logExplain
+from ..types    import Void
+from ..types    import FnType
+from ..mir.flow import CFGBuilder
+from ..mir.mir  import indent
 
 class CConv(Enum):
 	CAESAR = 'CAESAR'
@@ -58,7 +59,7 @@ class Fn(ValueSymbol):
 		deps.pop()
 		self.analyzed = True
 	
-	def analyzeBody2(self, state):
+	def analyzeBody(self, state):
 		if not self.ast.body:
 			return
 		
@@ -67,7 +68,10 @@ class Fn(ValueSymbol):
 		
 		if self.type and self.type.params:
 			for param in self.type.params:
+				param.dropPoint = flow.dropPoint
 				flow.decl(param)
+				flow.block.inputs.add(param)
+			flow.appendDropPoint()
 		
 		self.ast.body.hasScope = False
 		flow.analyzeNode(self.ast.body, self.type.returnType if self.type else None)
@@ -82,7 +86,7 @@ class Fn(ValueSymbol):
 		
 		state.failed = state.failed or flow.failed
 		
-		flow.printBlocks()
+		print(self)
 		
 	
 	# def checkDropFnScope(self, state):
@@ -109,8 +113,8 @@ class Fn(ValueSymbol):
 		params = ', '.join(str(param) for param in self.params)
 		ret = '' if self.type.returnType == Void else ' -> {}'.format(self.type.returnType)
 		if self.cfg:
-			body = '{}\n'.format(str(block) for block in self.cfg)
+			body = '\n' + indent('\n'.join(str(block) for block in self.cfg))
 		else:
 			body = ''
 		
-		return '{} {}({}){}{}'.format(fnStr, self.name, params, ret, body)
+		return '{} {}({}){}{}\n'.format(fnStr, self.name, params, ret, body)

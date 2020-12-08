@@ -47,13 +47,13 @@ class Block(AST):
 			if unreachable == None and (state.scope.didReturn or state.scope.didBreak):
 				unreachable = lastExpr.span
 			if state.scope.parent == None and not state.block.didReturn and type(lastExpr) != Return:
-				self.hasValue = True
+				self.hasValue = implicitType and not implicitType.isVoidType
 			if lastExpr.hasBlockValue:
 				lastExpr.hasValue = self.hasValue
 			access = state.analyzeNode(lastExpr, implicitType)
 			state.appendDropPoint()
 		
-		if access and not (access.ref and self.hasValue):
+		if access and (access.deref or not access.ref or not self.hasValue):
 			(symbol, write, access) = accessmod.createTempTriple(access)
 			state.decl(symbol)
 			state.analyzeNode(write)

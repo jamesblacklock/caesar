@@ -959,7 +959,8 @@ def fnToIR(fnDecl):
 
 def generateIR(mod):
 	for decl in mod.mods:
-		generateIR(decl)
+		if not decl.isImport:
+			generateIR(decl)
 	
 	for decl in mod.fns:
 		if decl.extern:

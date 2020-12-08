@@ -8,6 +8,7 @@ class Mod(Symbol):
 	def __init__(self, name, doccomment, decls, span):
 		super().__init__(name, span, doccomment)
 		self.topLevel = False
+		self.source = None
 		self.decls = decls
 		# self.types = []
 		self.fns = []
@@ -28,6 +29,7 @@ class Mod(Symbol):
 		self.symbols = []
 		self.symbolTable = {}
 		self.isFnMod = False
+		self.strMod = None
 		
 		self.symbolType = SymbolType.MOD
 		self.ast = self
@@ -58,6 +60,7 @@ class Mod(Symbol):
 				continue
 			symbol.checkSig(state)
 		
+		self.mangledName = state.mangleName(self)
 		state.mod = self.parent
 	
 	def analyze(self, state, deps):
@@ -71,12 +74,9 @@ class Mod(Symbol):
 		deps.pop()
 		
 		for fn in self.fns:
-			# fn.analyzeBody(state)
-			fn.analyzeBody2(state)
+			fn.analyzeBody(state)
 		
 		state.mod = self.parent
-		
-		# state.popScope()
 
 IMPL_COUNTER = 0
 

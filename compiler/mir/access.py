@@ -46,6 +46,9 @@ class SymbolAccess(MIR):
 	
 	@staticmethod
 	def read(state, expr):
+		if type(expr) == SymbolRead and expr.ref:
+			return expr
+		
 		(tempSymbol, tempWrite, tempRead) = createTempTriple(expr)
 		state.block.decl(tempSymbol)
 		state.analyzeNode(tempWrite)
@@ -199,7 +202,7 @@ class SymbolRead(SymbolAccess):
 		if access.isFieldAccess and access.field and access.field.isUnionField and not state.scope.allowUnsafe:
 			logError(state, access.span, 'reading union fields is unsafe; context is safe')
 		
-		if not access.addr and not access.isFieldAccess:
+		if not (access.addr or access.isFieldAccess):
 			access.ref = True
 			access.copy = access.type.isCopyable
 		
@@ -429,12 +432,12 @@ def _SymbolAccess__analyzeSymbolAccess(state, expr, access, implicitType=None):
 				access.symbol.checkDropFn(state)
 			
 			t = access.symbol.type
-			# if access.symbol in state.scope.contracts:
-			# 	contract = state.scope.contracts[access.symbol]
-			# 	if len(contract.variants) == 1:
-			# 		t = contract.variants[0].type
-			# 		if contract.indLevel > 0:
-			# 			t = PtrType(t, contract.indLevel, contract.symbol.mut)
+			if access.symbol in state.scope.contracts:
+				contract = state.scope.contracts[access.symbol]
+				if len(contract.variants) == 1:
+					t = contract.variants[0].type
+					if contract.indLevel > 0:
+						t = PtrType(t, contract.indLevel, contract.symbol.mut)
 			
 			access.type = t
 	elif type(expr) == valueref.Borrow:

@@ -1966,6 +1966,7 @@ def parseTopLevelModule(state):
 	block = parseBlock(state, parseModLevelDecl, topLevelBlock=True)
 	mod = Mod(Name(name, block.span.startSpan()), None, block.list, block.span)
 	mod.topLevel = True
+	mod.source = state.source
 	return mod
 
 __exit = exit

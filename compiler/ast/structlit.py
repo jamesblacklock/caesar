@@ -52,7 +52,7 @@ class StructLit(AST):
 			fieldDict = implicitType.fieldDict
 			
 			if implicitType.symbol.hasPrivateFields or implicitType.symbol.hasReadOnlyFields:
-				symbolMod = implicitType.mod
+				symbolMod = implicitType.symbol.mod
 				mod = state.mod
 				while True:
 					if mod == symbolMod:

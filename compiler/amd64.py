@@ -222,6 +222,7 @@ class GeneratorState:
 		self.instr = []
 		self.operandStack = []
 		self.calleeSave = set()
+		self.memStructReturn = False
 		
 		self.rax = RegTarget(False, 'rax',  'eax',   'ax',   'al', 'ah')
 		self.rbx = RegTarget( True, 'rbx',  'ebx',   'bx',   'bl', 'bh')
@@ -329,14 +330,14 @@ class GeneratorState:
 	def setupStackFrame(self):
 		assert not self.fnIR.cVarArgs
 		
-		memStructReturn = False
+		self.memStructReturn = False
 		if self.fnIR.retType and assignTargets(self, [self.fnIR.retType], ret=True)[0] == None:
-			memStructReturn = True
+			self.memStructReturn = True
 			self.rdi.type = I64
 			self.pushOperand(self.rdi)
 		
 		targets = [None for _ in range(0, len(self.fnIR.paramTypes))]
-		assignments = assignTargets(self, self.fnIR.paramTypes, memStructReturn=memStructReturn)
+		assignments = assignTargets(self, self.fnIR.paramTypes, memStructReturn=self.memStructReturn)
 		stackTargets = []
 		structParts = {}
 		for (i, (t, regs)) in enumerate(zip(self.fnIR.paramTypes, assignments)):
@@ -388,7 +389,7 @@ class GeneratorState:
 	def appendInstr(self, opcode, *operands, isLabel=False, isComment=False):
 		instr = Instr(opcode, operands, isLabel, isComment)
 		self.instr.append(instr)
-		# print(instr)
+		print(instr)
 	
 	def findReg(self, type=None, exclude=[]):
 		for reg in self.intRegs:
@@ -1654,13 +1655,14 @@ def call(state, ir):
 			state.pushOperand(stack)
 		else:
 			assert 0
-			
 
 def brOrBrIf(state, ir, nextIR, isBrIf):
 	offset = 1 if isBrIf else 0
 	testReg = None
 	blockDef = state.fnIR.blockDefs[ir.index]
 	inputTypes = blockDef.inputs
+	if state.memStructReturn:
+		inputTypes.insert(0, IPTR)
 	outputTargets = list(reversed([state.getOperand(i + offset) for i in range(0, len(inputTypes))]))
 	
 	if isBrIf:
@@ -1891,6 +1893,8 @@ def generateAsm(mod):
 		else:
 			output.write('\nglobal _caesar_start\n')
 	
+	output.write('\nglobal {}$checksum\n'.format(mod.mangledName))
+	
 	declareFns(mod, output)
 	
 	output.write('\nsection .text\n')
@@ -1909,6 +1913,9 @@ def generateAsm(mod):
 	
 	output.write('\nsection .data\n')
 	defineStatics(mod, output)
+	
+	bytes = bytesDef(mod.source.checksum.to_bytes(4, 'little'))
+	output.write('\t{}$checksum:{}'.format(mod.mangledName, bytes))
 	
 	return output.getvalue()
 

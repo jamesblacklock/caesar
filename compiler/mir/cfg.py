@@ -2,6 +2,7 @@ from .mir    import MIR
 from .access import SymbolAccess
 from .drop   import DropSymbol
 from ..ir    import Br, BrIf, Ret, BlockMarker, getInputInfo
+from ..log   import logError, logExplain
 
 class SymbolState:
 	def __init__(self, symbol):
@@ -39,14 +40,13 @@ class SymbolState:
 		self.wasWritten = access.write
 		self.lastUse = access
 
-CFG_BLOCK_COUNT = 0
-
 class CFGBlock:
-	def __init__(self, ancestors, span):
-		global CFG_BLOCK_COUNT
-		CFG_BLOCK_COUNT += 1
-		
-		self.id = CFG_BLOCK_COUNT
+	def __init__(self, state, ancestors, span):
+		if state:
+			self.id = state.blockId
+			state.blockId += 1
+		else:
+			self.id = -1
 		self.span = span
 		self.inputs = set()
 		self.decls = set()
@@ -70,6 +70,11 @@ class CFGBlock:
 			for ancestor in ancestors:
 				ancestor.successors.append(self)
 	
+	def cloneForDiscard(self):
+		other = CFGBlock(None, None, self.span)
+		other.symbolState = { k: v.clone() for (k, v) in self.symbolState.items() }
+		return other
+		
 	def addReverseAncestor(self, ancestor):
 		self.ancestors.append(ancestor)
 		ancestor.successors.append(self)
@@ -87,7 +92,7 @@ class CFGBlock:
 		self.decls.add(symbol)
 		self.symbolState[symbol] = SymbolState(symbol)
 	
-	def access(self, access):
+	def access(self, state, access):
 		if not (access.symbol and access.symbol.type):
 			return
 		
@@ -99,13 +104,13 @@ class CFGBlock:
 		
 		if access.write:
 			if access.deref:
-				self.derefWriteSymbol(access, info)
+				self.derefWriteSymbol(state, access, info)
 			else:
-				self.writeSymbol(access, info)
+				self.writeSymbol(state, access, info)
 		elif access.addr:
-			self.addrSymbol(access, info)
+			self.addrSymbol(state, access, info)
 		else:
-			self.readSymbol(access, info)
+			self.readSymbol(state, access, info)
 		
 		info.recordTouch(access)
 		if info.wasRedeclared:
@@ -113,38 +118,82 @@ class CFGBlock:
 		elif not info.wasDeclared:
 			self.inputs.add(access.symbol)
 	
-	def writeSymbol(self, access, info):
+	def writeSymbol(self, state, access, info):
 		if info.init and not info.moved and info.lastUse:
-			self.dropLastUse(info)
+			self.dropLastUse(state, info)
 		
 		info.init = True
 		info.moved = False
 	
-	def readSymbol(self, access, info):
+	def derefWriteSymbol(self, state, access, info):
+		self.readSymbol(state, access, info)
+		
+		symbol = access.symbol
+		# isField = access.isFieldAccess
+		# field = access.field
+		# fieldSpan = access.fieldSpan
+		# isIndex = len(access.dynOffsets) > 0
+		
+		if symbol.type.isPtrType and not symbol.type.mut:
+			logError(state, access.lvalueSpan, 'assignment target is not mutable')
+		
+		# if info.borrows:
+		# 	for borrow in info.borrows:
+		# 		if borrow.symbol in self.symbolInfo:
+		# 			borrowInfo = self.symbolInfo[borrow.symbol]
+		# 			borrowInfo.borrowedBy.remove(info.symbol)
+		
+		# info.borrows = access.rvalue.borrows
+		
+		# if isField:
+		# 	pass
+		# else:
+		# 	self.dropInd(symbol, access.dropBeforeAssignBlock, access.deref)
+		
+		# assert access.borrows
+		# for borrow in access.borrows:
+		# 	borrowInfo = self.loadAndSaveSymbolInfo(borrow.symbol)
+		# 	if borrowInfo == None:
+		# 		continue
+		# 	self.writeSymbol(borrow, borrowInfo)
+	
+	def readSymbol(self, state, access, info):
 		symbol = access.symbol
 		
 		if not info.init:
 			if info.moved:
-				logError(self, access.span, 'the value in `{}` has been moved'.format(symbol.name))
+				logError(state, access.span, 'the value in `{}` has been moved'.format(symbol.name))
 				for use in info.lastUses:
 					if use.ref:
-						logExplain(self.state, use.span, '`{}` was moved here'.format(symbol.name))
+						logExplain(state, use.span, '`{}` was moved here'.format(symbol.name))
 			else:
-				logError(self, access.span, '`{}` has not been initialized'.format(symbol.name))
+				logError(state, access.span, '`{}` has not been initialized'.format(symbol.name))
 		
-		info.moved = not access.copy
+		if access.ref:
+			info.moved = not access.copy
 	
-	def dropLastUse(self, info):
+	def addrSymbol(self, state, access, info):
+		symbol = access.symbol
+		field = access.field
+		fieldSpan = access.fieldSpan
+		isIndex = len(access.dynOffsets) > 0
+		
+		if access.type.mut and not access.symbol.mut:
+			logError(state, access.span, 'mutable borrow of immutable symbol')
+		
+		symbol.fixed = True
+	
+	def dropLastUse(self, state, info):
 		if info.lastUse.ref and info.lastUse.copy:
 			assert not info.lastUse.symbol.dropFn
 			info.lastUse.copy = False
 		else:
-			self.dropSymbol(info.symbol, info.lastUse.dropPoint)
+			self.dropSymbol(state, info.symbol, info.lastUse.dropPoint)
 	
-	def dropSymbol(self, symbol, dropPoint):
+	def dropSymbol(self, state, symbol, dropPoint):
 		if symbol.type.isOwnedType:
-			logError(self.state, symbol.span, 'owned value was not discarded')
-			logExplain(self.state, dropPoint.span.endSpan(), 'value escapes here')
+			logError(state, symbol.span, 'owned value was not discarded')
+			logExplain(state, dropPoint.span.endSpan(), 'value escapes here')
 		
 		# if symbol.dropFn:
 		# 	self.callDropFn(symbol.dropFn, symbol, None, 0, exprs, dropPoint.span)
@@ -154,7 +203,7 @@ class CFGBlock:
 		dropPoint.append(DropSymbol(symbol, dropPoint.span))
 		# info.recordDrop(dropPoint)
 	
-	def finalize(self, successorSymbols=set()):
+	def finalize(self, state, successorSymbols=set()):
 		assert not self.unreachable
 		if self.finalized:
 			return
@@ -166,7 +215,7 @@ class CFGBlock:
 		self.outputs.update(successorSymbols)
 		self.inputs.update(symbol for symbol in self.outputs if not self.symbolState[symbol].wasTouched)
 		for block in self.ancestors:
-			block.finalize(self.inputs)
+			block.finalize(state, self.inputs)
 		
 		if finalized != self.finalized:
 			return
@@ -179,12 +228,14 @@ class CFGBlock:
 					block.inputs.update(dropInBlock)
 					dropPoint = CFGDropPoint(block.span)
 					for symbol in dropInBlock:
-						block.dropSymbol(symbol, dropPoint)
+						block.dropSymbol(state, symbol, dropPoint)
 					block.mir.insert(0, dropPoint)
 			
 			for info in self.symbolState.values():
 				if info.init and not info.moved and info.lastUse and info.symbol != self.branchOn and not (info.symbol in self.outputs):
-					self.dropLastUse(info)
+					self.dropLastUse(state, info)
+				elif self.id == 1 and info.symbol.unused and info.symbol.isParam:
+					self.dropSymbol(state, info.symbol, info.symbol.dropPoint)
 			# 	for block in reversed(self.fnBlocks):
 			# 		info = block.symbolState[symbol]
 					
@@ -271,7 +322,6 @@ class CFGBlock:
 			end += ':TO({})'.format(', '.join('@{}'.format(s.id) for s in self.successors))
 		else:
 			end += ':RET'
-		end += '\n'
 		
 		return start + block + end
 
@@ -300,4 +350,4 @@ class CFGDropPoint(MIR):
 			lines.append(lineStr)
 			prefix = '| '
 		
-		return '\n'.join(lines)
+		return '\n    '.join(lines)

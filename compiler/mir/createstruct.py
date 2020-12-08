@@ -121,5 +121,5 @@ class CreateStruct(MIR):
 		
 		lines = ['struct']
 		for init in self.inits:
-			lines.append('\t[{}]: {}'.format(init.offset, str(init.access)))
+			lines.append('        [{}]: {}'.format(init.offset, str(init.access)))
 		return '\n'.join(lines)

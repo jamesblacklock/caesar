@@ -36,6 +36,7 @@ class Local(ValueSymbol):
 		self.unused = True
 		self.isLocal = True
 		self.isParam = isParam
+		self.dropPoint = None
 		self.dropFn = None
 		self.fixed = False
 		self.reserve = False

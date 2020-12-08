@@ -3,7 +3,7 @@ from .cfg    import CFGBlock, CFGDropPoint
 from .access import SymbolAccess, SymbolRead
 
 class Scope:
-	def __init__(self, parent, span, loop=False, branch=False, unsafe=False):
+	def __init__(self, parent, span, loop, branch, unsafe, contracts):
 		self.parent = parent
 		self.symbols = list(parent.symbols) if parent else []
 		self.symbolTable = dict(parent.symbolTable) if parent else {}
@@ -14,6 +14,19 @@ class Scope:
 		self.didReturn = False
 		self.span = span
 		self.allowUnsafe = unsafe or parent and parent.allowUnsafe
+		self.contracts = dict(parent.contracts) if parent else {}
+		if contracts:
+			self.intersectContracts(contracts)
+	
+	def intersectContracts(self, contracts):
+		if contracts == None:
+			return
+		
+		for contract in contracts.values():
+			if contract.symbol in self.contracts:
+				self.contracts[contract.symbol] = self.contracts[contract.symbol].intersect(contract)
+			else:
+				self.contracts[contract.symbol] = contract
 
 class CFGBuilder:
 	def __init__(self, state, fn, mod):
@@ -28,11 +41,28 @@ class CFGBuilder:
 		self.branchPoints = []
 		self.endSpan = fn.span.endSpan()
 		self.failed = False
+		self.blockId = 1
+		self.dropPoint = None
+	
+	def createDiscardBuilder(self):
+		discard = CFGBuilder(self.ssstate, self.fn, self.mod)
+		discard.block = self.block.cloneForDiscard()
+		discard.blocks = [discard.block]
+		discard.scope = self.scope
+		discard.breakBlocks = [b.cloneForDiscard() for b in self.breakBlocks]
+		discard.continueBlocks = [b.cloneForDiscard() for b in self.continueBlocks]
+		discard.branchPoints = [b.cloneForDiscard() for b in self.branchPoints]
+		discard.endSpan = self.endSpan
+		discard.failed = self.failed
+		discard.blockId = self.blockId
+		discard.dropPoint = CFGDropPoint(discard.block.span)
+		return discard
+		
 	
 	def ifBranch(self, branchOn, span):
 		self.block.branchOn = branchOn
-		ifBranch = CFGBlock([self.block], span)
-		elseBranch = CFGBlock([self.block], span)
+		ifBranch = CFGBlock(self, [self.block], span)
+		elseBranch = CFGBlock(self, [self.block], span)
 		self.block.successors = [elseBranch, ifBranch]
 		self.branchPoints.append(self.block)
 		return (ifBranch, elseBranch)
@@ -59,7 +89,7 @@ class CFGBuilder:
 			ancestors = [self.block]
 			self.block.span = Span.merge(self.block.span.startSpan(), span.startSpan())
 		blockSpan = Span.merge(span.startSpan(), self.endSpan)
-		self.block = CFGBlock(ancestors, blockSpan)
+		self.block = CFGBlock(self, ancestors, blockSpan)
 		self.dropPoint = CFGDropPoint(blockSpan)
 		self.blocks.append(self.block)
 	
@@ -75,7 +105,7 @@ class CFGBuilder:
 		self.block.successors = []
 		self.continueBlocks[-1].addReverseAncestor(self.block)
 	
-	def beginScope(self, span, branch=None, loop=False, unsafe=False):
+	def beginScope(self, span, branch=None, loop=False, unsafe=False, contracts=None):
 		lastBlock = self.block
 		
 		if branch:
@@ -89,9 +119,9 @@ class CFGBuilder:
 		
 		if loop:
 			self.continueBlocks.append(self.block)
-			self.breakBlocks.append(CFGBlock([], Span.merge(span.endSpan(), self.endSpan)))
+			self.breakBlocks.append(CFGBlock(self, [], Span.merge(span.endSpan(), self.endSpan)))
 		
-		self.scope = Scope(self.scope, span, loop, branch != None, unsafe)
+		self.scope = Scope(self.scope, span, loop, branch != None, unsafe, contracts)
 		
 		return self.block
 	
@@ -120,17 +150,16 @@ class CFGBuilder:
 		from ..attrs import invokeAttrs
 		invokeAttrs(self, ast)
 		
-		blocks = self.blocks
+		flow = self
 		if discard:
-			self.blocks = []
+			flow = flow.createDiscardBuilder()
 		
-		access = ast.analyze(self, implicitType)
+		access = ast.analyze(flow, implicitType)
 		if access:
 			assert access.hasValue
 			if type(access) != SymbolRead and not isRValue:
-				access = SymbolAccess.read(self, access)
+				access = SymbolAccess.read(flow, access)
 		
-		self.blocks = blocks
 		return access
 	
 	def decl(self, symbol):
@@ -140,7 +169,7 @@ class CFGBuilder:
 		self.block.decl(symbol)
 	
 	def access(self, access):
-		self.block.access(access)
+		self.block.access(self, access)
 	
 	def append(self, mir):
 		mir.commit(self)
@@ -164,7 +193,7 @@ class CFGBuilder:
 					continue
 			blocks.append(block)
 			if not block.successors:
-				block.finalize()
+				block.finalize(self)
 		
 		self.blocks = blocks
 		for block in self.blocks:

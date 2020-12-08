@@ -26,17 +26,15 @@ class If(AST):
 		self.hasValue = self.hasValue and not (implicitType and implicitType.isVoidType)
 		outputSymbol = Local.createTemp(self.span) if self.hasValue else None
 		
-		state.beginScope(self.ifBlock.span, ifBranch)
-		# state.scope.intersectContracts(contracts)
+		state.beginScope(self.ifBlock.span, ifBranch, contracts=contracts)
 		self.ifBlock.hasScope = False
 		self.ifBlock.hasValue = self.hasValue
 		self.ifBlock.outputSymbol = outputSymbol
 		ifAccess = state.analyzeNode(self.ifBlock, implicitType)
 		endIfBranch = state.endScope()
 		
-		state.beginScope(self.elseBlock.span, elseBranch)
 		contracts = { c.symbol: c.inverted() for c in contracts.values() } if contracts else None
-		# state.scope.intersectContracts(contracts)
+		state.beginScope(self.elseBlock.span, elseBranch, contracts=contracts)
 		self.elseBlock.hasScope = False
 		self.elseBlock.hasValue = self.hasValue
 		self.elseBlock.outputSymbol = outputSymbol
