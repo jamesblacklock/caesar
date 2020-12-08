@@ -19,7 +19,7 @@ class SymbolState:
 		self.init = symbol.isParam
 		self.moved = False
 	
-	def clone(self):
+	def cloneForNewBlock(self):
 		other = SymbolState(self.symbol)
 		other.wasDeclared = False
 		other.wasRedeclared = False
@@ -68,24 +68,24 @@ class CFGBlock:
 		
 		if ancestors:
 			self.ancestors = ancestors
-			self.symbolState = { k: v.clone() for (k, v) in ancestors[0].symbolState.items() }
+			self.symbolState = { k: v.cloneForNewBlock() for (k, v) in ancestors[0].symbolState.items() }
 			for ancestor in ancestors:
 				ancestor.successors.append(self)
 	
 	def cloneForDiscard(self):
 		other = CFGBlock(None, None, self.span)
-		other.symbolState = { k: v.clone() for (k, v) in self.symbolState.items() }
+		other.symbolState = { k: v.cloneForNewBlock() for (k, v) in self.symbolState.items() }
 		return other
 		
 	def addReverseAncestor(self, ancestor):
 		self.ancestors.append(ancestor)
 		ancestor.successors.append(self)
-		ancestor.symbolState.update({ k: v.clone() for (k, v) in self.symbolState.items() })
+		ancestor.symbolState.update({ k: v.cloneForNewBlock() for (k, v) in self.symbolState.items() })
 	
 	def addAncestor(self, ancestor):
 		self.ancestors.append(ancestor)
 		ancestor.successors.append(self)
-		self.symbolState.update({ k: v.clone() for (k, v) in ancestor.symbolState.items() })
+		self.symbolState.update({ k: v.cloneForNewBlock() for (k, v) in ancestor.symbolState.items() })
 	
 	def append(self, mir):
 		self.mir.append(mir)

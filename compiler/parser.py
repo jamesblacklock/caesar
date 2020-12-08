@@ -1125,7 +1125,7 @@ def parseField(state, expr):
 	derefSpan = None
 	deref = state.tok.type == TokenType.DEREFDOT
 	if deref:
-		derefSpan = span.clone()
+		derefSpan = span
 		derefSpan.endColumn += 1
 	
 	while True:
