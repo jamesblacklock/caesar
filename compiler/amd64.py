@@ -389,7 +389,7 @@ class GeneratorState:
 	def appendInstr(self, opcode, *operands, isLabel=False, isComment=False):
 		instr = Instr(opcode, operands, isLabel, isComment)
 		self.instr.append(instr)
-		print(instr)
+		# print(instr)
 	
 	def findReg(self, type=None, exclude=[]):
 		for reg in self.intRegs:
@@ -517,97 +517,16 @@ class GeneratorState:
 		src.setActive(False)
 		src.operandIndex = None
 
+def pushIR(state, ir, nextIR):
+	state.pushIROperand(ir)
+
+def popIR(state, ir, nextIR):
+	state.popOperand()
+
 def irToAsm(state, ir, nextIR):
 	# state.appendInstr(ir.pretty(state.fnIR), isComment=True, isLabel=(type(ir) == BlockMarker))
 	
-	if type(ir) == Imm:
-		imm(state, ir)
-	elif type(ir) in (Global, Static, Res):
-		state.pushIROperand(ir)
-	elif type(ir) == Pop:
-		state.popOperand()
-	elif type(ir) == Dup:
-		dup(state, ir)
-	elif type(ir) == Swap:
-		swap(state, ir)
-	elif type(ir) == Write:
-		write(state, ir)
-	elif type(ir) == Raise:
-		raise_(state, ir)
-	elif type(ir) == Fix:
-		fix(state, ir)
-	elif type(ir) == Addr:
-		addr(state, ir)
-	elif type(ir) == Deref:
-		deref(state, ir)
-	elif type(ir) == DerefW:
-		derefw(state, ir)
-	elif type(ir) == Field:
-		field(state, ir)
-	elif type(ir) == DerefField:
-		field(state, ir, deref=True)
-	elif type(ir) == FieldW:
-		fieldw(state, ir)
-	elif type(ir) == DerefFieldW:
-		fieldw(state, ir, deref=True)
-	elif type(ir) == Extend:
-		extend(state, ir)
-	elif type(ir) == IExtend:
-		iextend(state, ir)
-	elif type(ir) == FExtend:
-		fextend(state, ir)
-	elif type(ir) == Truncate:
-		truncate(state, ir)
-	elif type(ir) == IToF:
-		itof(state, ir)
-	elif type(ir) == FToI:
-		ftoi(state, ir)
-	elif type(ir) == Neg:
-		neg(state, ir)
-	elif type(ir) == Add:
-		add(state, ir)
-	elif type(ir) == Sub:
-		sub(state, ir)
-	elif type(ir) == Mul:
-		mul(state, ir)
-	elif type(ir) == Div:
-		div(state, ir)
-	elif type(ir) == Mod:
-		mod(state, ir)
-	elif type(ir) == LShift:
-		lshift(state, ir)
-	elif type(ir) == RShift:
-		rshift(state, ir)
-	elif type(ir) == BitAnd:
-		bitand(state, ir)
-	elif type(ir) == BitOr:
-		bitor(state, ir)
-	elif type(ir) == BitXOr:
-		bitxor(state, ir)
-	elif type(ir) in (Eq, NEq, Less, LessEq, Greater, GreaterEq):
-		cmp(state, ir)
-	elif type(ir) == FAdd:
-		fadd(state, ir)
-	elif type(ir) == FSub:
-		fsub(state, ir)
-	elif type(ir) == FMul:
-		fmul(state, ir)
-	elif type(ir) == FDiv:
-		fdiv(state, ir)
-	elif type(ir) in (FEq, FNEq, FLess, FLessEq, FGreater, FGreaterEq):
-		fcmp(state, ir)
-	elif type(ir) == Call:
-		call(state, ir)
-	elif type(ir) == BlockMarker:
-		blockMarker(state, ir)
-	elif type(ir) == BrIf:
-		brIf(state, ir, nextIR)
-	elif type(ir) == Br:
-		br(state, ir, nextIR)
-	elif type(ir) == Ret:
-		ret(state, ir)
-	else:
-		assert 0
+	irToAsmFns[type(ir)](state, ir, nextIR)
 	
 	# state.appendInstr('[{}]'.format(', '.join(str(t.type) for t in state.operandStack)), 
 		# isComment=True, isLabel=(type(ir) == BlockMarker))
@@ -839,7 +758,7 @@ def moveStruct(state, src, dest, srcDeref, destDeref, srcOffset, destOffset, typ
 
 FLOAT_COUNTER = 0
 
-def imm(state, ir):
+def imm(state, ir, nextIR):
 	if ir.type.isFloatType:
 		global FLOAT_COUNTER
 		label = '{}_float{}'.format(state.fnIR.name, FLOAT_COUNTER)
@@ -874,7 +793,7 @@ def imm(state, ir):
 	else:
 		state.pushIROperand(ir)
 
-def dup(state, ir):
+def dup(state, ir, nextIR):
 	src = state.getOperand(ir.offset)
 	
 	if src.storage == Storage.GLOBAL:
@@ -887,13 +806,13 @@ def dup(state, ir):
 	
 	state.pushOperand(dest)
 
-def swap(state, ir):
+def swap(state, ir, nextIR):
 	state.swapOperand(ir.offset)
 
-def raise_(state, ir):
+def raise_(state, ir, nextIR):
 	state.raiseOperand(ir.offset)
 
-def fix(state, ir):
+def fix(state, ir, nextIR):
 	src = state.getOperand(ir.offset)
 	if src.storage != Storage.STACK:
 		newSrc = state.findTarget(src.type, True)
@@ -904,13 +823,13 @@ def fix(state, ir):
 	
 	src.fixed = True
 
-def write(state, ir):
+def write(state, ir, nextIR):
 	src = state.getOperand(0)
 	dest = state.getOperand(ir.offset)
 	moveData(state, src, dest)
 	state.popOperand()
 
-def addr(state, ir):
+def addr(state, ir, nextIR):
 	src = state.getOperand(ir.offset)
 	assert src.storage == Storage.STACK and src.fixed
 	
@@ -921,7 +840,7 @@ def addr(state, ir):
 	
 	state.pushOperand(dest)
 
-def blockMarker(state, ir):
+def blockMarker(state, ir, nextIR):
 	assert state.blockInputs[ir.index] != None
 	state.clearOperands()
 	inputTargets = state.blockInputs[ir.index]
@@ -934,7 +853,7 @@ def blockMarker(state, ir):
 	state.blockDef = state.fnIR.blockDefs[ir.index]
 	state.appendInstr(state.blockDef.label, isLabel=True)
 
-def deref(state, ir):
+def deref(state, ir, nextIR):
 	src = state.getOperand(0)
 	dest = state.findTarget(ir.type)
 	moveData(state, src, dest, srcDeref=True)
@@ -942,7 +861,7 @@ def deref(state, ir):
 	state.popOperand()
 	state.pushOperand(dest)
 
-def derefw(state, ir):
+def derefw(state, ir, nextIR):
 	src = state.getOperand(0)
 	dest = state.getOperand(1)
 	moveData(state, src, dest, destDeref=True)
@@ -950,7 +869,10 @@ def derefw(state, ir):
 	state.popOperand()
 	state.popOperand()
 
-def field(state, ir, deref=False):
+def derefField(state, ir, nextIR):
+	field(state, ir, nextIR, True)
+
+def field(state, ir, nextIR, deref=False):
 	offsetTarget = state.getOperand(0)
 	structTarget = state.getOperand(ir.offset)
 	readTarget = state.findTarget(ir.type)
@@ -960,7 +882,10 @@ def field(state, ir, deref=False):
 	state.popOperand()
 	state.pushOperand(readTarget)
 
-def fieldw(state, ir, deref=False):
+def derefFieldw(state, ir, nextIR):
+	fieldw(state, ir, nextIR, True)
+
+def fieldw(state, ir, nextIR, deref=False):
 	offsetTarget = state.getOperand(0)
 	valueTarget = state.getOperand(1)
 	structTarget = state.getOperand(ir.offset)
@@ -975,7 +900,7 @@ def fieldw(state, ir, deref=False):
 	state.popOperand()
 	state.popOperand()
 
-def extend(state, ir, signed=False):
+def extend(state, ir, nextIR, signed=False):
 	src = state.getOperand(0)
 	
 	if src.storage == Storage.IMM:
@@ -1006,10 +931,10 @@ def extend(state, ir, signed=False):
 	state.popOperand()
 	state.pushOperand(dest)
 
-def iextend(state, ir):
-	extend(state, ir, True)
+def iextend(state, ir, nextIR):
+	extend(state, ir, nextIR, True)
 
-def fextend(state, ir):
+def fextend(state, ir, nextIR):
 	src = state.getOperand(0)
 	dest = src
 	
@@ -1037,10 +962,10 @@ def fextend(state, ir):
 	state.popOperand()
 	state.pushOperand(dest)
 
-def truncate(state, ir):
+def truncate(state, ir, nextIR):
 	state.getOperand(0).type = ir.type
 
-def itof(state, ir):
+def itof(state, ir, nextIR):
 	src = state.getOperand(0)
 	
 	if src.type.byteSize < 4:
@@ -1075,10 +1000,10 @@ def itof(state, ir):
 	state.popOperand()
 	state.pushOperand(dest)
 
-def ftoi(state, ir):
+def ftoi(state, ir, nextIR):
 	assert 0
 
-def neg(state, ir):
+def neg(state, ir, nextIR):
 	target = state.getOperand(0)
 	if target.storage == Storage.IMM:
 		target.value = -src.value
@@ -1136,10 +1061,10 @@ def addOrSub(state, ir, isAdd):
 	state.popOperand()
 	state.pushOperand(dest)
 
-def add(state, ir):
+def add(state, ir, nextIR):
 	addOrSub(state, ir, True)
 
-def sub(state, ir):
+def sub(state, ir, nextIR):
 	addOrSub(state, ir, False)
 
 def mulDivMod(state, ir, isMul, isMod):
@@ -1198,19 +1123,19 @@ def mulDivMod(state, ir, isMul, isMod):
 	else:
 		state.pushOperand(dest)
 
-def mul(state, ir):
+def mul(state, ir, nextIR):
 	mulDivMod(state, ir, True, False)
 
-def div(state, ir):
+def div(state, ir, nextIR):
 	mulDivMod(state, ir, False, False)
 
-def mod(state, ir):
+def mod(state, ir, nextIR):
 	mulDivMod(state, ir, False, True)
 
-def lshift(state, ir):
+def lshift(state, ir, nextIR):
 	lrshift(state, ir, False)
 
-def rshift(state, ir):
+def rshift(state, ir, nextIR):
 	lrshift(state, ir, True)
 
 def lrshift(state, ir, right):
@@ -1239,13 +1164,13 @@ def lrshift(state, ir, right):
 	state.popOperand()
 	state.pushOperand(target)
 
-def bitand(state, ir):
+def bitand(state, ir, nextIR):
 	bitwise(state, ir, 'and')
 
-def bitor(state, ir):
+def bitor(state, ir, nextIR):
 	bitwise(state, ir, 'or')
 
-def bitxor(state, ir):
+def bitxor(state, ir, nextIR):
 	bitwise(state, ir, 'xor')
 
 def bitwise(state, ir, opcode):
@@ -1289,7 +1214,7 @@ def bitwise(state, ir, opcode):
 	state.popOperand()
 	state.pushOperand(dest)
 
-def cmp(state, ir):
+def cmp(state, ir, nextIR):
 	if state.rcx.active:
 		stack = saveReg(state, state.rcx)
 		state.moveOperand(state.rcx, stack)
@@ -1355,16 +1280,16 @@ def cmp(state, ir):
 	state.popOperand()
 	state.pushOperand(state.rcx)
 
-def fadd(state, ir):
+def fadd(state, ir, nextIR):
 	faddSubDivMul(state, ir, 'add', True)
 
-def fsub(state, ir):
+def fsub(state, ir, nextIR):
 	faddSubDivMul(state, ir, 'sub', False)
 
-def fmul(state, ir):
+def fmul(state, ir, nextIR):
 	faddSubDivMul(state, ir, 'mul', True)
 
-def fdiv(state, ir):
+def fdiv(state, ir, nextIR):
 	faddSubDivMul(state, ir, 'div', False)
 
 def faddSubDivMul(state, ir, op, isCommutative):
@@ -1401,7 +1326,7 @@ def faddSubDivMul(state, ir, op, isCommutative):
 	state.popOperand()
 	state.pushOperand(dest)
 
-def fcmp(state, ir):
+def fcmp(state, ir, nextIR):
 	if state.rcx.active:
 		stack = saveReg(state, state.rcx)
 		state.moveOperand(state.rcx, stack)
@@ -1560,7 +1485,7 @@ def assignTargets(state, types, ret=False, memStructReturn=False):
 	
 	return assignments
 
-def call(state, ir):
+def call(state, ir, nextIR):
 	for reg in state.intRegs:
 		if reg.calleeSaved:
 			continue
@@ -1740,7 +1665,7 @@ def br(state, ir, nextIR):
 def brIf(state, ir, nextIR):
 	brOrBrIf(state, ir, nextIR, True)
 	
-def ret(state, ir):
+def ret(state, ir, nextIR):
 	if state.fnIR.retType:
 		retTargets = assignTargets(state, [state.fnIR.retType], ret=True)[0]
 		src = state.getOperand(0)
@@ -1754,6 +1679,64 @@ def ret(state, ir):
 				moveData(state, src, retTargets[1], type=I64, srcOffset=ImmTarget(I64, 8))
 	
 	state.appendInstr('jmp {}__ret'.format(state.fnIR.name))
+
+irToAsmFns = {
+	Imm:         imm,
+	Global:      pushIR,
+    Static:      pushIR,
+    Res:         pushIR,
+	Pop:         popIR,
+	Dup:         dup,
+	Swap:        swap,
+	Write:       write,
+	Raise:       raise_,
+	Fix:         fix,
+	Addr:        addr,
+	Deref:       deref,
+	DerefW:      derefw,
+	Field:       field,
+	DerefField:  derefField,
+	FieldW:      fieldw,
+	DerefFieldW: derefFieldw,
+	Extend:      extend,
+	IExtend:     iextend,
+	FExtend:     fextend,
+	Truncate:    truncate,
+	IToF:        itof,
+	FToI:        ftoi,
+	Neg:         neg,
+	Add:         add,
+	Sub:         sub,
+	Mul:         mul,
+	Div:         div,
+	Mod:         mod,
+	LShift:      lshift,
+	RShift:      rshift,
+	BitAnd:      bitand,
+	BitOr:       bitor,
+	BitXOr:      bitxor,
+	Eq:          cmp,
+    NEq:         cmp,
+    Less:        cmp,
+    LessEq:      cmp,
+    Greater:     cmp,
+    GreaterEq:   cmp,
+	FAdd:        fadd,
+	FSub:        fsub,
+	FMul:        fmul,
+	FDiv:        fdiv,
+	FEq:         fcmp,
+    FNEq:        fcmp,
+    FLess:       fcmp,
+    FLessEq:     fcmp,
+    FGreater:    fcmp,
+    FGreaterEq:  fcmp,
+	Call:        call,
+	BlockMarker: blockMarker,
+	BrIf:        brIf,
+	Br:          br,
+	Ret:         ret
+}
 
 def saveReg(state, reg, exclude=[]):
 	assert reg.active
@@ -1771,9 +1754,16 @@ def restoreReg(state, stack, reg):
 		Operand(reg, Usage.DEST), 
 		Operand(stack, Usage.SRC))
 
-def declareExterns(mod, output):
+def declareExterns(mod, output, visited=None):
+	if visited == None:
+		visited = set()
+	elif mod in visited:
+		return
+	else:
+		visited.add(mod)
+	
 	for decl in mod.mods:
-		declareExterns(decl, output)
+		declareExterns(decl, output, visited)
 	
 	for decl in mod.fns:
 		if mod.isImport and not decl.pub:
@@ -1781,9 +1771,16 @@ def declareExterns(mod, output):
 		if decl.extern or decl.isImport:
 			output.write('extern {}\n'.format(decl.mangledName))
 
-def declareFns(mod, output):
+def declareFns(mod, output, visited=None):
+	if visited == None:
+		visited = set()
+	elif mod in visited:
+		return
+	else:
+		visited.add(mod)
+	
 	for decl in mod.mods:
-		declareFns(decl, output)
+		declareFns(decl, output, visited)
 	
 	for decl in mod.fns:
 		if decl.pub and not (decl.extern or decl.isImport):

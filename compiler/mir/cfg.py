@@ -2,7 +2,7 @@ from .mir    import MIR
 from .access import SymbolAccess, SymbolRead
 from .fncall import FnCall
 from .drop   import DropSymbol
-from ..ir    import Br, BrIf, Ret, BlockMarker, getInputInfo
+from ..ir    import Br, BrIf, Ret, BlockMarker, Raise, getInputInfo
 from ..log   import logError, logExplain
 from ..types import PtrType
 
@@ -43,12 +43,8 @@ class SymbolState:
 		self.lastUse = access
 
 class CFGBlock:
-	def __init__(self, state, ancestors, span):
-		if state:
-			self.id = state.blockId
-			state.blockId += 1
-		else:
-			self.id = -1
+	def __init__(self, ancestors, span):
+		self.id = None
 		self.span = span
 		self.inputs = set()
 		self.decls = set()
@@ -58,13 +54,16 @@ class CFGBlock:
 		self.branchOn = None
 		self.ancestors = []
 		self.successors = []
-		self.finalizeCount = 0
 		self.finalized = False
+		self.finalizedInputs = False
+		self.finalizedCount = 0
 		self.irBlockDef = None
 		self.irInputSymbols = None
 		self.didReturn = False
 		self.didBreak = False
 		self.unreachable = False
+		self.hasReverseSuccessor = False
+		self.reverseAncestorCount = 0
 		
 		if ancestors:
 			self.ancestors = ancestors
@@ -73,11 +72,13 @@ class CFGBlock:
 				ancestor.successors.append(self)
 	
 	def cloneForDiscard(self):
-		other = CFGBlock(None, None, self.span)
+		other = CFGBlock(None, self.span)
 		other.symbolState = { k: v.cloneForNewBlock() for (k, v) in self.symbolState.items() }
 		return other
 		
 	def addReverseAncestor(self, ancestor):
+		self.reverseAncestorCount += 1
+		ancestor.hasReverseSuccessor = True
 		self.ancestors.append(ancestor)
 		ancestor.successors.append(self)
 		ancestor.symbolState.update({ k: v.cloneForNewBlock() for (k, v) in self.symbolState.items() })
@@ -291,61 +292,102 @@ class CFGBlock:
 				
 				self.dropFields(state, symbol, field, fieldBase + field.offset, dropPoint, indLevel)
 	
-	def finalize(self, state, successorSymbols=set()):
+	def finalizeInputs(self, state, indent=0):
+		# print('  ' * indent, self.id)
+		
+		if self.finalizedInputs:
+			return
+		
+		self.finalizedCount += 1
+		self.finalizedInputs = self.finalizedCount > self.reverseAncestorCount
+		
+		for block in self.successors:
+			# if not self.hasReverseSuccessor:
+			# 	block.reverseAncestorCount += self.reverseAncestorCount
+			block.finalizeInputs(state, indent+1)
+			self.outputs.update(block.inputs)
+		
+		self.inputs.update(symbol for symbol in self.outputs if not self.symbolState[symbol].wasTouched)
+	
+	def finalize(self, state, indent=0):
+		if self.finalized:
+			return
+		
+		self.finalized = True
+		
+		for block in self.ancestors:
+			self.inputs.update(block.outputs)
+		
+		dropInBlock = set(symbol for symbol in self.inputs - self.outputs if not self.symbolState[symbol].wasTouched)
+		if dropInBlock:
+			dropPoint = CFGDropPoint(block.span)
+			for symbol in dropInBlock:
+				self.dropSymbol(state, symbol, dropPoint)
+			self.mir.insert(0, dropPoint)
+		
+		for info in self.symbolState.values():
+			if info.init and not info.moved and info.lastUse and info.symbol != self.branchOn and not (info.symbol in self.outputs):
+				self.dropLastUse(state, info)
+			elif self.id == 1 and info.symbol.unused and info.symbol.isParam:
+				self.dropSymbol(state, info.symbol, info.symbol.dropPoint)
+	
+	def finalize1(self, state, successorSymbols=set(), indent=0):
+		print('  ' * indent, self.id)
 		assert not self.unreachable
 		if self.finalized:
 			return
 		
-		self.finalizeCount += 1
-		self.finalized = self.finalizeCount >= len(self.successors)
-		finalized = self.finalized
+		# if self.hasReverseSuccessor:
+		# 	assert len(self.successors) == 1
+		# 	self.finalized = True
+		# else:
 		
 		self.outputs.update(successorSymbols)
 		self.inputs.update(symbol for symbol in self.outputs if not self.symbolState[symbol].wasTouched)
 		for block in self.ancestors:
-			block.finalize(state, self.inputs)
+			block.finalize(state, self.inputs, indent+1)
 		
-		if finalized != self.finalized:
+		self.finalized = len([s for s in self.successors if not s.finalized]) == 0
+		if not self.finalized:
 			return
 		
-		if self.finalized:
-			for block in self.successors:
-				# assert block.inputs == self.outputs
-				dropInBlock = self.outputs - block.inputs
-				if dropInBlock:
-					block.inputs.update(dropInBlock)
-					dropPoint = CFGDropPoint(block.span)
-					for symbol in dropInBlock:
-						block.dropSymbol(state, symbol, dropPoint)
-					block.mir.insert(0, dropPoint)
-			
-			for info in self.symbolState.values():
-				if info.init and not info.moved and info.lastUse and info.symbol != self.branchOn and not (info.symbol in self.outputs):
-					self.dropLastUse(state, info)
-				elif self.id == 1 and info.symbol.unused and info.symbol.isParam:
-					self.dropSymbol(state, info.symbol, info.symbol.dropPoint)
-			# 	for block in reversed(self.fnBlocks):
-			# 		info = block.symbolState[symbol]
-					
-			# 		if wasTouchedLater:
-			# 			block.outputs.append(symbol)
-					
-			# 		if info.wasRedeclared:
-			# 			block.decls.append(symbol)
-			# 			wasTouchedLater = False
-			# 			continue
-			# 		elif info.wasDeclared:
-			# 			if info.init and not info.moved:
-			# 				for use in lastUses:
-			# 					if use.ref and use.copy:# and not use.symbol.dropFn
-			# 						use.copy = False
-			# 					else:
-			# 						self.block.dropSymbol(info, use.dropPoint)
-			# 			break
-					
-			# 		wasTouchedLater = wasTouchedLater or info.wasTouched
-			# 		if wasTouchedLater:
-			# 			block.inputs.append(symbol)
+		for block in self.successors:
+			# assert block.inputs == self.outputs
+			dropInBlock = self.outputs - block.inputs
+			if dropInBlock:
+				block.inputs.update(dropInBlock)
+				dropPoint = CFGDropPoint(block.span)
+				for symbol in dropInBlock:
+					block.dropSymbol(state, symbol, dropPoint)
+				block.mir.insert(0, dropPoint)
+		
+		for info in self.symbolState.values():
+			if info.init and not info.moved and info.lastUse and info.symbol != self.branchOn and not (info.symbol in self.outputs):
+				self.dropLastUse(state, info)
+			elif self.id == 1 and info.symbol.unused and info.symbol.isParam:
+				self.dropSymbol(state, info.symbol, info.symbol.dropPoint)
+		# 	for block in reversed(self.fnBlocks):
+		# 		info = block.symbolState[symbol]
+				
+		# 		if wasTouchedLater:
+		# 			block.outputs.append(symbol)
+				
+		# 		if info.wasRedeclared:
+		# 			block.decls.append(symbol)
+		# 			wasTouchedLater = False
+		# 			continue
+		# 		elif info.wasDeclared:
+		# 			if info.init and not info.moved:
+		# 				for use in lastUses:
+		# 					if use.ref and use.copy:# and not use.symbol.dropFn
+		# 						use.copy = False
+		# 					else:
+		# 						self.block.dropSymbol(info, use.dropPoint)
+		# 			break
+				
+		# 		wasTouchedLater = wasTouchedLater or info.wasTouched
+		# 		if wasTouchedLater:
+		# 			block.inputs.append(symbol)
 	
 	def writeIR(self, state):
 		assert not self.unreachable
@@ -368,6 +410,17 @@ class CFGBlock:
 				if block.irBlockDef == None:
 					block.irBlockDef = state.defBlock(inputTypes)
 					block.irInputSymbols = inputSymbols
+				else:
+					assert len(state.operandStack) == len(block.irInputSymbols)
+					fixStack = False
+					for (found, expected) in zip(state.operandStack, block.irInputSymbols):
+						if found.symbol != expected:
+							fixStack = True
+							break
+					if fixStack:
+						for symbol in block.irInputSymbols:
+							stackOffset = state.localOffset(symbol)
+							state.appendInstr(Raise(self, stackOffset))
 			
 			if self.branchOn:
 				assert len(self.successors) == 2

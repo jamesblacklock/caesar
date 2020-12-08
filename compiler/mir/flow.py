@@ -57,12 +57,15 @@ class CFGBuilder:
 		discard.blockId = self.blockId
 		discard.dropPoint = CFGDropPoint(discard.block.span)
 		return discard
-		
+	
+	def appendBlock(self, block):
+		self.blocks.append(block)
+		block.id = len(self.blocks)
 	
 	def ifBranch(self, branchOn, span):
 		self.block.branchOn = branchOn
-		ifBranch = CFGBlock(self, [self.block], span)
-		elseBranch = CFGBlock(self, [self.block], span)
+		ifBranch = CFGBlock([self.block], span)
+		elseBranch = CFGBlock([self.block], span)
 		self.block.successors = [elseBranch, ifBranch]
 		self.branchPoints.append(self.block)
 		return (ifBranch, elseBranch)
@@ -89,9 +92,9 @@ class CFGBuilder:
 			ancestors = [self.block]
 			self.block.span = Span.merge(self.block.span.startSpan(), span.startSpan())
 		blockSpan = Span.merge(span.startSpan(), self.endSpan)
-		self.block = CFGBlock(self, ancestors, blockSpan)
+		self.block = CFGBlock(ancestors, blockSpan)
 		self.dropPoint = CFGDropPoint(blockSpan)
-		self.blocks.append(self.block)
+		self.appendBlock(self.block)
 	
 	def doBreak(self):
 		self.scope.didBreak = True
@@ -113,13 +116,13 @@ class CFGBuilder:
 				self.block.span = Span.merge(self.block.span.startSpan(), span.startSpan())
 			self.block = branch
 			branch.span = span
-			self.blocks.append(branch)
+			self.appendBlock(branch)
 		else:
 			self.beginBlock(span)
 		
 		if loop:
 			self.continueBlocks.append(self.block)
-			self.breakBlocks.append(CFGBlock(self, [], Span.merge(span.endSpan(), self.endSpan)))
+			self.breakBlocks.append(CFGBlock([], Span.merge(span.endSpan(), self.endSpan)))
 		
 		self.scope = Scope(self.scope, span, loop, branch != None, unsafe, contracts)
 		
@@ -136,7 +139,7 @@ class CFGBuilder:
 				startBlock.addReverseAncestor(self.block)
 			self.block.span = Span.merge(self.block.span.startSpan(), self.scope.span.endSpan())
 			self.block = self.breakBlocks.pop()
-			self.blocks.append(self.block)
+			self.appendBlock(self.block)
 		else:
 			self.beginBlock(self.scope.span.endSpan())
 		
@@ -192,12 +195,12 @@ class CFGBuilder:
 					block.unreachable = True
 					continue
 			blocks.append(block)
-			if not block.successors:
-				block.finalize(self)
 		
 		self.blocks = blocks
+		self.blocks[0].finalizeInputs(self)
+		
 		for block in self.blocks:
-			assert block.finalized
+			block.finalize(self)
 	
 	def lookupSymbol(self, path, symbolTable=None, inTypePosition=False, inValuePosition=False):
 		symbolTable = {**symbolTable, **self.scope.symbolTable} if symbolTable else self.scope.symbolTable

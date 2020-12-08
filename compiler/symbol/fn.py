@@ -86,7 +86,7 @@ class Fn(ValueSymbol):
 		
 		state.failed = state.failed or flow.failed
 		
-		print(self)
+		# print(self)
 		
 	
 	# def checkDropFnScope(self, state):
