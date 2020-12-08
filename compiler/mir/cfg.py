@@ -181,7 +181,7 @@ class CFGBlock:
 		
 		for borrow in info.borrows:
 			errCount = 0
-			if borrow not in state.scope.symbols:
+			if borrow.symbol not in state.scope.symbols:
 				if errCount == 0:
 					logError(state, access.span, 'borrowed value has gone out of scope')
 				errCount += 1
