@@ -1,8 +1,10 @@
 from .mir    import MIR
-from .access import SymbolAccess
+from .access import SymbolAccess, SymbolRead
+from .fncall import FnCall
 from .drop   import DropSymbol
 from ..ir    import Br, BrIf, Ret, BlockMarker, getInputInfo
 from ..log   import logError, logExplain
+from ..types import PtrType
 
 class SymbolState:
 	def __init__(self, symbol):
@@ -195,13 +197,99 @@ class CFGBlock:
 			logError(state, symbol.span, 'owned value was not discarded')
 			logExplain(state, dropPoint.span.endSpan(), 'value escapes here')
 		
-		# if symbol.dropFn:
-		# 	self.callDropFn(symbol.dropFn, symbol, None, 0, exprs, dropPoint.span)
+		if symbol.dropFn:
+			self.callDropFn(symbol.dropFn, symbol, None, 0, dropPoint)
 		
-		# self.dropFields(symbol, None, 0, exprs, dropPoint.span)
+		self.dropFields(state, symbol, None, 0, dropPoint)
 		
 		dropPoint.append(DropSymbol(symbol, dropPoint.span))
-		# info.recordDrop(dropPoint)
+	
+	def callDropFn(self, dropFn, symbol, field, fieldBase, dropPoint, indLevel=0):
+		span = dropPoint.span
+		symbol.fixed = True
+		
+		# create the fn ref for the fn call
+		fnRef = SymbolRead(span)
+		fnRef.symbol = dropFn
+		fnRef.type = dropFn.type
+		fnRef.ref = True
+		
+		# take the address of the symbol/field
+		ptr = SymbolRead(span)
+		ptr.symbol = symbol
+		
+		if indLevel == 0:
+			ptr.addr = True
+		else:
+			ptr.copy = True
+			if indLevel > 1:
+				ptr.deref = indLevel - 1
+		
+		if field:
+			ptr.isFieldAccess = True if indLevel == 0 else False
+			ptr.staticOffset = fieldBase + field.offset
+			ptr.type = PtrType(field.type, 1, True)
+		else:
+			ptr.type = PtrType(symbol.type, 1, True)
+		
+		# use the fn ref and call the drop fn
+		fnCall = FnCall(fnRef, [ptr], [], False, fnRef.type.returnType, span, isDrop=True)
+		dropPoint.append(fnCall)
+	
+	def dropEnum(self, state, symbol, field, fieldBase, dropPoint, indLevel=0):
+		symbolType = symbol.type.typeAfterDeref(indLevel) if indLevel > 0 else symbol.type
+		t = field.type if field else symbolType
+		assert t.isEnumType
+		parentDropFn = field.type.dropFn if field else symbol.dropFn
+		
+		for variant in t.variants:
+			if variant.type.isCompositeType:
+				for field in variant.type.fields:
+					if field.type.isOwnedType and not parentDropFn:
+						logError(state, symbol.span, 
+							'owned value in field `{}` was not discarded'.format(field.name))
+						logExplain(state, span.endSpan(), 'value escapes here')
+					elif field.type.dropFn:
+						logWarning(state, symbol.span, 
+							'I can\'t drop `enum`s properly; field `{}` will not be dropped'.format(field.name))
+	
+	# def dropField(self, state, symbol, field, block, span):
+	# 	fieldInfo = self.symbolInfo[symbol].fieldInfo
+	# 	if field not in fieldInfo or not fieldInfo[field].uninit:
+	# 		if field.type.isOwnedType:
+	# 			logError(state, symbol.span, 
+	# 				'owned value in field `{}` was not discarded'.format(field.name))
+	# 			logExplain(state, span, 'value escapes here')
+			
+	# 		if field.type.dropFn:
+	# 			self.callDropFn(field.type.dropFn, symbol, field, fieldBase, block.exprs, span)
+			
+	# 		self.dropFields(state, symbol, field, field.offset, block.exprs, span)
+	
+	def dropFields(self, state, symbol, field, fieldBase, dropPoint, indLevel=0):
+		span = dropPoint.span
+		symbolType = symbol.type.typeAfterDeref(indLevel) if indLevel > 0 else symbol.type
+		t = field.type if field else symbolType
+		parentDropFn = field.type.dropFn if field else symbol.dropFn
+		
+		if t.isEnumType:
+			self.dropEnum(state, symbol, field, fieldBase, dropPoint, indLevel)
+			return
+		elif not t.isCompositeType:
+			return
+		
+		# fieldInfo = self.symbolInfo[symbol].fieldInfo
+		for field in reversed(t.fields):
+			# if field not in fieldInfo or not fieldInfo[field].uninit:
+				if field.type.isOwnedType and not parentDropFn:
+					logError(state, symbol.span, 
+						'owned value in field `{}` was not discarded'.format(field.name))
+					logExplain(state, span.endSpan(), 'value escapes here')
+				
+				if field.type.dropFn:
+					self.callDropFn(field.type.dropFn, symbol, field, fieldBase, dropPoint, indLevel)
+				
+				self.dropFields(state, symbol, field, fieldBase + field.offset, dropPoint, indLevel)
 	
 	def finalize(self, state, successorSymbols=set()):
 		assert not self.unreachable
