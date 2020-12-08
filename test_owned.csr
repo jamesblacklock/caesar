@@ -1,7 +1,7 @@
 import libc { printf, malloc, free }
 
 unsafe fn main()
-    let buf = malloc(8) as &mut [byte * 8]
+    let buf = malloc(8) as owned(malloc, free) &mut [byte * 8]
     
     buf^[0] = 'H' as byte
     buf^[1] = 'e' as byte
@@ -14,5 +14,5 @@ unsafe fn main()
     
     printf(borrow buf as &byte)
     
-    free(buf as &mut void)
+    free(buf as owned(malloc, free) &mut void)
     
