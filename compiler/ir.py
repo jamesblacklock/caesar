@@ -1,5 +1,6 @@
 import ctypes
 from io import StringIO
+from .mir.mir import StaticDataType
 
 class FundamentalType:
 	def __init__(self, byteSize, types=None, isFloatType=False, aligned=True):
@@ -439,16 +440,17 @@ class Ret(Instr):
 		return 'ret'
 
 class BlockMarker(Instr):
-	def __init__(self, ast, index):
+	def __init__(self, ast, index, id):
 		super().__init__(ast)
 		self.index = index
+		self.id = id
 	
 	def pretty(self, fnIR):
 		inputs = ', '.join([str(t) for t in fnIR.blockDefs[self.index].inputs])
 		return '.{}({}):'.format(fnIR.blockDefs[self.index].label, inputs)
 	
 	def __str__(self):
-		return '.<{}>:'.format(self.index)
+		return '.<{}>:'.format(self.id)
 
 class Br(Instr):
 	def __init__(self, ast, index):
@@ -750,8 +752,9 @@ class FDiv(Instr):
 		return 'fdiv'
 
 class BlockDef:
-	def __init__(self, index, label, inputs, hasBackwardsCallers):
+	def __init__(self, index, id, label, inputs, hasBackwardsCallers):
 		self.index = index
+		self.id = id
 		self.label = label
 		self.inputs = inputs
 		self.hasBackwardsCallers = hasBackwardsCallers
@@ -804,10 +807,10 @@ class IRState:
 		# print('{}{}# [{}]'.format(instrText, space, 
 		# 	', '.join([(t.symbol.name + ': ' if t.symbol else '') + str(t.type) for t in self.operandStack])))
 	
-	def defBlock(self, inputs, hasBackwardsCallers=False):
+	def defBlock(self, inputs, id, hasBackwardsCallers=False):
 		index = len(self.blockDefs)
-		label = '{}__{}'.format(self.name, index)
-		blockDef = BlockDef(index, label, inputs, hasBackwardsCallers)
+		label = '{}__{}'.format(self.name, id)
+		blockDef = BlockDef(index, id, label, inputs, hasBackwardsCallers)
 		self.blockDefs.append(blockDef)
 		return blockDef
 	
@@ -939,6 +942,36 @@ def getInputInfo(state):
 		inputSymbols.append(localInfo.symbol)
 	
 	return inputTypes, inputSymbols
+
+def writeStaticValueIR(state, ast, staticValue):
+	if staticValue.dataType != StaticDataType.BYTES:
+		state.appendInstr(Imm(ast, staticValue.fType, staticValue.data))
+		return
+	
+	b = staticValue.toBytes()
+	
+	if len(b) in (1, 2, 4, 8):
+		value = int.from_bytes(bytes(b), 'big')
+		state.appendInstr(Imm(ast, staticValue.fType, value))
+	
+	offset = 0
+	size = IPTR.byteSize
+	state.appendInstr(Res(ast, FundamentalType(len(b), types=[])))
+	
+	while True:
+		assert size > 0
+		fType = FundamentalType(size)
+		while offset+size <= len(b):
+			bRange = bytes(b[offset : offset + size])
+			value = int.from_bytes(bRange, 'big')
+			state.appendInstr(Imm(ast, fType, value))
+			state.appendInstr(Imm(ast, IPTR, offset))
+			state.appendInstr(FieldW(ast, 2))
+			offset += size
+		if offset == len(b):
+			break
+		size //= 2
+		
 
 def fnToIR(fnDecl):
 	state = IRState(fnDecl)

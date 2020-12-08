@@ -1,6 +1,7 @@
 from ..span  import Span
 from .cfg    import CFGBlock, CFGDropPoint
 from .access import SymbolAccess, SymbolRead
+from ..log   import logError, logWarning
 
 class Scope:
 	def __init__(self, parent, span, loop, branch, unsafe, contracts):
@@ -145,6 +146,11 @@ class CFGBuilder:
 		
 		if self.scope.didBreak and not (self.scope.parent.loop or self.scope.parent.branch):
 			self.scope.parent.didBreak = True
+		
+		for symbol in self.scope.declaredSymbols:
+			if symbol.unused:
+				logWarning(self, symbol.span, 'unused symbol: `{}`'.format(symbol.name))
+		
 		self.scope = self.scope.parent
 		
 		return endBlock
@@ -201,6 +207,23 @@ class CFGBuilder:
 		
 		for block in self.blocks:
 			block.finalize(self)
+	
+	def staticEval(self, symbol):
+		assert len(self.blocks) == 1 and len(self.blocks[0].inputs) == 0
+		self.block = self.blocks[0]
+		
+		for mir in self.block.mir:
+			if mir.staticSideEffects(self) == False:
+				return None
+		
+		self.block = None
+		return self.blocks[0].symbolState[symbol].staticValue
+	
+	def staticWrite(self, symbol, staticValue):
+		self.block.symbolState[symbol].staticValue = staticValue
+	
+	def staticRead(self, symbol):
+		return self.block.symbolState[symbol].staticValue
 	
 	def lookupSymbol(self, path, symbolTable=None, inTypePosition=False, inValuePosition=False):
 		symbolTable = {**symbolTable, **self.scope.symbolTable} if symbolTable else self.scope.symbolTable

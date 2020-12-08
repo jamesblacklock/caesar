@@ -80,6 +80,9 @@ class MIR:
 	def staticEval(self, state):
 		return None
 	
+	def staticSideEffects(self, state):
+		return False
+	
 	def writeIR(self, state):
 		assert 0
 	

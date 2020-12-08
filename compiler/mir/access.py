@@ -194,8 +194,6 @@ class SymbolRead(SymbolAccess):
 			return access
 		
 		access.symbol.unused = False
-		if access.symbol.isStatic:
-			access.deref += 1
 		
 		if access.type == None:
 			access.type = access.symbol.type
@@ -204,7 +202,8 @@ class SymbolRead(SymbolAccess):
 		
 		if not (access.addr or access.isFieldAccess):
 			access.ref = True
-			access.copy = access.type.isCopyable
+			if access.symbol.isLocal:
+				access.copy = access.type.isCopyable
 		
 		access.dropPoint = state.dropPoint
 		access = tryPromote(state, access, implicitType)
@@ -230,6 +229,10 @@ class SymbolRead(SymbolAccess):
 			off.expr.commit(state)
 		state.access(self)
 	
+	def staticEval(self, state):
+		assert self.ref and not self.deref
+		return state.staticRead(self.symbol)
+	
 	def writeIR(expr, state):
 		if expr.noop or expr.type.isVoidType:
 			return
@@ -241,7 +244,7 @@ class SymbolRead(SymbolAccess):
 			stackTop = True
 		elif expr.symbol.isConst:
 			assert not expr.addr
-			expr.symbol.mir.writeIR(state)
+			ir.writeStaticValueIR(state, expr, expr.symbol.staticValue)
 			stackTop = True
 		else:
 			assert type(expr.symbol) == Local
@@ -334,9 +337,6 @@ class SymbolWrite(SymbolAccess):
 					logError(state, access.rvalue.span, 
 						'expected type {}, found {}'.format(access.type, access.rvalue.type))
 		
-		if access.symbol.isStatic:
-			access.deref += 1
-		
 		access.copy = access.deref != 0
 		
 		if access.type == None:
@@ -358,6 +358,15 @@ class SymbolWrite(SymbolAccess):
 		for off in self.dynOffsets:
 			off.expr.commit(state)
 		state.access(self)
+	
+	def staticSideEffects(self, state):
+		assert not (self.deref or self.isFieldAccess)
+		staticValue = self.rvalue.staticEval(state)
+		if staticValue:
+			state.staticWrite(self.symbol, staticValue)
+			return True
+		return False
+		
 	
 	def writeIR(expr, state):
 		assert expr.symbol.isLocal or expr.symbol.isStatic
@@ -440,6 +449,16 @@ def _SymbolAccess__analyzeSymbolAccess(state, expr, access, implicitType=None):
 						t = PtrType(t, contract.indLevel, contract.symbol.mut)
 			
 			access.type = t
+			if access.symbol.isStatic:
+				staticRead = SymbolRead(access.span)
+				staticRead.symbol = access.symbol
+				staticRead.type = access.symbol.type
+				staticRead.ref = True
+				(symbol, write) = createTempSymbol(staticRead)
+				state.decl(symbol)
+				state.analyzeNode(write)
+				access.symbol = symbol
+				access.deref = 1
 	elif type(expr) == valueref.Borrow:
 		_SymbolAccess__analyzeSymbolAccess(state, expr.expr, access, implicitType)
 		if not access.type:

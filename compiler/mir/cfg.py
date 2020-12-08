@@ -19,6 +19,7 @@ class SymbolState:
 		self.init = symbol.isParam
 		self.moved = False
 		self.borrows = set()
+		self.staticValue = None
 	
 	def cloneForNewBlock(self):
 		other = SymbolState(self.symbol)
@@ -224,8 +225,7 @@ class CFGBlock:
 		symbol.fixed = True
 	
 	def dropLastUse(self, state, info):
-		if info.lastUse.ref and info.lastUse.copy:
-			assert not info.lastUse.symbol.dropFn
+		if info.lastUse.ref and info.lastUse.copy and not info.symbol.dropFn:
 			info.lastUse.copy = False
 		else:
 			self.dropSymbol(state, info.symbol, info.lastUse.dropPoint)
@@ -304,6 +304,20 @@ class CFGBlock:
 			
 	# 		self.dropFields(state, symbol, field, field.offset, block.exprs, span)
 	
+	# def dropInd(self, symbol, block, indLevel):
+	# 	exprs = []
+		
+	# 	# if symbol.type.isOwnedType:
+	# 	# 	logError(self.state, symbol.span, 'owned value was not discarded')
+	# 	# 	logExplain(self.state, block.span.endSpan(), 'value escapes here')
+		
+	# 	if symbol.type.baseType.dropFn:
+	# 		self.callDropFn(symbol.type.baseType.dropFn, symbol, None, 0, exprs, block.span, indLevel=indLevel)
+		
+	# 	self.dropFields(symbol, None, 0, exprs, block.span, indLevel=indLevel)
+		
+	# 	block.exprs[:0] = exprs
+	
 	def dropFields(self, state, symbol, field, fieldBase, dropPoint, indLevel=0):
 		span = dropPoint.span
 		symbolType = symbol.type.typeAfterDeref(indLevel) if indLevel > 0 else symbol.type
@@ -371,7 +385,7 @@ class CFGBlock:
 		if self.ancestors:
 			assert self.irBlockDef
 			state.setupLocals(self.irBlockDef.inputs, self.irInputSymbols)
-			state.appendInstr(BlockMarker(self, self.irBlockDef.index))
+			state.appendInstr(BlockMarker(self, self.irBlockDef.index, self.id))
 		
 		for mir in self.mir:
 			mir.writeIR(state)
@@ -384,7 +398,7 @@ class CFGBlock:
 			
 			for block in self.successors:
 				if block.irBlockDef == None:
-					block.irBlockDef = state.defBlock(inputTypes)
+					block.irBlockDef = state.defBlock(inputTypes, block.id)
 					block.irInputSymbols = inputSymbols
 				else:
 					assert len(state.operandStack) == len(block.irInputSymbols)

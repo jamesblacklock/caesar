@@ -581,7 +581,8 @@ def parseBlock(state, parseItem, blockMarkers=BlockMarkers.BRACE,
 		state.rollback(offset)
 		
 		# check if we need to increase the indent level (only happens once in a block)
-		if not isBlockStart(state) and  state.skipEmptyLines():
+		isNewBlock = indentedBlock and isBlockStart(state)
+		if not isNewBlock and state.skipEmptyLines():
 			if not indentedBlock and not topLevelBlock:
 				indentedBlock = expectIndentIncrease(state)
 				if not indentedBlock:
