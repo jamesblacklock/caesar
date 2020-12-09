@@ -204,12 +204,12 @@ class CFGBlock:
 	def readSymbol(self, state, access, info):
 		symbol = access.symbol
 		
-		if not info.init:
+		if info.moved or not info.init:
 			if info.moved:
 				logError(state, access.span, 'the value in `{}` has been moved'.format(symbol.name))
-				for use in info.lastUses:
-					if use.ref:
-						logExplain(state, use.span, '`{}` was moved here'.format(symbol.name))
+				# for use in info.lastUses:
+					# if use.ref:
+				logExplain(state, info.lastUse.span, '`{}` was moved here'.format(symbol.name))
 			else:
 				logError(state, access.span, '`{}` has not been initialized'.format(symbol.name))
 		

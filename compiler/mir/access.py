@@ -150,6 +150,7 @@ class SymbolRead(SymbolAccess):
 		self.noop = False
 		self.hasValue = True
 		self.typeModifiers = None
+		self.leakOwned = False
 	
 	def moveToClone(self):
 		other = SymbolRead(self.span)
@@ -203,7 +204,7 @@ class SymbolRead(SymbolAccess):
 		if not (access.addr or access.isFieldAccess):
 			access.ref = True
 			if access.symbol.isLocal:
-				access.copy = access.type.isCopyable
+				access.copy = access.type.isCopyable and not access.leakOwned
 		
 		access.dropPoint = state.dropPoint
 		access = tryPromote(state, access, implicitType)
@@ -451,6 +452,7 @@ def _SymbolAccess__analyzeSymbolAccess(state, expr, access, implicitType=None):
 			if expr.leakOwned:
 				if state.scope.allowUnsafe:
 					if t.isOwnedType:
+						access.leakOwned = True
 						t = t.baseType
 				else:
 					logError(state, expr.span, 'cannot leak owned data in safe context')
