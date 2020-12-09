@@ -21,45 +21,40 @@ pub struct HashMap
 impl HashMap
     pub fn new() -> HashMap
         let capacity = 128usz
-        let buckets = calloc(sizeof(Item), capacity) as &mut Item
+        let buckets = unsafe calloc(sizeof(Item), capacity) as owned(malloc, free) &mut Item
         
         HashMap
             capacity: capacity
             buckets: buckets
             size: 0
     
-    # fn test()
-    #     let x: &int
-    #     {
-    #         let y = 5
-            
-            
-    
-    pub fn put(self: &HashMap) -> usize#, key: str, value: int) -> usize
-        # if self^.size == self^.capacity
-        #     return
+    pub fn put(self: &HashMap, key: str, value: int)
+        if self^.size == self^.capacity
+            return
         
-        # let hash = getHash(&key)
-        # # unsafe printf("HashMap::put: hashed: %s => %llu\n", key->data(), hash)
-        
-        # let index = hash % self^.capacity
-        # # unsafe printf("HashMap::put: hast to index: %llu => %llu\n", hash, index)
+        let hash = getHash(&key)
+        let index = hash % self^.capacity
         
         let mut offset = 0usz
-        while (borrow self^.buckets + #=index +=# offset)^.inUse
-            # unsafe printf("%llu\n", offset)
+        while (borrow self^.buckets + index + offset)^.inUse
             offset += 1
-        # unsafe printf("HashMap::put: index offset: %llu\n", offset)
-        offset
-            
+        
+        (borrow self^.buckets + index + offset)^ = { inUse: true, hash: hash, key: key, value: value }
     
     pub fn get(self: &HashMap, key: str) -> int
         let hash = getHash(&key)
-        unsafe printf("HashMap::get: hashed: %s => %llu\n", key->data(), hash)
-        return 42
+        let index = hash % self^.capacity
+        
+        let mut offset = 0usz
+        while (borrow self^.buckets + index + offset)^.hash != hash
+            offset += 1
+            if index + offset >= self^.capacity or (borrow self^.buckets + index + offset)^.inUse == false
+                return -1
+        
+        (borrow self^.buckets + index + offset)^.value
         
 
 impl HashMap: Drop
     pub fn drop(self: &mut HashMap)
-        free(self^.buckets)
+        unsafe free(self^.buckets)
     

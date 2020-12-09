@@ -9,6 +9,7 @@ from .ast.ast        import Attr
 from .attrs          import invokeAttrs
 from .symbol.mod     import Mod, Impl
 from .symbol.trait   import Trait
+from .symbol.enum    import Enum
 from .symbol.fn      import Fn, CConv
 from .symbol.static  import Static
 from .ast.structdecl import StructDecl
@@ -147,6 +148,9 @@ def buildSymbolTable(state, mod):
 			symbol.parent = mod
 			mod.mods.append(symbol)
 			buildSymbolTable(state, symbol)
+			if type(symbol) == Impl:
+				mod.symbols.append(symbol)
+				continue
 		
 		if symbol.name in mod.symbolTable:
 			otherSymbol = mod.symbolTable[symbol.name]
@@ -250,8 +254,11 @@ class AnalyzerState:
 				letter = 'F'
 			elif type(decl) == Static:
 				letter = 'S'
-			elif type(decl) in (Mod, Impl):
+			elif decl.symbolType == SymbolType.MOD:
 				letter = 'M'
+				mod = mod.parent
+			elif decl.symbolType == SymbolType.TYPE:
+				letter = 'T'
 				mod = mod.parent
 			else:
 				assert 0

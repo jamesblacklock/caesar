@@ -107,7 +107,8 @@ class FnCall(AST):
 			if isSelfArg:
 				arg = selfArg
 				isSelfArg = False
-			arg = state.analyzeNode(arg, expectedType)
+			if arg:
+				arg = state.analyzeNode(arg, expectedType)
 			if arg == None or arg.type == None:
 				argFailed = True
 				continue

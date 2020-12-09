@@ -373,7 +373,8 @@ class CFGBlock:
 		for block in self.ancestors:
 			self.inputs.update(block.outputs)
 		
-		dropInBlock = set(symbol for symbol in self.inputs - self.outputs if not self.symbolState[symbol].wasTouched)
+		dropInBlock = self.inputs - self.outputs - {self.branchOn}
+		dropInBlock = set(symbol for symbol in dropInBlock if not self.symbolState[symbol].wasTouched)
 		if dropInBlock:
 			dropPoint = CFGDropPoint(block.span)
 			for symbol in dropInBlock:

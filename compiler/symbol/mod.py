@@ -1,6 +1,7 @@
 from ..ast.ast import Symbol, Name
 from .symbol   import SymbolType
 from ..types   import typesMatch
+from ..span    import Span
 from ..log     import logError, logExplain
 from .trait    import Trait
 
@@ -78,13 +79,9 @@ class Mod(Symbol):
 		
 		state.mod = self.parent
 
-IMPL_COUNTER = 0
-
 class Impl(Mod):
 	def __init__(self, path, traitPath, doccomment, decls, span):
-		global IMPL_COUNTER
-		name = Name('$impl{}'.format(IMPL_COUNTER), span.startSpan())
-		IMPL_COUNTER += 1
+		name = Name('$impl???', Span.merge(path[0].span, path[-1].span))
 		super().__init__(name, doccomment, decls, span)
 		self.isImpl = True
 		self.path = path
@@ -95,11 +92,13 @@ class Impl(Mod):
 		self.vtblName = None
 	
 	def checkSig(self, state):
-		super().checkSig(state)
-		
 		symbol = state.lookupSymbol(self.path, inTypePosition=True)
 		if symbol:
 			self.type = symbol.type
+			if symbol:
+				self.name = '$impl{}'.format(state.mangleName(symbol))
+		
+		super().checkSig(state)
 		
 		if self.traitPath:
 			for symbol in self.symbols:

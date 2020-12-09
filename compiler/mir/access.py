@@ -475,7 +475,7 @@ def _SymbolAccess__analyzeSymbolAccess(state, expr, access, implicitType=None):
 			implicitType = implicitType.typeAfterDeref()
 		_SymbolAccess__analyzeSymbolAccess(state, expr.expr, access, implicitType)
 		
-		if access.symbol.type == None:
+		if access.symbol and access.symbol.type == None:
 			logError(state, expr.expr.span, 'cannot take address of `{}`: its type is unknown'.format(access.symbol.name))
 		
 		addrExpr = access.moveToClone()
