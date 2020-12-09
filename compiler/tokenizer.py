@@ -374,7 +374,7 @@ def tokenize(source):
 	for (i, line) in enumerate(source.lines):
 		if not line:
 			continue
-		match = re.match(r"^#(.*)", line)
+		match = re.match(r"^[ \t]*#(.*)", line)
 		if not match:
 			break
 		match = re.match(r"^\$[ \t]*([a-zA-Z_]+)=(.+)", match[1])
