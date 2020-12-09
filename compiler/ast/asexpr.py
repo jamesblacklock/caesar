@@ -18,13 +18,7 @@ class AsExpr(AST):
 		if not type or typesMatch(type, access.type):
 			return access
 		
-		if access.type.isOwnedType and not type.isOwnedType:
-			if typesMatch(type, access.type.baseType):
-				if state.scope.allowUnsafe:
-					pass
-				else:
-					logError(state, self.span, 'cannot case from owned to unowned in safe context')
-		elif not canCoerce(access.type, type):
+		if not canCoerce(access.type, type):
 			logError(state, self.span, 'cannot coerce from {} to {}'.format(access.type, type))
 		
 		if access.type.byteSize == type.byteSize and access.type.isFloatType == type.isFloatType:

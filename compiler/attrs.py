@@ -62,6 +62,8 @@ def strModAttr(state, decl, params, span):
 
 def dropTraitAttr(state, decl, params, span):
 	decl.isDropTrait = True
+def leakAttr(state, decl, params, span):
+	decl.leakOwned = True
 
 AcquireAttr = AttrInfo('acquire_default', acquireDefaultAttr, [FnDecl], [])
 ReleaseAttr = AttrInfo('release_default', releaseDefaultAttr, [FnDecl], [])
@@ -71,6 +73,7 @@ DropAttr = AttrInfo('drop', dropAttr, [LetDecl, FnParam], [AttrArg(ValueRef)])
 NoStrAttr = AttrInfo('no_str', noStrAttr, [Mod], [])
 StrModAttr = AttrInfo('str_mod', strModAttr, [Mod], [])
 DropTraitAttr = AttrInfo('drop_trait', dropTraitAttr, [TraitDecl], [])
+LeakAttr = AttrInfo('leak', leakAttr, [ValueRef], [])
 
 builtinAttrs = {
 	AcquireAttr.name: AcquireAttr, 
@@ -80,7 +83,8 @@ builtinAttrs = {
 	DropAttr.name: DropAttr, 
 	NoStrAttr.name: NoStrAttr, 
 	StrModAttr.name: StrModAttr, 
-	DropTraitAttr.name: DropTraitAttr
+	DropTraitAttr.name: DropTraitAttr,
+	LeakAttr.name: LeakAttr
 }
 
 def invokeAttrs(state, expr):

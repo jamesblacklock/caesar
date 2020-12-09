@@ -448,6 +448,13 @@ def _SymbolAccess__analyzeSymbolAccess(state, expr, access, implicitType=None):
 					if contract.indLevel > 0:
 						t = PtrType(t, contract.indLevel, contract.symbol.mut)
 			
+			if expr.leakOwned:
+				if state.scope.allowUnsafe:
+					if t.isOwnedType:
+						t = t.baseType
+				else:
+					logError(state, expr.span, 'cannot leak owned data in safe context')
+			
 			access.type = t
 			if access.symbol.isStatic:
 				staticRead = SymbolRead(access.span)
