@@ -199,6 +199,9 @@ def expectIndentIncrease(state):
 		return True
 
 def expectType(state, *types):
+	if not state.source.whitespaceAware:
+		types = [t for t in types if t not in (TokenType.INDENT, TokenType.NEWLINE)]
+	
 	if state.tok.type not in types:
 		typesStr = ', '.join([type.desc() for type in types[0:-1]]) + \
 			(',' if len(types) > 2 else '') + (' or ' if len(types) > 1 else '') + types[-1].desc()
