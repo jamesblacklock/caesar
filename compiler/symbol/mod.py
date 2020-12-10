@@ -112,7 +112,6 @@ class Impl(Mod):
 			symbol = state.lookupSymbol(self.traitPath, inTypePosition=True)
 			if symbol:
 				self.trait = symbol.type
-				symbol.unused = False
 			if self.trait and self.type:
 				if self.trait.isTraitType:
 					if self.trait in self.type.traitImpls:

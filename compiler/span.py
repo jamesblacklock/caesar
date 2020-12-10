@@ -28,8 +28,10 @@ class Span:
 		other.endColumn = other.startColumn
 		return other
 	
-	def endSpan(self):
+	def endSpan(self, advance=False):
 		other = self.clone()
+		if advance:
+			other.endColumn += 1
 		other.zeroWidth = True
 		other.startLine = other.endLine
 		other.startColumn = other.endColumn

@@ -37,6 +37,13 @@ class SymbolState:
 		other.borrowedBy = dict(self.borrowedBy)
 		return other
 	
+	def merge(self, other):
+		self.unused = self.unused or other.unused
+		self.init = self.init and other.init
+		self.moved = self.moved or other.moved
+		self.borrows.update(other.borrows)
+		self.borrowedBy.update(other.borrowedBy)
+	
 	def recordTouch(self, access):
 		if self.wasTouched == False and access.write and not (access.deref or access.isFieldAccess):
 			self.wasRedeclared = True
@@ -68,11 +75,11 @@ class CFGBlock:
 		self.finalized = False
 		self.finalizedInputs = False
 		self.finalizedCount = 0
+		self.isEmpty = True
 		
 		if ancestors:
 			self.ancestors = ancestors
-			# !!! what about divergent input symbol state???
-			self.symbolState = { k: v.cloneForNewBlock() for (k, v) in ancestors[0].symbolState.items() }
+			self.initStateFromAncestors(ancestors)
 			for ancestor in ancestors:
 				ancestor.successors.append(self)
 	
@@ -80,23 +87,58 @@ class CFGBlock:
 		other = CFGBlock(None, self.span)
 		other.symbolState = { k: v.cloneForNewBlock() for (k, v) in self.symbolState.items() }
 		return other
-		
-	def addReverseAncestor(self, ancestor):
+	
+	def initStateFromAncestors(self, ancestors):
+		assert not self.symbolState
+		symbolStateDicts = [a.symbolState for a in ancestors]
+		symbols = set()
+		for s in symbolStateDicts:
+			symbols.update(s.keys())
+		for symbol in symbols:
+			for s in symbolStateDicts:
+				if symbol not in s:
+					continue
+				elif symbol in self.symbolState:
+					self.symbolState[symbol].merge(s[symbol])
+				else:
+					self.symbolState[symbol] = s[symbol].cloneForNewBlock()
+	
+	def addReverseAncestor(self, state, ancestor):
 		self.reverseAncestorCount += 1
 		ancestor.hasReverseSuccessor = True
 		self.ancestors.append(ancestor)
 		ancestor.successors.append(self)
-		# !!! what about divergent input symbol state???
-		ancestor.symbolState.update({ k: v.cloneForNewBlock() for (k, v) in self.symbolState.items() })
+		
+		firstAncestor = self.ancestors[0]
+		inputState = firstAncestor.symbolState
+		for inputInfo in inputState.values():
+			reverseInfo = ancestor.symbolState[inputInfo.symbol]
+			
+			inputIsLive = inputInfo.init and not inputInfo.moved
+			reverseIsLive = reverseInfo.init and not reverseInfo.moved
+			if inputIsLive and not reverseIsLive:
+				logError(state, reverseInfo.lastUse.span, 
+					'value was moved out; `{}` must be reinitialized before next loop iteration'.format(reverseInfo.symbol.name))
+			# elif reverseIsLive and not inputIsLive:
+			# 	logError(self.state, reverseInfo.lastUse.span, 
+			# 		'value was moved out; `{}` must be reinitialized before next loop iteration'.format(reverseInfo.symbol.name))
 	
-	def addAncestor(self, ancestor):
+	def addAncestor(self, state, ancestor):
+		assert not self.mir
 		self.ancestors.append(ancestor)
 		ancestor.successors.append(self)
-		# !!! what about divergent input symbol state???
-		self.symbolState.update({ k: v.cloneForNewBlock() for (k, v) in ancestor.symbolState.items() })
+		
+		s = ancestor.symbolState
+		for info in ancestor.symbolState.values():
+			symbol = info.symbol
+			if symbol in self.symbolState:
+				self.symbolState[symbol].merge(s[symbol])
+			else:
+				self.symbolState[symbol] = s[symbol].cloneForNewBlock()
 	
-	def append(self, mir):
+	def append(self, mir, isEmpty=False):
 		self.mir.append(mir)
+		self.isEmpty = self.isEmpty and isEmpty
 	
 	def decl(self, symbol):
 		self.symbolState[symbol] = SymbolState(symbol)
@@ -107,7 +149,6 @@ class CFGBlock:
 		
 		if access.symbol not in self.symbolState:
 			assert not access.symbol.isLocal
-			access.symbol.unused = False
 			return
 		
 		info = self.symbolState[access.symbol]
@@ -385,6 +426,12 @@ class CFGBlock:
 			# 	block.reverseAncestorCount += self.reverseAncestorCount
 			block.finalizeInputs(state, indent+1)
 			self.outputs.update(block.inputs)
+		
+		borrowedOutputs = set()
+		for symbol in self.outputs:
+			info = self.symbolState[symbol]
+			borrowedOutputs.update({ b.symbol for b in info.borrows })
+		self.outputs.update(borrowedOutputs)
 		
 		self.inputs.update(symbol for symbol in self.outputs if not self.symbolState[symbol].wasTouched)
 	

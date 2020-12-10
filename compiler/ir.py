@@ -983,11 +983,6 @@ def fnToIR(fnDecl):
 	for block in fnDecl.cfg:
 		block.writeIR(state)
 	
-	lastType = type(state.instr[-1])
-	assert lastType != Br and lastType != BrIf
-	if lastType != Ret:
-		state.appendInstr(Ret(fnDecl))
-	
 	return FnIR(state)
 
 def generateIR(mod):

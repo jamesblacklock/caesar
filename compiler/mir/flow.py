@@ -81,11 +81,11 @@ class CFGBuilder:
 		
 		branches = [b for b in branches if not (b.didBreak or b.didReturn)]
 		if branches:
-			self.beginBlock(span.endSpan(), branches)
+			self.beginBlock(span.endSpan(advance=True), branches)
 		elif didBreak:
 			self.block = self.breakBlocks[-1]
 		else:
-			self.beginBlock(span.endSpan(), None)
+			self.beginBlock(span.endSpan(advance=True), None)
 			self.block.symbolState.update(branchPoint.symbolState)
 	
 	def beginBlock(self, span, ancestors=None):
@@ -101,13 +101,13 @@ class CFGBuilder:
 		self.scope.didBreak = True
 		self.block.didBreak = True
 		self.block.successors = []
-		self.breakBlocks[-1].addAncestor(self.block)
+		self.breakBlocks[-1].addAncestor(self, self.block)
 	
 	def doContinue(self):
 		self.scope.didBreak = True
 		self.block.didBreak = True
 		self.block.successors = []
-		self.continueBlocks[-1].addReverseAncestor(self.block)
+		self.continueBlocks[-1].addReverseAncestor(self, self.block)
 	
 	def beginScope(self, span, branch=None, loop=False, unsafe=False, contracts=None):
 		lastBlock = self.block
@@ -123,7 +123,7 @@ class CFGBuilder:
 		
 		if loop:
 			self.continueBlocks.append(self.block)
-			self.breakBlocks.append(CFGBlock([], Span.merge(span.endSpan(), self.endSpan)))
+			self.breakBlocks.append(CFGBlock([], Span.merge(span.endSpan(advance=True), self.endSpan)))
 		
 		self.scope = Scope(self.scope, span, loop, branch != None, unsafe, contracts)
 		
@@ -137,14 +137,16 @@ class CFGBuilder:
 		elif self.scope.loop:
 			startBlock = self.continueBlocks.pop()
 			if not self.scope.didBreak and self.block != self.breakBlocks[-1]:
-				startBlock.addReverseAncestor(self.block)
+				startBlock.addReverseAncestor(self, self.block)
 			self.block.span = Span.merge(self.block.span.startSpan(), self.scope.span.endSpan())
 			self.block = self.breakBlocks.pop()
+			if not self.block.ancestors:
+				self.block.initStateFromAncestors([startBlock])
 			self.appendBlock(self.block)
 		else:
-			self.beginBlock(self.scope.span.endSpan())
+			self.beginBlock(self.scope.span.endSpan(advance=True))
 		
-		if self.scope.didBreak and not (self.scope.parent.loop or self.scope.parent.branch):
+		if self.scope.didBreak and not (self.scope.loop or self.scope.parent.loop or self.scope.parent.branch):
 			self.scope.parent.didBreak = True
 		
 		for symbol in self.scope.declaredSymbols:
@@ -185,7 +187,7 @@ class CFGBuilder:
 		self.block.append(mir)
 	
 	def appendDropPoint(self):
-		self.block.append(self.dropPoint)
+		self.block.append(self.dropPoint, isEmpty=True)
 		self.dropPoint = CFGDropPoint(self.block.span)
 	
 	def finalize(self):
@@ -199,6 +201,8 @@ class CFGBuilder:
 						break
 				if unreachable:
 					block.unreachable = True
+					if not block.isEmpty:
+						logWarning(self, block.span, 'unreachable code')
 					continue
 			blocks.append(block)
 		

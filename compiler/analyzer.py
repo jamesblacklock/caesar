@@ -335,6 +335,8 @@ class AnalyzerState:
 			symbol = symbolTable[symbolName.content]
 		
 		if symbol != None:
+			symbol.unused = False
+			
 			for name in path:
 				if name.content == '_':
 					logError(self, name.span, '`_` is not a valid symbol name')
@@ -347,6 +349,7 @@ class AnalyzerState:
 					
 					parent = symbol
 					symbol = symbol.symbolTable[name.content]
+					symbol.unused = False
 					if not symbol.pub:# and parent.isImport:
 						symbol = None
 						break
