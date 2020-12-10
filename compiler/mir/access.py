@@ -67,15 +67,6 @@ class SymbolAccess(MIR):
 		return read
 	
 	@staticmethod
-	def noop(symbol, dropPoint, span):
-		ref = SymbolRead(span)
-		ref.symbol = symbol
-		ref.type = symbol.type
-		ref.noop = True
-		ref.dropPoint = dropPoint
-		return ref
-	
-	@staticmethod
 	def analyzeSymbolAccess(state, expr, implicitType=None, rvalueImplicitType=None):
 		if type(expr) == asgn.Asgn:
 			access = SymbolWrite(expr.rvalue, expr.span, expr.lvalue.span)
@@ -94,7 +85,6 @@ class SymbolAccess(MIR):
 			state.decl(tempSymbol)
 			tempWrite.rvalueImplicitType = access.type
 			state.analyzeNode(tempWrite)
-			access.beforeAssignDropPoint = state.dropPoint
 			state.appendDropPoint()
 			tempRead.type = tempSymbol.type
 			access.rvalue = tempRead
@@ -105,9 +95,6 @@ class SymbolAccess(MIR):
 		return state.analyzeNode(access, implicitType)
 	
 	def __str__(self):
-		if not self.write and self.noop:
-			return '$noop({})'.format(self.symbol.name if self.symbol else '???')
-		
 		s = ''
 		closeParen = False
 		if not self.write and self.addr:
@@ -147,7 +134,6 @@ class SymbolRead(SymbolAccess):
 		self.lvalueSpan = span
 		self.addr = False
 		self.borrow = False
-		self.noop = False
 		self.hasValue = True
 		self.typeModifiers = None
 		self.leakOwned = False
@@ -235,7 +221,7 @@ class SymbolRead(SymbolAccess):
 		return state.staticRead(self.symbol)
 	
 	def writeIR(expr, state):
-		if expr.noop or expr.type.isVoidType:
+		if expr.type.isVoidType:
 			return
 		
 		stackTop = False
@@ -310,7 +296,6 @@ class SymbolWrite(SymbolAccess):
 		self.lvalueSpan = lvalueSpan if lvalueSpan else span
 		self.write = True
 		self.rvalue = rvalue
-		self.beforeAssignDropPoint = None
 		self.rvalueImplicitType = None
 		self.hasValue = False
 		self.analyzeRValue = True

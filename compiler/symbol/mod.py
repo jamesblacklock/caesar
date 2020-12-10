@@ -2,7 +2,7 @@ from ..ast.ast import Symbol, Name
 from .symbol   import SymbolType
 from ..types   import typesMatch
 from ..span    import Span
-from ..log     import logError, logExplain
+from ..log     import logError, logWarning, logExplain
 from .trait    import Trait
 
 class Mod(Symbol):
@@ -16,7 +16,7 @@ class Mod(Symbol):
 		self.mods = []
 		self.statics = []
 		# self.consts = []
-		# self.imports = []
+		self.imports = []
 		self.mainFn = None
 		self.isImpl = False
 		self.isImport = False
@@ -33,6 +33,7 @@ class Mod(Symbol):
 		self.strMod = None
 		
 		self.symbolType = SymbolType.MOD
+		self.unused = True
 		self.ast = self
 		self.parent = None
 	
@@ -77,6 +78,10 @@ class Mod(Symbol):
 		for fn in self.fns:
 			fn.analyzeBody(state)
 		
+		for symbol in self.imports:
+			if symbol.unused and not symbol == self.strMod.symbolTable['str']:
+				logWarning(state, symbol.nameSpan, 'unused import')
+		
 		state.mod = self.parent
 
 class Impl(Mod):
@@ -107,6 +112,7 @@ class Impl(Mod):
 			symbol = state.lookupSymbol(self.traitPath, inTypePosition=True)
 			if symbol:
 				self.trait = symbol.type
+				symbol.unused = False
 			if self.trait and self.type:
 				if self.trait.isTraitType:
 					if self.trait in self.type.traitImpls:

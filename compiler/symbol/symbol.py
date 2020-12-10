@@ -16,6 +16,7 @@ class Symbol:
 		self.pub = pub
 		self.type = type
 		self.isImport = False
+		self.unused = True
 
 class ValueSymbol(Symbol):
 	def __init__(self, name, nameSpan, span, pub=False, type=None):

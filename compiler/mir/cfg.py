@@ -19,6 +19,7 @@ class SymbolState:
 		self.init = symbol.isParam
 		self.moved = False
 		self.borrows = set()
+		self.borrowedBy = {}
 		self.staticValue = None
 	
 	def cloneForNewBlock(self):
@@ -33,6 +34,7 @@ class SymbolState:
 		other.init = self.init
 		other.moved = self.moved
 		other.borrows = set(self.borrows)
+		other.borrowedBy = dict(self.borrowedBy)
 		return other
 	
 	def recordTouch(self, access):
@@ -105,6 +107,7 @@ class CFGBlock:
 		
 		if access.symbol not in self.symbolState:
 			assert not access.symbol.isLocal
+			access.symbol.unused = False
 			return
 		
 		info = self.symbolState[access.symbol]
@@ -131,7 +134,13 @@ class CFGBlock:
 		if info.init and not info.moved and info.lastUse:
 			self.dropLastUse(state, info)
 		
+		if not access.symbol.mut and info.init:
+			logError(state, access.lvalueSpan, 'assignment target is not mutable')
+		
 		info.borrows = access.rvalue.borrows
+		for borrowed in info.borrows:
+			borrowedInfo = self.symbolState[borrowed.symbol]
+			borrowedInfo.borrowedBy[info.symbol] = access.rvalue
 		
 		info.init = True
 		info.moved = False
@@ -215,6 +224,10 @@ class CFGBlock:
 		
 		access.borrows = info.borrows
 		
+		for borrow in info.borrows:
+			borrowedInfo = self.symbolState[borrow.symbol]
+			borrowedInfo.recordTouch(access)
+		
 		if access.ref:
 			info.moved = not access.copy
 	
@@ -229,13 +242,24 @@ class CFGBlock:
 		
 		symbol.fixed = True
 	
+	def releaseBorrows(self, symbol):
+		for borrow in self.symbolState[symbol].borrows:
+			del self.symbolState[borrow.symbol].borrowedBy[symbol]
+	
 	def dropLastUse(self, state, info):
-		if info.lastUse.ref and info.lastUse.copy and not (info.symbol.dropFn or info.lastUse.borrow):
+		if info.lastUse.ref and \
+			info.lastUse.copy and \
+			not info.symbol.dropFn and \
+			not info.lastUse.borrow and \
+			not info.borrowedBy:
+			self.releaseBorrows(info.symbol)
 			info.lastUse.copy = False
 		else:
 			self.dropSymbol(state, info.symbol, info.lastUse.dropPoint)
 	
 	def dropSymbol(self, state, symbol, dropPoint):
+		self.releaseBorrows(symbol)
+		
 		if symbol.type.isOwnedType:
 			logError(state, symbol.span, 'owned value was not discarded')
 			logExplain(state, dropPoint.span.endSpan(), 'value escapes here')
@@ -382,7 +406,8 @@ class CFGBlock:
 			self.mir.insert(0, dropPoint)
 		
 		for info in self.symbolState.values():
-			if info.init and not info.moved and info.lastUse and info.symbol != self.branchOn and not (info.symbol in self.outputs):
+			if info.init and not info.moved and info.lastUse and \
+				info.symbol != self.branchOn and not (info.symbol in self.outputs):
 				self.dropLastUse(state, info)
 			elif self.id == 1 and info.symbol.unused and info.symbol.isParam:
 				self.dropSymbol(state, info.symbol, info.symbol.dropPoint)

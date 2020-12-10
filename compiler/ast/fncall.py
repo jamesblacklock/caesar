@@ -144,9 +144,4 @@ class FnCall(AST):
 		else:
 			mir = FnCallMIR(access, args, cVarArgs, dynDispatch, returnType, self.span)
 		
-		for arg in args:
-			if arg.borrows:
-				lateRef = SymbolAccess.noop(arg.symbol, state.dropPoint, arg.span)
-				state.dropPoint.append(lateRef)
-		
 		return mir

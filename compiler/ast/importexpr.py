@@ -169,6 +169,7 @@ class Import(AST):
 		else:
 			symbol.nameSpan = name.span
 			mod.symbolTable[name.content] = symbol
+			mod.imports.append(symbol)
 		
 		return (importedMod, symbol)
 	

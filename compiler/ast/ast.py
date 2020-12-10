@@ -45,7 +45,6 @@ class Symbol(AST):
 		super().__init__(span)
 		self.nameSpan = name.span if name else span
 		self.name = name.content if name else None
-		self.unused = True
 		self.symbolTable = None
 		self.doccomment = doccomment
 		self.extern = extern
