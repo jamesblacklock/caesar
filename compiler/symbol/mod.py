@@ -79,7 +79,8 @@ class Mod(Symbol):
 			fn.analyzeBody(state)
 		
 		for symbol in self.imports:
-			if symbol.unused and not symbol == self.strMod.symbolTable['str']:
+			isStrType = self.strMod and symbol == self.strMod.symbolTable['str']
+			if symbol.unused and not isStrType:
 				logWarning(state, symbol.nameSpan, 'unused import')
 		
 		state.mod = self.parent
