@@ -1,6 +1,6 @@
 from .ast       import AST
 from ..types    import USize
-from .primitive import VoidValue, IntValue
+from .primitive import IntValue
 from ..log      import logError
 
 class Sizeof(AST):

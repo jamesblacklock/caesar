@@ -70,11 +70,11 @@ class CreateStruct(MIR):
 	def initStruct(name, initInfo):
 		return StructInitInfo(name, initInfo)
 	
-	def checkFlow(self, scope):
+	def commit(self, state):
 		uninitFields = None if self.type.isEnumType else set(f for f in self.type.fields if not f.isUnionField)
 		
 		for init in self.inits:
-			init.access.checkFlow(scope)
+			init.access.commit(state)
 			
 			if self.type.isEnumType:
 				continue
@@ -121,5 +121,5 @@ class CreateStruct(MIR):
 		
 		lines = ['struct']
 		for init in self.inits:
-			lines.append('\t[{}]: {}'.format(init.offset, str(init.access)))
+			lines.append('        [{}]: {}'.format(init.offset, str(init.access)))
 		return '\n'.join(lines)

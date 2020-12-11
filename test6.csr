@@ -1,4 +1,3 @@
-import str as strmod
 import libc { printf, malloc, free }
 
 struct A

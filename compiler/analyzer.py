@@ -5,20 +5,18 @@ from .types          import FieldInfo, PtrType, ArrayType, OwnedType, \
                             Void, Bool, Byte, Char, Int8, UInt8, Int16, UInt16, Int32, UInt32, \
                             Int64, UInt64, ISize, USize, Float32, Float64, typesMatch, canCoerce, tryPromote
 from .log            import logError, logExplain
-from .ast.ast        import ValueSymbol, Attr
-from .scope          import Scope, ScopeType
+from .ast.ast        import Attr
 from .attrs          import invokeAttrs
 from .symbol.mod     import Mod, Impl
 from .symbol.trait   import Trait
+from .symbol.enum    import Enum
 from .symbol.fn      import Fn, CConv
 from .symbol.static  import Static
 from .ast.structdecl import StructDecl
 from .ast.tupledecl  import TupleDecl
 # from .symbol.alias   import AliasDecl
-from .mir.access     import SymbolAccess, SymbolRead
 from .ast.importexpr import Import
 from .               import platform
-from .mir.block      import Block, createDropBlock
 
 BUILTIN_TYPES = {
 	Void.name:    Void,
@@ -83,15 +81,15 @@ def finishAnalyzingOwnedType(state, ownedType, deps):
 	ok = True
 	
 	if not ownedType.acquire:
-		if state.scope.acquireDefault:
-			ownedType.acquire = state.scope.acquireDefault.symbol
+		if state.mod.acquireDefault:
+			ownedType.acquire = state.mod.acquireDefault.symbol
 		else:
 			ok = False
 			logError(state, ownedType.span, 'default `acquire` fn is not defined in the current scope')
 	
 	if not ownedType.release:
-		if state.scope.releaseDefault:
-			ownedType.release = state.scope.releaseDefault.symbol
+		if state.mod.releaseDefault:
+			ownedType.release = state.mod.releaseDefault.symbol
 		else:
 			ok = False
 			logError(state, ownedType.span, 'default `release` fn is not defined in the current scope')
@@ -143,8 +141,12 @@ def buildSymbolTable(state, mod):
 		elif type(symbol) == Static:
 			mod.statics.append(symbol)
 		elif type(symbol) in (Mod, Impl):
+			symbol.parent = mod
 			mod.mods.append(symbol)
 			buildSymbolTable(state, symbol)
+			if type(symbol) == Impl:
+				mod.symbols.append(symbol)
+				continue
 		
 		if symbol.name in mod.symbolTable:
 			otherSymbol = mod.symbolTable[symbol.name]
@@ -154,32 +156,24 @@ def buildSymbolTable(state, mod):
 			mod.symbolTable[symbol.name] = symbol
 			mod.symbols.append(symbol)
 
-def analyze(ast):
-	return AnalyzerState.analyze(None, ast)
+def analyze(ast, forceRebuilds=False):
+	return AnalyzerState.analyze(None, ast, forceRebuilds)
 
 class AnalyzerState:
-	def __init__(self):
-		# self.lastIfBranchOuterSymbolInfo = None
-		self.scope = None
+	def __init__(self, ast, forceRebuilds):
 		self.failed = False
-		self.strMod = None
-		self.mirBlockStack = []
-		self.ast = None
-		self.discardLevel = 0
+		self.forceRebuilds = forceRebuilds
+		self.ast = ast
+		self.mod = None
 	
-	@property
-	def mirBlock(self):
-		return self.mirBlockStack[-1]
-	
-	def analyze(_, ast):
-		state = AnalyzerState()
-		state.ast = ast
+	def analyze(state, ast, forceRebuilds=False):
+		state = AnalyzerState(ast, state.forceRebuilds if state else forceRebuilds)
 		
 		buildSymbolTable(state, ast)
 		
 		invokeAttrs(state, ast)
 		if not ast.noStrImport:
-			(state.strMod, _) = Import.doImport(state, ast, ['str', 'str'])
+			(state.ast.strMod, _) = Import.doImport(state, ast, ['str', 'str'])
 		
 		ast.checkSig(state)
 		ast.analyze(state, Deps(ast))
@@ -188,35 +182,6 @@ class AnalyzerState:
 			exit(1)
 		
 		return ast
-	
-	def analyzeNode(self, ast, implicitType=None, isWrite=False, discard=False):
-		assert not ast.analyzed
-		if discard:
-			if self.discardLevel == 0:
-				self.pushScope(ScopeType.BLOCK)
-				self.scope.dropBlock = createDropBlock(ast)
-			self.discardLevel += 1
-		
-		invokeAttrs(self, ast)
-		mir = ast.analyze(self, implicitType)
-		if mir:
-			if self.scope.fnDecl == None:
-				assert mir.hasValue
-			elif mir.hasValue:
-				if not isWrite and type(mir) != SymbolRead:
-					mir = SymbolAccess.read(self, mir)
-			else:
-				self.mirBlock.append(mir)
-				mir = None
-		
-		if discard:
-			self.discardLevel -= 1
-			if self.discardLevel == 0:
-				self.popScope()
-		elif self.discardLevel == 0:
-			ast.setAnalyzed()
-		
-		return mir
 	
 	def resolveTypeRefSig(state, typeRef):
 		if type(typeRef) == NamedTypeRef:
@@ -274,6 +239,8 @@ class AnalyzerState:
 		return expr
 	
 	def mangleName(state, decl):
+		mod = state.mod
+		
 		if type(decl) == Fn and decl.type.cconv == CConv.C:
 			prefix = '_' if platform.MacOS or platform.Windows else ''
 			return '{}{}'.format(prefix, decl.name)
@@ -283,20 +250,23 @@ class AnalyzerState:
 				letter = 'F'
 			elif type(decl) == Static:
 				letter = 'S'
+			elif decl.symbolType == SymbolType.MOD:
+				letter = 'M'
+				mod = mod.parent
+			elif decl.symbolType == SymbolType.TYPE:
+				letter = 'T'
+				mod = mod.parent
 			else:
 				assert 0
 			
 			mangled = '{}{}{}'.format(letter, len(decl.name), decl.name)
-			scope = state.scope
-			while scope:
-				if scope.type == ScopeType.MOD:
-					mangled = 'M{}{}{}'.format(len(scope.name), scope.name, mangled)
-				elif scope.type == ScopeType.FN:
-					mangled = 'F{}{}{}'.format(len(scope.name), scope.name, mangled)
+			while mod:
+				if mod.isFnMod:
+					mangled = 'F{}{}{}'.format(len(mod.name), mod.name, mangled)
 				else:
-					assert 0
+					mangled = 'M{}{}{}'.format(len(mod.name), mod.name, mangled)
 				
-				scope = scope.parent
+				mod = mod.parent
 			
 			return mangled
 	
@@ -341,22 +311,6 @@ class AnalyzerState:
 		
 		return FieldLayout(maxAlign, offset, fields)
 	
-	def pushMIR(self, block):
-		self.mirBlockStack.append(block)
-	
-	def popMIR(self):
-		return self.mirBlockStack.pop()
-	
-	def pushScope(self, scopeType, item=None):
-		self.scope = Scope(self, self.scope, scopeType, item)
-		
-		# self.lastIfBranchOuterSymbolInfo = None
-		self.pushMIR(Block(self.scope))
-	
-	def popScope(self):
-		self.scope = self.scope.parent
-		return self.popMIR()
-	
 	def lookupSymbol(self, path, symbolTable=None, inTypePosition=False, inValuePosition=False):
 		symbolName = path[0]
 		path = path[1:]
@@ -365,12 +319,20 @@ class AnalyzerState:
 			logError(self, symbolName.span, '`_` is not a valid symbol name')
 			return None
 		else:
-			symbol = self.scope.lookupSymbol(symbolName.content)
+			mod = self.mod
+			symbol = None
+			while mod:
+				if symbolName.content in mod.symbolTable:
+					symbol = mod.symbolTable[symbolName.content]
+					break
+				mod = mod.parent
 		
 		if symbol == None and symbolTable and symbolName.content in symbolTable:
 			symbol = symbolTable[symbolName.content]
 		
 		if symbol != None:
+			symbol.unused = False
+			
 			for name in path:
 				if name.content == '_':
 					logError(self, name.span, '`_` is not a valid symbol name')
@@ -383,6 +345,7 @@ class AnalyzerState:
 					
 					parent = symbol
 					symbol = symbol.symbolTable[name.content]
+					symbol.unused = False
 					if not symbol.pub:# and parent.isImport:
 						symbol = None
 						break

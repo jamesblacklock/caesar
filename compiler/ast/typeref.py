@@ -4,9 +4,6 @@ class TypeRef(AST):
 	def __init__(self, name, span):
 		super().__init__(span)
 		self.name = name
-	
-	def pretty(self, output, indent=0):
-		output.write(self.name, indent)
 
 class NamedTypeRef(TypeRef):
 	def __init__(self, path, span):

@@ -10,7 +10,7 @@ class Struct(Symbol):
 		self.types = None
 		self.fieldNames = None
 		self.fieldDecls = None
-		self.scope = None
+		self.mod = None
 		self.hasPrivateFields = False
 		self.hasReadOnlyFields = False
 	
@@ -19,7 +19,7 @@ class Struct(Symbol):
 		return self.type.symbolTable
 	
 	def checkSig(self, state):
-		self.scope = state.scope
+		self.mod = state.mod
 		self.fieldDecls = self.ast.flattenedFieldDecls()
 		declaredFields = {}
 		fieldNames = []
@@ -52,16 +52,6 @@ class Struct(Symbol):
 		
 		layout = state.generateFieldLayout(self.types, self.fieldNames, self.fieldDecls)
 		self.type.applyLayout(layout)
-	
-	# def pretty(self, output, indent=0):
-	# 	output.write('union ' if self.isUnion else 'struct ', indent)
-	# 	if self.name: output.write(self.name)
-	# 	output.write('\n')
-	# 	for field in self.fieldDecls[:-1]:
-	# 		field.pretty(output, indent + 1)
-	# 		output.write('\n')
-	# 	if len(self.fieldDecls) > 0:
-	# 		self.fieldDecls[-1].pretty(output, indent + 1)
 
 class StructType(Type):
 	def __init__(self, name, span, symbol):

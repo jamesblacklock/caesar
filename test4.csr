@@ -1,4 +1,4 @@
-import libc { fopen, fread, fclose, printf, FILE }
+import libc { fopen, fread, fclose, printf }
 
 struct T
     a: int

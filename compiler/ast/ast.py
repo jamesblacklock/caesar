@@ -31,9 +31,6 @@ class AST:
 		self.analyzed = False
 		self.attrsInvoked = False
 	
-	def setAnalyzed(self):
-		self.analyzed = True
-	
 	def analyze(self, state, implicitType):
 		assert 0
 
@@ -48,7 +45,6 @@ class Symbol(AST):
 		super().__init__(span)
 		self.nameSpan = name.span if name else span
 		self.name = name.content if name else None
-		self.unused = True
 		self.symbolTable = None
 		self.doccomment = doccomment
 		self.extern = extern

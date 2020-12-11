@@ -5,9 +5,10 @@ class ValueRef(AST):
 	def __init__(self, path, span):
 		super().__init__(span, True)
 		self.path = path
+		self.leakOwned = False
 	
-	def analyze(valueRef, state, implicitType):
-		return access.SymbolAccess.analyzeSymbolAccess(state, valueRef, implicitType)
+	def analyze(self, state, implicitType):
+		return access.SymbolAccess.analyzeSymbolAccess(state, self, implicitType)
 
 class Borrow(AST):
 	def __init__(self, expr, span):

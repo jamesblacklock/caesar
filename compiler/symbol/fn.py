@@ -1,10 +1,10 @@
-from enum        import Enum
-from .symbol     import ValueSymbol
-from ..log       import logError, logExplain
-from ..types     import Void
-from ..scope     import ScopeType
-from ..mir.block import createDropBlock
-from ..types     import FnType
+from enum       import Enum
+from .symbol    import ValueSymbol
+from ..log      import logError, logExplain
+from ..types    import Void
+from ..types    import FnType
+from ..mir.flow import CFGBuilder
+from ..mir.mir  import indent
 
 class CConv(Enum):
 	CAESAR = 'CAESAR'
@@ -16,13 +16,12 @@ class Fn(ValueSymbol):
 		self.ast = ast
 		self.params = params
 		self.mangledName = None
-		self.mirBody = None
-		self.paramDropBlock = None
 		self.isDropFnForType = None
 		self.analyzed = False
 		self.extern = False
 		self.isFn = True
 		self.unsafe = False
+		self.cfg = None
 	
 	def checkSig(self, state):
 		returnType = Void
@@ -33,9 +32,9 @@ class Fn(ValueSymbol):
 			param.checkSig(state)
 		
 		self.cVarArgs = self.ast.cVarArgs
-		self.unsafe = self.ast.unsafe
+		self.unsafe = self.ast.unsafe or self.ast.extern
 		if self.ast.cconv == CConv.C:
-			unsafe = True
+			self.unsafe = True
 		elif self.ast.cVarArgs:
 			logError(state, self.ast.cVarArgsSpan, 'may not use C variadic parameter without the C calling convention')
 		
@@ -64,52 +63,58 @@ class Fn(ValueSymbol):
 		if not self.ast.body:
 			return
 		
-		state.pushScope(ScopeType.FN, self)
+		flow = CFGBuilder(state, self, state.mod)
+		flow.beginScope(self.ast.body.span, unsafe=self.unsafe)
 		
-		self.paramDropBlock = createDropBlock(self)
-		state.mirBlock.append(self.paramDropBlock)
-		if self.type:
+		if self.type and self.type.params:
 			for param in self.type.params:
-				param.declSymbol(state.scope)
+				param.dropPoint = flow.dropPoint
+				flow.decl(param)
+				flow.block.inputs.add(param)
+			flow.appendDropPoint()
 		
-		alreadyFailed = state.failed
-		state.failed = False    # need to know if failure occurred within this function 
+		self.ast.body.hasScope = False
+		flow.analyzeNode(self.ast.body, self.type.returnType if self.type else None)
 		
-		state.analyzeNode(self.ast.body, self.type.returnType if self.type else None)
-		self.mirBody = state.popScope()
+		flow.endScope()
 		
-		if not state.failed:
-			self.mirBody.checkFlow(None)
-			assert self.mirBody.scope.didReturn
+		if not flow.failed:
+			flow.finalize()
+			self.cfg = flow.blocks
 			# if self.isDropFnForType:
 			# 	self.checkDropFnScope(state)
 		
-		state.failed = state.failed or alreadyFailed
+		state.failed = state.failed or flow.failed
+		
 		# print(self)
+		
 	
-	def checkDropFnScope(self, state):
-		if not self.isDropFnForType.isCompositeType:
-			return
+	# def checkDropFnScope(self, state):
+	# 	if not self.isDropFnForType.isCompositeType:
+	# 		return
 		
-		selfSymbol = self.params[0]
-		selfSymbolInfo = self.mirBody.scope.symbolInfo[selfSymbol]
+	# 	selfSymbol = self.params[0]
+	# 	selfSymbolInfo = self.mirBody.scope.symbolInfo[selfSymbol]
 		
-		mustUninit = []
-		for field in self.isDropFnForType.fields:
-			if field.type.isOwnedType:
-				fieldInfo = selfSymbolInfo.fieldInfo[field] if field in selfSymbolInfo.fieldInfo else None
-				if not fieldInfo or not fieldInfo.uninit or fieldInfo.maybeUninit:
-					mustUninit.append(field)
+	# 	mustUninit = []
+	# 	for field in self.isDropFnForType.fields:
+	# 		if field.type.isOwnedType:
+	# 			fieldInfo = selfSymbolInfo.fieldInfo[field] if field in selfSymbolInfo.fieldInfo else None
+	# 			if not fieldInfo or not fieldInfo.uninit or fieldInfo.maybeUninit:
+	# 				mustUninit.append(field)
 		
-		if mustUninit:
-			logError(state, self.nameSpan, '`drop` function must uninitialize all owned fields')
-			logExplain(state, selfSymbol.span, 'the following fields were not uninitialized: {}'.format(
-				', '.join('`{}`'.format(field.name) for field in mustUninit)))
+	# 	if mustUninit:
+	# 		logError(state, self.nameSpan, '`drop` function must uninitialize all owned fields')
+	# 		logExplain(state, selfSymbol.span, 'the following fields were not uninitialized: {}'.format(
+	# 			', '.join('`{}`'.format(field.name) for field in mustUninit)))
 	
 	def __str__(self):
 		fnStr = 'extern fn' if self.extern else 'fn'
 		params = ', '.join(str(param) for param in self.params)
 		ret = '' if self.type.returnType == Void else ' -> {}'.format(self.type.returnType)
-		body = '{}\n'.format(str(self.mirBody) if self.mirBody else '')
+		if self.cfg:
+			body = '\n' + indent('\n'.join(str(block) for block in self.cfg))
+		else:
+			body = ''
 		
-		return '{} {}({}){}{}'.format(fnStr, self.name, params, ret, body)
+		return '{} {}({}){}{}\n'.format(fnStr, self.name, params, ret, body)

@@ -5,6 +5,7 @@ from ..mir.primitive import IntValue
 from ..mir.infix     import InfixOp
 from ..types         import Bool
 from ..symbol.symbol import SymbolType
+from ..mir.access    import SymbolAccess
 
 class IsExpr(AST):
 	def __init__(self, expr, pattern, span):
@@ -13,7 +14,7 @@ class IsExpr(AST):
 		self.pattern = pattern
 	
 	def analyze(self, state, implicitType):
-		access = state.analyzeNode(self.expr)#, discard=True)
+		access = state.analyzeNode(self.expr, discard=True)
 		if not access or not access.type:
 			return None
 		
@@ -34,14 +35,18 @@ class IsExpr(AST):
 		access.isFieldAccess = True
 		access.staticOffset += tagField.offset
 		access.type = tagField.type
+		symbol = access.symbol
+		deref = access.deref
 		
 		tagValue = enumType.symbolTable[variant.name].tag.data
 		tagExpr = IntValue(tagValue, enumType.tagType, self.span)
+		access = SymbolAccess.read(state, access)
+		tagExpr = SymbolAccess.read(state, tagExpr)
 		eq = InfixOp(access, tagExpr, InfixOps.EQ, Bool, self.span)
 		
 		result = state.analyzeNode(eq)
 		if result:
-			result.contracts = { access.symbol: Contract(access.symbol, enumType, [variant], access.deref) }
+			result.contracts = { symbol: Contract(symbol, enumType, [variant], deref) }
 		
 		return result
 

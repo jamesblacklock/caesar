@@ -16,15 +16,15 @@ from compiler.build      import buildObjFile
 
 def getImports(mod, imports=None):
 	if imports == None:
-		imports = []
+		imports = set()
 	
 	for subMod in mod.mods:
 		if subMod.topLevel:
-			imports.append(subMod)
-		else:
-			getImports(subMod, imports)
+			imports.add(subMod)
+		
+		getImports(subMod, imports)
 	
-	return imports
+	return list(imports)
 
 def main(args):
 	parser = argparse.ArgumentParser(description='Compiler for the Caesar programming language')
@@ -33,6 +33,11 @@ def main(args):
 		action='store_true',
 		default=False,
 		help='start the compiler as a REPL interpreter')
+	parser.add_argument(
+		'--force-rebuilds',                                            
+		action='store_true',
+		default=False,
+		help='rebuild all imported modules')
 	parser.add_argument(
 		'--bin',
 		'-b',
@@ -201,13 +206,13 @@ def main(args):
 	for (i, fileName) in enumerate(args.sources):
 		try:
 			source = SourceFile(fileName)
-		except Exception as e:
+		except IOError as e:
 			print(e)
 			exit(1)
 		
 		tok = tokenize(source)
 		ast = parse(source, tok)
-		mod = analyze(ast)
+		mod = analyze(ast, args.force_rebuilds)
 		generateIR(mod)
 		asm = generateAsm(mod)
 		
@@ -220,7 +225,7 @@ def main(args):
 				result = buildObjFile(asmFileNames[i], objFileNames[i])
 				if result == False:
 					exit(1)
-		except Exception as e:
+		except IOError as e:
 			print(e)
 			exit(1)
 	
@@ -259,7 +264,7 @@ def main(args):
 		if args.run:
 			os.system('{} {}'.format(binFileName, ' '.join(runArgs)))
 			os.remove(binFileName)
-	except Exception as e:
+	except IOError as e:
 		print(e)
 		exit(1)
 

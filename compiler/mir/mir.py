@@ -1,4 +1,3 @@
-import sys
 import ctypes
 from enum import Enum
 
@@ -72,17 +71,17 @@ class MIR:
 		self.contracts = None
 		self.typeModifiers = None
 	
-	def setAnalyzed(self):
-		pass
-	
 	def analyze(self, state, implicitType):
 		return self
 	
-	def checkFlow(self, scope):
+	def commit(self, state):
 		assert 0
 	
 	def staticEval(self, state):
 		return None
+	
+	def staticSideEffects(self, state):
+		return False
 	
 	def writeIR(self, state):
 		assert 0

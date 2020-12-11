@@ -1,8 +1,8 @@
 import re
 from enum   import Enum
 from .span  import Span
-from .token import *
-from .log   import logError
+from .token import Token, TokenType
+from .log   import logError, logWarning
 
 class IndentMode(Enum):
 	SPACE = 'SPACE'
@@ -93,9 +93,11 @@ def lexSpace(state):
 		if state.char != '\t':
 			testState.done = True
 	
-	isIndent = state.column == 1
+	ttype = TokenType.SPACE
+	isIndent = state.column == 1 and state.source.whitespaceAware
 	if isIndent:
-		if state.indentMode == None:
+		ttype = TokenType.INDENT
+		if state.indentMode == None and state.char != '#':
 			state.indentMode = IndentMode.SPACE if state.char == ' ' else IndentMode.TAB
 		if state.indentMode == IndentMode.SPACE:
 			regex = r"^ +$"
@@ -105,11 +107,11 @@ def lexSpace(state):
 			regex = r"^\t+$"
 			expected = 'tabs'
 			found = 'spaces'
-		test = testSpaceIndent if state.char == ' ' else testTabIndent
+		test = testSpace#testSpaceIndent if state.char == ' ' else testTabIndent
 	else:
 		test = testSpace
 	
-	tok = lexToken(state, TokenType.INDENT if isIndent else TokenType.SPACE, test)
+	tok = lexToken(state, ttype, test)
 	
 	if isIndent and not re.match(regex, tok.content):
 		state.error = 'inconsistent indentation; expected {}, found {}'.format(expected, found)
@@ -152,7 +154,8 @@ def lexNewline(state):
 		if state.char != '\n':
 			testState.done = True
 	
-	return lexToken(state, TokenType.NEWLINE, test)
+	ttype = TokenType.NEWLINE if state.source.whitespaceAware else TokenType.SPACE
+	return lexToken(state, ttype, test)
 
 def lexOperator(state):
 	def test(state, testState):
@@ -367,6 +370,26 @@ def lexUnknownToken(state):
 
 def tokenize(source):
 	state = LexerState(source)
+	
+	for (i, line) in enumerate(source.lines):
+		if not line:
+			continue
+		match = re.match(r"^[ \t]*#(.*)", line)
+		if not match:
+			break
+		match = re.match(r"^\$[ \t]*([a-zA-Z_]+)=(.+)", match[1])
+		if match:
+			param = match[1]
+			value = match[2]
+			span = Span(state.source, i+1, 1, i+1, len(line))
+			if param == 'parser_whitespace_aware':
+				if value in ('true', 'false'):
+					state.source.whitespaceAware = value == 'true'
+				else:
+					logWarning(state, span, 'unrecognized value for parser flag: `{}`'.format(value))
+			else:
+				logWarning(state, span, 'unrecognized parser flag: `{}`'.format(param))
+	
 	tokens = []
 	tok = None
 	while state.char != '':

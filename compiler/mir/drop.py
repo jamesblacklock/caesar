@@ -6,15 +6,12 @@ class DropSymbol(MIR):
 		super().__init__(span)
 		self.symbol = symbol
 	
-	def checkFlow(self, scope):
+	def commit(self, state):
 		pass
 	
 	def writeIR(expr, state):
 		if expr.symbol.type.isVoidType:
 			return
-		
-		if state.loopInfo:
-			state.loopInfo.droppedSymbols.add(expr.symbol)
 		
 		offset = state.localOffset(expr.symbol)
 		if offset > 0:

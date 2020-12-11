@@ -7,8 +7,8 @@ class Neg(MIR):
 		self.access = access
 		self.type = access.type
 	
-	def checkFlow(self, scope):
-		self.access.checkFlow(scope)
+	def commit(self, state):
+		self.access.commit(state)
 	
 	def writeIR(self, state):
 		self.access.writeIR(state)

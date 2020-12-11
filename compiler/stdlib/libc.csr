@@ -7,6 +7,7 @@ pub extern "C"
 	fn getchar() -> int
 	fn strlen(s: &byte) -> int
 	fn malloc(size: usize) -> owned(malloc, free) &mut void
+	fn calloc(size: usize, count: usize) -> owned(malloc, free) &mut void
 	fn free(buf: owned(malloc, free) &void)
 	fn memcpy(dest: &mut byte, src: &byte, size: usize) -> &mut byte
 	fn fopen(path: &byte, mode: &byte) -> owned(fopen, fclose) &FILE

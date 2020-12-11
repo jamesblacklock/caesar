@@ -1,0 +1,60 @@
+import murmur3::MurmurHash3_x64_128
+import libc { malloc, calloc, free }
+import drop::Drop
+
+fn getHash(key: &str) -> uint64
+    let mut h = [0u64, 0u64]
+    unsafe MurmurHash3_x64_128(key^->data(), (key^.size - 1) as uint, 0, &mut h)
+    return h[0]
+
+struct Item
+    inUse: bool
+    hash: uint64
+    key: str
+    value: int
+
+pub struct HashMap
+    pub size: usize
+    capacity: usize
+    buckets: owned(malloc, free) &mut Item
+
+impl HashMap
+    pub fn new() -> HashMap
+        let capacity = 128usz
+        let buckets = unsafe calloc(sizeof(Item), capacity) as owned(malloc, free) &mut Item
+        
+        HashMap
+            capacity: capacity
+            buckets: buckets
+            size: 0
+    
+    pub fn put(self: &HashMap, key: str, value: int)
+        if self^.size == self^.capacity
+            return
+        
+        let hash = getHash(&key)
+        let index = hash % self^.capacity
+        
+        let mut offset = 0usz
+        while (borrow self^.buckets + index + offset)^.inUse
+            offset += 1
+        
+        (borrow self^.buckets + index + offset)^ = { inUse: true, hash: hash, key: key, value: value }
+    
+    pub fn get(self: &HashMap, key: str) -> int
+        let hash = getHash(&key)
+        let index = hash % self^.capacity
+        
+        let mut offset = 0usz
+        while (borrow self^.buckets + index + offset)^.hash != hash
+            offset += 1
+            if index + offset >= self^.capacity or (borrow self^.buckets + index + offset)^.inUse == false
+                return -1
+        
+        (borrow self^.buckets + index + offset)^.value
+        
+
+impl HashMap: Drop
+    pub fn drop(self: &mut HashMap)
+        unsafe free(self^.buckets)
+    

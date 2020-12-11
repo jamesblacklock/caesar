@@ -1,11 +1,22 @@
+from enum           import Enum
 from .mir           import MIR, StaticDataType
 from ..ast          import deref, valueref, field, asgn, address
 from ..types        import typesMatch, tryPromote, getAlignedSize, PtrType, USize
 from ..             import ir
-from ..scope        import ScopeType
 from ..log          import logError
 from ..symbol.local import Local
-from .block         import createDropBlock
+
+class AccessType(Enum):
+	REF_READ = 'REF_READ'
+	REF_WRITE = 'REF_WRITE'
+	REF_ADDR = 'REF_ADDR'
+	FIELD_READ = 'FIELD_READ'
+	FIELD_WRITE = 'FIELD_WRITE'
+	FIELD_ADDR = 'FIELD_ADDR'
+	DEREF_READ = 'DEREF_READ'
+	DEREF_WRITE = 'DEREF_WRITE'
+	DEREF_FIELD_READ = 'DEREF_FIELD_READ'
+	DEREF_FIELD_WRITE = 'DEREF_FIELD_WRITE'
 
 def createTempSymbol(*exprs):
 	symbol = Local.createTemp(exprs[0].span)
@@ -20,7 +31,9 @@ def createTempTriple(expr):
 	(symbol, write) = createTempSymbol(expr)
 	read = SymbolRead(expr.span)
 	read.symbol = symbol
+	read.type = symbol.type
 	read.ref = True
+	read.accessType = AccessType.REF_READ
 	return (symbol, write, read)
 
 class DynOffset:
@@ -32,7 +45,6 @@ class SymbolAccess(MIR):
 	def __init__(self, span, hasValue):
 		super().__init__(span, hasValue)
 		self.symbol = None
-		self.isBorrowed = False
 		self.staticOffset = 0
 		self.dynOffsets = []
 		self.deref = 0
@@ -43,24 +55,31 @@ class SymbolAccess(MIR):
 		self.isFieldAccess = False
 		self.fieldSpan = None
 		self.type = None
-		self.dropBlock = None
+		self.dropPoint = None
+		self.accessType = None
 	
 	@staticmethod
 	def read(state, expr):
+		if type(expr) == SymbolRead and expr.ref:
+			return expr
+		
 		(tempSymbol, tempWrite, tempRead) = createTempTriple(expr)
-		tempSymbol.declSymbol(state.scope)
+		state.block.decl(tempSymbol)
 		state.analyzeNode(tempWrite)
 		tempRead.type = tempSymbol.type
 		return tempRead
 	
 	@staticmethod
-	def noop(symbol, dropBlock, span):
-		ref = SymbolRead(span)
-		ref.symbol = symbol
-		ref.type = symbol.type
-		ref.noop = True
-		ref.dropBlock = dropBlock
-		return ref
+	def write(state, symbol, expr):
+		write = SymbolWrite(expr, expr.span)
+		write.symbol = symbol
+		state.analyzeNode(write)
+		read = SymbolRead(expr.span)
+		read.symbol = symbol
+		read.type = symbol.type
+		read.ref = True
+		read.accessType = AccessType.REF_READ
+		return read
 	
 	@staticmethod
 	def analyzeSymbolAccess(state, expr, implicitType=None, rvalueImplicitType=None):
@@ -78,11 +97,10 @@ class SymbolAccess(MIR):
 		if access.write and access.symbol and (access.symbol.dropFn or access.deref or access.isFieldAccess):
 			(tempSymbol, tempWrite, tempRead) = createTempTriple(access.rvalue)
 			
-			access.dropBeforeAssignBlock = createDropBlock(access)
-			tempSymbol.declSymbol(state.scope)
+			state.decl(tempSymbol)
 			tempWrite.rvalueImplicitType = access.type
 			state.analyzeNode(tempWrite)
-			state.mirBlock.append(access.dropBeforeAssignBlock)
+			state.appendDropPoint()
 			tempRead.type = tempSymbol.type
 			access.rvalue = tempRead
 		
@@ -92,9 +110,6 @@ class SymbolAccess(MIR):
 		return state.analyzeNode(access, implicitType)
 	
 	def __str__(self):
-		if not self.write and self.noop:
-			return '$noop({})'.format(self.symbol.name if self.symbol else '???')
-		
 		s = ''
 		closeParen = False
 		if not self.write and self.addr:
@@ -134,9 +149,9 @@ class SymbolRead(SymbolAccess):
 		self.lvalueSpan = span
 		self.addr = False
 		self.borrow = False
-		self.noop = False
 		self.hasValue = True
 		self.typeModifiers = None
+		self.leakOwned = False
 	
 	def moveToClone(self):
 		other = SymbolRead(self.span)
@@ -172,115 +187,139 @@ class SymbolRead(SymbolAccess):
 		self.borrow = False
 		self.borrows = set()
 		self.contracts = None
-		assert not self.isBorrowed
 		
 		return other
 	
-	def analyze(access, state, implicitType):
-		access.symbol.unused = False
-		if access.symbol.isStatic:
-			access.deref += 1
+	def analyze(self, state, implicitType):
+		if self.symbol == None or self.symbol.type == None:
+			return self
 		
-		if access.type == None:
-			access.type = access.symbol.type
-		if access.isFieldAccess and access.field and access.field.isUnionField and not state.scope.allowUnsafe:
-			logError(state, access.span, 'reading union fields is unsafe; context is safe')
+		self.symbol.unused = False
 		
-		access.ref = not access.addr and not access.isFieldAccess
+		if self.type == None:
+			self.type = self.symbol.type
+		if self.isFieldAccess and self.field and self.field.isUnionField and not state.scope.allowUnsafe:
+			logError(state, self.span, 'reading union fields is unsafe; context is safe')
 		
-		access.dropBlock = state.scope.dropBlock
-		access = tryPromote(state, access, implicitType)
+		if not (self.addr or self.isFieldAccess):
+			self.ref = True
+			if self.symbol.isLocal:
+				self.copy = self.type.isCopyable and not self.leakOwned
 		
-		isCopyableDrop = access.symbol.isLocal and access.symbol.dropFn and access.type and access.type.isCopyable
+		if self.ref:
+			if self.deref:
+				self.accessType = AccessType.DEREF_READ
+			else:
+				self.accessType = AccessType.REF_READ
+		elif self.addr:
+			if self.isFieldAccess:
+				self.accessType = AccessType.FIELD_ADDR
+			else:
+				self.accessType = AccessType.REF_ADDR
+		else:
+			assert self.isFieldAccess
+			if self.deref:
+				self.accessType = AccessType.DEREF_FIELD_READ
+			else:
+				self.accessType = AccessType.FIELD_READ
 		
-		if isCopyableDrop or access.isFieldAccess:
-			(symbol, write, read) = createTempTriple(access)
+		self.dropPoint = state.dropPoint
+		self = tryPromote(state, self, implicitType)
+		
+		isCopyableDrop = self.symbol.isLocal and self.symbol.dropFn and self.type and self.type.isCopyable
+		
+		if isCopyableDrop or self.isFieldAccess:
+			(symbol, write, read) = createTempTriple(self)
 			write.analyzeRValue = False
 			
-			symbol.declSymbol(state.scope)
+			state.decl(symbol)
 			state.analyzeNode(write)
 			read.type = write.type
-			access = read
-			access.dropBlock = state.scope.dropBlock
+			self = read
+			self.dropPoint = state.dropPoint
 		
-		access.contracts = access.symbol.contracts
-		return access
+		self.contracts = self.symbol.contracts
+		
+		return self
 	
-	def checkFlow(self, scope):
+	def commit(self, state):
 		for off in self.dynOffsets:
-			off.expr.checkFlow(scope)
-		scope.accessSymbol(self)
+			off.expr.commit(state)
+		state.access(self)
 	
-	def writeIR(expr, state):
-		if expr.noop or expr.type.isVoidType:
+	def staticEval(self, state):
+		assert self.ref and not self.deref
+		return state.staticRead(self.symbol)
+	
+	def writeIR(self, state):
+		if self.type.isVoidType:
 			return
 		
 		stackTop = False
-		if expr.symbol.isStatic or expr.symbol.isFn:
-			assert not expr.addr
-			state.appendInstr(ir.Global(expr, ir.IPTR, expr.symbol.mangledName))
+		if self.symbol.isStatic or self.symbol.isFn:
+			assert not self.addr
+			state.appendInstr(ir.Global(self, ir.IPTR, self.symbol.mangledName))
 			stackTop = True
-		elif expr.symbol.isConst:
-			assert not expr.addr
-			expr.symbol.mir.writeIR(state)
+		elif self.symbol.isConst:
+			assert not self.addr
+			ir.writeStaticValueIR(state, self, self.symbol.staticValue)
 			stackTop = True
 		else:
-			assert type(expr.symbol) == Local
-			# stackOffset = state.localOffset(expr.symbol)
+			assert type(self.symbol) == Local
 		
-		if expr.isFieldAccess:
-			if expr.addr:
-				stackOffset = 0 if stackTop else state.localOffset(expr.symbol)
-				state.appendInstr(ir.Addr(expr, stackOffset))
-			elif expr.deref > 1:
-				stackOffset = 0 if stackTop else state.localOffset(expr.symbol)
-				state.appendInstr(ir.Dup(expr, stackOffset))
-				for _ in range(0, expr.deref - 1):
-					state.appendInstr(ir.Deref(expr, ir.IPTR))
+		if self.isFieldAccess:
+			if self.addr:
+				stackOffset = 0 if stackTop else state.localOffset(self.symbol)
+				state.appendInstr(ir.Addr(self, stackOffset))
+			elif self.deref > 1:
+				stackOffset = 0 if stackTop else state.localOffset(self.symbol)
+				state.appendInstr(ir.Dup(self, stackOffset))
+				for _ in range(0, self.deref - 1):
+					state.appendInstr(ir.Deref(self, ir.IPTR))
 				stackTop = True
 			
 			doAdd = False
-			if expr.staticOffset or not expr.dynOffsets:
-				state.appendInstr(ir.Imm(expr, ir.IPTR, expr.staticOffset))
+			if self.staticOffset or not self.dynOffsets:
+				state.appendInstr(ir.Imm(self, ir.IPTR, self.staticOffset))
 				doAdd = True
-			for dyn in expr.dynOffsets:
+			for dyn in self.dynOffsets:
 				if doAdd:
-					state.appendInstr(ir.Add(expr))
+					state.appendInstr(ir.Add(self))
 				else:
 					doAdd = True
 				dyn.expr.writeIR(state)
 				if dyn.factor:
-					state.appendInstr(ir.Imm(expr, ir.IPTR, dyn.factor))
-					state.appendInstr(ir.Mul(expr))
+					state.appendInstr(ir.Imm(self, ir.IPTR, dyn.factor))
+					state.appendInstr(ir.Mul(self))
 			
-			fType = ir.FundamentalType.fromResolvedType(expr.type)
-			stackOffset = 1 if stackTop else state.localOffset(expr.symbol)
-			if expr.deref:
-				state.appendInstr(ir.DerefField(expr, stackOffset, fType))
-			elif expr.addr:
+			fType = ir.FundamentalType.fromResolvedType(self.type)
+			stackOffset = 1 if stackTop else state.localOffset(self.symbol)
+			if self.deref:
+				state.appendInstr(ir.DerefField(self, stackOffset, fType))
+			elif self.addr:
 				assert doAdd
-				state.appendInstr(ir.Add(expr))
+				state.appendInstr(ir.Add(self))
 			else:
-				state.appendInstr(ir.Field(expr, stackOffset, fType))
-		elif expr.addr:
-			stackOffset = 0 if stackTop else state.localOffset(expr.symbol)
-			state.appendInstr(ir.Addr(expr, stackOffset))
+				state.appendInstr(ir.Field(self, stackOffset, fType))
+		elif self.addr:
+			stackOffset = 0 if stackTop else state.localOffset(self.symbol)
+			state.appendInstr(ir.Addr(self, stackOffset))
 		else:
-			stackOffset = 0 if stackTop else state.localOffset(expr.symbol)
-			if expr.copy or expr.isBorrowed:
-				state.appendInstr(ir.Dup(expr, stackOffset))
+			stackOffset = 0 if stackTop else state.localOffset(self.symbol)
+			if self.copy:
+				state.appendInstr(ir.Dup(self, stackOffset))
 			elif stackOffset > 0:
-				state.appendInstr(ir.Raise(expr, stackOffset))
+				state.appendInstr(ir.Raise(self, stackOffset))
 			
-			if expr.deref:
-				for _ in range(0, expr.deref - 1):
-					state.appendInstr(ir.Deref(expr, ir.IPTR))
+			if self.deref:
+				for _ in range(0, self.deref - 1):
+					state.appendInstr(ir.Deref(self, ir.IPTR))
 				
-				fType = ir.FundamentalType.fromResolvedType(expr.type)
-				state.appendInstr(ir.Deref(expr, fType))
-			elif expr.staticOffset:
-				state.appendInstr(ir.Imm(expr, ir.IPTR, expr.staticOffset))
-				state.appendInstr(ir.Add(expr))
+				fType = ir.FundamentalType.fromResolvedType(self.type)
+				state.appendInstr(ir.Deref(self, fType))
+			elif self.staticOffset:
+				state.appendInstr(ir.Imm(self, ir.IPTR, self.staticOffset))
+				state.appendInstr(ir.Add(self))
 
 class SymbolWrite(SymbolAccess):
 	def __init__(self, rvalue, span, lvalueSpan=None):
@@ -288,120 +327,140 @@ class SymbolWrite(SymbolAccess):
 		self.lvalueSpan = lvalueSpan if lvalueSpan else span
 		self.write = True
 		self.rvalue = rvalue
-		self.dropBeforeAssignBlock = None
 		self.rvalueImplicitType = None
 		self.hasValue = False
 		self.analyzeRValue = True
+		self.beforeWriteDropPoint = None
 	
-	def analyze(access, state, ignoredImplicitType):
-		access.symbol.unused = False
-		if access.type == None:
-			access.type = access.symbol.type
-		if access.rvalueImplicitType == None:
-			access.rvalueImplicitType = access.type
+	def analyze(self, state, ignoredImplicitType):
+		self.symbol.unused = False
+		if self.type == None:
+			self.type = self.symbol.type
+		if self.rvalueImplicitType == None:
+			self.rvalueImplicitType = self.type
 		
-		if access.analyzeRValue:
-			access.rvalue = state.analyzeNode(access.rvalue, access.rvalueImplicitType, isWrite=True)
+		if self.analyzeRValue:
+			self.rvalue = state.analyzeNode(self.rvalue, self.rvalueImplicitType, isRValue=True)
 		
-		if access.rvalue:
-			access.symbol.contracts = access.rvalue.contracts
-			if access.symbol.type == None:
-				access.symbol.type = access.rvalue.type
-				access.type = access.rvalue.type
-				access.symbol.checkDropFn(state)
-			elif access.type and access.rvalue.type:
-				access.rvalue = tryPromote(state, access.rvalue, access.rvalueImplicitType)
+		if self.rvalue:
+			self.symbol.contracts = self.rvalue.contracts
+			if self.symbol.type == None:
+				self.symbol.type = self.rvalue.type
+				self.type = self.rvalue.type
+				self.symbol.checkDropFn(state)
+			elif self.type and self.rvalue.type:
+				self.rvalue = tryPromote(state, self.rvalue, self.rvalueImplicitType)
 				
-				if not typesMatch(access.type, access.rvalue.type):
-					logError(state, access.rvalue.span, 
-						'expected type {}, found {}'.format(access.type, access.rvalue.type))
+				if not typesMatch(self.type, self.rvalue.type):
+					logError(state, self.rvalue.span, 
+						'expected type {}, found {}'.format(self.type, self.rvalue.type))
 		
-		if access.symbol.isStatic:
-			access.deref += 1
+		self.copy = self.deref != 0
 		
-		access.copy = access.deref != 0
-		
-		if access.type == None:
-			access.type = access.symbol.type
-		if access.field and access.field.isUnionField and not state.scope.allowUnsafe:
+		if self.type == None:
+			self.type = self.symbol.type
+		if self.field and self.field.isUnionField and not state.scope.allowUnsafe:
 			logError(state, fnCall.expr.span, 'writing union fields is unsafe; context is safe')
 		
-		assert state.scope.dropBlock
-		access.dropBlock = state.scope.dropBlock
-		if access.rvalue:
-			access.rvalue.dropBlock = state.scope.dropBlock
-		return access
-	
-	def checkFlow(self, scope):
-		self.rvalue.checkFlow(scope)
-		for off in self.dynOffsets:
-			off.expr.checkFlow(scope)
-		scope.accessSymbol(self)
-	
-	def writeIR(expr, state):
-		assert expr.symbol.isLocal or expr.symbol.isStatic
+		if self.isFieldAccess:
+			if self.deref:
+				self.accessType = AccessType.DEREF_FIELD_WRITE
+			else:
+				self.accessType = AccessType.FIELD_WRITE
+		elif self.deref:
+			self.accessType = AccessType.DEREF_WRITE
+		else:
+			self.accessType = AccessType.REF_WRITE
 		
-		stackTop = False
-		if expr.symbol.isStatic:
-			state.appendInstr(ir.Global(expr, ir.IPTR, expr.symbol.mangledName))
-			stackTop = True
-		# else:
-			# assert expr.symbol in state.operandsBySymbol
+		if self.deref or self.field:
+			self.beforeWriteDropPoint = state.dropPoint
+			state.appendDropPoint()
 		
-		if expr.type.isVoidType:
-			expr.rvalue.writeIR(state)
-			if not expr.rvalue.type.isVoidType:
-				state.appendInstr(ir.Pop(expr))
+		self.dropPoint = state.dropPoint
+		if self.rvalue:
+			self.rvalue.dropPoint = state.dropPoint
+		
+		state.append(self)
+	
+	def commit(self, state):
+		if self.rvalue == None:
 			return
 		
-		if expr.isFieldAccess:
-			expr.rvalue.writeIR(state)
+		self.rvalue.commit(state)
+		for off in self.dynOffsets:
+			off.expr.commit(state)
+		state.access(self)
+	
+	def staticSideEffects(self, state):
+		assert not (self.deref or self.isFieldAccess)
+		staticValue = self.rvalue.staticEval(state)
+		if staticValue:
+			state.staticWrite(self.symbol, staticValue)
+			return True
+		return False
+	
+	def writeIR(self, state):
+		assert self.symbol.isLocal or self.symbol.isStatic
+		
+		if self.rvalue == None:
+			return
+		
+		stackTop = False
+		if self.symbol.isStatic:
+			state.appendInstr(ir.Global(self, ir.IPTR, self.symbol.mangledName))
+			stackTop = True
+		# else:
+			# assert self.symbol in state.operandsBySymbol
+		
+		if self.type.isVoidType:
+			self.rvalue.writeIR(state)
+			if not self.rvalue.type.isVoidType:
+				state.appendInstr(ir.Pop(self))
+			return
+		
+		if self.isFieldAccess:
+			self.rvalue.writeIR(state)
 			doAdd = False
-			if expr.staticOffset or not expr.dynOffsets:
-				state.appendInstr(ir.Imm(expr, ir.IPTR, expr.staticOffset))
+			if self.staticOffset or not self.dynOffsets:
+				state.appendInstr(ir.Imm(self, ir.IPTR, self.staticOffset))
 				doAdd = True
-			for dyn in expr.dynOffsets:
+			for dyn in self.dynOffsets:
 				dyn.expr.writeIR(state)
 				if dyn.factor:
-					state.appendInstr(ir.Imm(expr, ir.IPTR, dyn.factor))
-					state.appendInstr(ir.Mul(expr))
+					state.appendInstr(ir.Imm(self, ir.IPTR, dyn.factor))
+					state.appendInstr(ir.Mul(self))
 				if doAdd:
-					state.appendInstr(ir.Add(expr))
+					state.appendInstr(ir.Add(self))
 				else:
 					doAdd = True
-			stackOffset = 2 if stackTop else state.localOffset(expr.symbol)
-			if expr.deref:
-				assert expr.deref == 1
-				state.appendInstr(ir.DerefFieldW(expr, stackOffset))
+			stackOffset = 2 if stackTop else state.localOffset(self.symbol)
+			if self.deref:
+				assert self.deref == 1
+				state.appendInstr(ir.DerefFieldW(self, stackOffset))
 			else:
-				state.appendInstr(ir.FieldW(expr, stackOffset))
-		elif expr.deref:
-			assert expr.deref == 1
-			stackOffset = 0 if stackTop else state.localOffset(expr.symbol)# stackOffset = state.localOffset(expr.symbol)
-			state.appendInstr(ir.Dup(expr, stackOffset))
-			expr.rvalue.writeIR(state)
-			state.appendInstr(ir.DerefW(expr))
+				state.appendInstr(ir.FieldW(self, stackOffset))
+		elif self.deref:
+			assert self.deref == 1
+			stackOffset = 0 if stackTop else state.localOffset(self.symbol)
+			state.appendInstr(ir.Dup(self, stackOffset))
+			self.rvalue.writeIR(state)
+			state.appendInstr(ir.DerefW(self))
 		else:
-			expr.rvalue.writeIR(state)
-			if state.didBreak:
-				return
+			self.rvalue.writeIR(state)
+			# if state.didBreak:
+				# return
 			
-			stackOffset = 0 if expr.symbol not in state.operandsBySymbol else state.localOffset(expr.symbol)
-			# if expr.symbol in state.operandsBySymbol:
-				# stackOffset = state.localOffset(expr.symbol)
+			stackOffset = 0 if self.symbol not in state.operandsBySymbol else state.localOffset(self.symbol)
 			if stackOffset > 0:
-				if expr.symbol.fixed:
-					state.appendInstr(ir.Write(expr, stackOffset))
+				if self.symbol.fixed:
+					state.appendInstr(ir.Write(self, stackOffset))
 				else:
-					state.appendInstr(ir.Swap(expr, stackOffset))
-					state.appendInstr(ir.Pop(expr))
+					state.appendInstr(ir.Swap(self, stackOffset))
+					state.appendInstr(ir.Pop(self))
 			else:
-				state.nameTopOperand(expr.symbol)
-				if expr.symbol.fixed:
-					state.appendInstr(ir.Fix(expr, 0))
-			
-			if state.loopInfo:
-				state.loopInfo.droppedSymbols.discard(expr.symbol)
+				state.nameTopOperand(self.symbol)
+				if self.symbol.fixed:
+					state.appendInstr(ir.Fix(self, 0))
 
 def _SymbolAccess__analyzeSymbolAccess(state, expr, access, implicitType=None):
 	if type(expr) == valueref.ValueRef:
@@ -420,7 +479,25 @@ def _SymbolAccess__analyzeSymbolAccess(state, expr, access, implicitType=None):
 					if contract.indLevel > 0:
 						t = PtrType(t, contract.indLevel, contract.symbol.mut)
 			
+			if expr.leakOwned:
+				if state.scope.allowUnsafe:
+					if t.isOwnedType:
+						access.leakOwned = True
+						t = t.baseType
+				else:
+					logError(state, expr.span, 'cannot leak owned data in safe context')
+			
 			access.type = t
+			if access.symbol.isStatic:
+				staticRead = SymbolRead(access.span)
+				staticRead.symbol = access.symbol
+				staticRead.type = access.symbol.type
+				staticRead.ref = True
+				(symbol, write) = createTempSymbol(staticRead)
+				state.decl(symbol)
+				state.analyzeNode(write)
+				access.symbol = symbol
+				access.deref = 1
 	elif type(expr) == valueref.Borrow:
 		_SymbolAccess__analyzeSymbolAccess(state, expr.expr, access, implicitType)
 		if not access.type:
@@ -437,7 +514,7 @@ def _SymbolAccess__analyzeSymbolAccess(state, expr, access, implicitType=None):
 			implicitType = implicitType.typeAfterDeref()
 		_SymbolAccess__analyzeSymbolAccess(state, expr.expr, access, implicitType)
 		
-		if access.symbol.type == None:
+		if access.symbol and access.symbol.type == None:
 			logError(state, expr.expr.span, 'cannot take address of `{}`: its type is unknown'.format(access.symbol.name))
 		
 		addrExpr = access.moveToClone()
@@ -463,7 +540,7 @@ def _SymbolAccess__analyzeSymbolAccess(state, expr, access, implicitType=None):
 		
 		(tempSymbol, tempWrite) = createTempSymbol(addrExpr)
 		tempSymbol.reserve = True
-		tempSymbol.declSymbol(state.scope)
+		state.decl(tempSymbol)
 		state.analyzeNode(tempWrite)
 		
 		access.symbol = tempSymbol
@@ -476,7 +553,7 @@ def _SymbolAccess__analyzeSymbolAccess(state, expr, access, implicitType=None):
 		if type(expr.expr) != valueref.ValueRef:
 			(symbol, write) = createTempSymbol(expr.expr)
 			access.symbol = symbol
-			symbol.declSymbol(state.scope)
+			state.decl(symbol)
 			state.analyzeNode(write)
 			access.type = access.symbol.type
 		else:
@@ -493,7 +570,7 @@ def _SymbolAccess__analyzeSymbolAccess(state, expr, access, implicitType=None):
 		if derefCount > 0:
 			(symbol, write) = createTempSymbol(expr)
 			access.symbol = symbol
-			symbol.declSymbol(state.scope)
+			state.decl(symbol)
 			state.analyzeNode(write)
 			access.type = symbol.type
 			assert access.type == None or access.type.isPtrType and access.type.count == 1
@@ -545,13 +622,13 @@ def _SymbolAccess__analyzeSymbolAccess(state, expr, access, implicitType=None):
 			
 			pub = (fieldInfo.pub and fieldInfo.mut) if access.write else fieldInfo.pub
 			if not pub:
-				symbolScope = t.symbol.scope
-				scope = state.scope
+				symbolMod = t.symbol.mod
+				mod = state.mod
 				while True:
-					if scope.mod == symbolScope.mod:
+					if mod == symbolMod:
 						break
-					scope = scope.parent
-					if scope == None:
+					mod = mod.parent
+					if mod == None:
 						if access.write and fieldInfo.pub:
 							logError(state, fieldName.span, 'field `{}` is read-only'.format(fieldName.content))
 						else:
@@ -606,6 +683,6 @@ def _SymbolAccess__analyzeSymbolAccess(state, expr, access, implicitType=None):
 	else:
 		(symbol, write) = createTempSymbol(expr)
 		access.symbol = symbol
-		symbol.declSymbol(state.scope)
+		state.decl(symbol)
 		state.analyzeNode(write)
 		access.type = access.symbol.type

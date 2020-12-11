@@ -1,5 +1,3 @@
-from enum        import Enum
-from .ast.ast    import Symbol, Name
 from .mir.mir    import TypeModifiers
 from .mir.coerce import Coerce
 
@@ -61,9 +59,6 @@ class Type:
 		if self.name == None:
 			self.updateName()
 		return self.name
-	
-	def pretty(self, output, indent=0):
-		output.write(self.name, indent)
 
 class OwnedType(Type):
 	def __init__(self, baseType, acquire, release, acquireSpan, releaseSpan, span):
@@ -422,7 +417,7 @@ def tryPromote(state, access, toType):
 		sizeDoesIncrease = fromType.byteSize < toType.byteSize
 		if signsMatch and sizeDoesIncrease:
 			access = state.analyzeNode(Coerce(access, toType, access.span))
-			access.dropBlock = state.scope.dropBlock
+			access.dropPoint = state.dropPoint
 			return access
 	
 	# pointer promotions
@@ -445,7 +440,7 @@ def tryPromote(state, access, toType):
 			return access
 		elif toDerefType.isTraitType and toDerefType in fromDerefType.traitImpls:
 			access = state.analyzeNode(Coerce(access, toType, access.span))
-			access.dropBlock = state.scope.dropBlock
+			access.dropPoint = state.dropPoint
 			return access
 	
 	# promote scalar to tuple

@@ -3,7 +3,7 @@ from ..mir.mir       import StaticData, StaticDataType
 from ..types         import Type, Void, UInt8, UInt16, U8_MAX, U16_MAX
 from ..ast.structlit import UnionLitFieldInfo
 from .struct         import StructType
-from ..ir            import I8, I16, FundamentalType
+from ..ir            import FundamentalType
 from ..log           import logError
 
 class Variant(Symbol):
@@ -64,15 +64,6 @@ class Enum(Symbol):
 		
 		self.type.byteSize = self.type.structType.byteSize
 		self.type.align = self.type.structType.align
-	
-	# def pretty(self, output, indent=0):
-	# 	output.write('enum ' + self.name, indent)
-	# 	output.write('\n')
-	# 	for variant in self.type.variants[:-1]:
-	# 		variant.pretty(output, indent + 1)
-	# 		output.write('\n')
-	# 	if len(self.type.variants) > 0:
-	# 		self.type.variants[-1].pretty(output, indent + 1)
 	
 class EnumType(Type):
 	def __init__(self, name, span, symbol, variants):

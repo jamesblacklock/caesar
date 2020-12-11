@@ -1,7 +1,8 @@
-from .symbol   import ValueSymbol
-from ..types   import typesMatch, Void
-from ..log     import logError
-from ..mir.mir import TypeModifiers
+from .symbol    import ValueSymbol
+from ..types    import typesMatch
+from ..log      import logError
+from ..mir.mir  import TypeModifiers
+from ..mir.flow import CFGBuilder
 
 class Static(ValueSymbol):
 	def __init__(self, ast, isConst):
@@ -35,8 +36,14 @@ class Static(ValueSymbol):
 		
 		deps.push(self)
 		
-		self.mir = state.analyzeNode(self.ast.expr, self.type)
+		flow = CFGBuilder(state, self, state.mod)
+		flow.beginScope(self.span)
+		self.mir = flow.analyzeNode(self.ast.expr, self.type)
+		flow.endScope()
+		
 		if self.mir == None or self.mir.type == None:
+			assert flow.failed
+			state.failed = True
 			return
 		
 		# if False and self.expr.type and self.expr.type.isCompositeType:
@@ -58,7 +65,7 @@ class Static(ValueSymbol):
 		else:
 			self.type = self.mir.type
 		
-		self.staticValue = self.mir.staticEval(state)
+		self.staticValue = flow.staticEval(self.mir.symbol)
 		if self.staticValue == None:
 			logError(state, self.mir.span, 'expression cannot be statically evaluated')
 		else:

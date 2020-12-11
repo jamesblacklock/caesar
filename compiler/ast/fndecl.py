@@ -1,5 +1,4 @@
 from .ast        import ValueSymbol
-from ..types     import FnType, Void
 from ..symbol.fn import Fn, CConv
 from ..log       import logError
 

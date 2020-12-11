@@ -20,22 +20,22 @@ class AttrArg:
 		self.optional = optional
 
 def acquireDefaultAttr(state, decl, params, span):
-	if state.scope.acquireDefaultSet:
+	if state.mod.acquireDefaultSet:
 		logError(state, span, '`acquire_default` was already set in this scope')
-		logExplain(state, state.scope.acquireDefault.span, '`acquire_default` was set here')
+		logExplain(state, state.mod.acquireDefault.span, '`acquire_default` was set here')
 		return
 	
-	state.scope.acquireDefaultSet = True
-	state.scope.acquireDefault = decl
+	state.mod.acquireDefaultSet = True
+	state.mod.acquireDefault = decl
 
 def releaseDefaultAttr(state, decl, params, span):
-	if state.scope.releaseDefaultSet:
+	if state.mod.releaseDefaultSet:
 		logError(state, span, '`release_default` was already set in this scope')
-		logExplain(state, state.scope.releaseDefault.span, '`release_default` was set here')
+		logExplain(state, state.mod.releaseDefault.span, '`release_default` was set here')
 		return
 	
-	state.scope.releaseDefaultSet = True
-	state.scope.releaseDefault = decl
+	state.mod.releaseDefaultSet = True
+	state.mod.releaseDefault = decl
 
 def cconvAttr(state, decl, params, span):
 	if params[0].value != '"C"':
@@ -63,6 +63,9 @@ def strModAttr(state, decl, params, span):
 def dropTraitAttr(state, decl, params, span):
 	decl.isDropTrait = True
 
+def leakAttr(state, decl, params, span):
+	decl.leakOwned = True
+
 AcquireAttr = AttrInfo('acquire_default', acquireDefaultAttr, [FnDecl], [])
 ReleaseAttr = AttrInfo('release_default', releaseDefaultAttr, [FnDecl], [])
 CConvAttr = AttrInfo('cconv', cconvAttr, [FnDecl], [AttrArg(StrLit)])
@@ -71,6 +74,7 @@ DropAttr = AttrInfo('drop', dropAttr, [LetDecl, FnParam], [AttrArg(ValueRef)])
 NoStrAttr = AttrInfo('no_str', noStrAttr, [Mod], [])
 StrModAttr = AttrInfo('str_mod', strModAttr, [Mod], [])
 DropTraitAttr = AttrInfo('drop_trait', dropTraitAttr, [TraitDecl], [])
+LeakAttr = AttrInfo('leak', leakAttr, [ValueRef], [])
 
 builtinAttrs = {
 	AcquireAttr.name: AcquireAttr, 
@@ -80,7 +84,8 @@ builtinAttrs = {
 	DropAttr.name: DropAttr, 
 	NoStrAttr.name: NoStrAttr, 
 	StrModAttr.name: StrModAttr, 
-	DropTraitAttr.name: DropTraitAttr
+	DropTraitAttr.name: DropTraitAttr,
+	LeakAttr.name: LeakAttr
 }
 
 def invokeAttrs(state, expr):

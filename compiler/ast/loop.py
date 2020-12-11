@@ -2,9 +2,6 @@ from .ast       import AST
 from .ifexpr    import If
 from .block     import Block
 from .ctlflow   import Break
-from ..types    import Void
-from ..scope    import ScopeType
-from ..mir.loop import Loop as LoopMIR
 
 class Loop(AST):
 	def __init__(self, block, span):
@@ -12,10 +9,10 @@ class Loop(AST):
 		self.block = block
 	
 	def analyze(self, state, implicitType):
-		state.pushScope(ScopeType.LOOP, self)
-		state.analyzeNode(self.block, Void)
-		block = state.popScope()
-		return LoopMIR(block, self.span)
+		state.beginScope(self.block.span, loop=True)
+		self.block.hasScope = False
+		state.analyzeNode(self.block)
+		state.endScope()
 
 class While(AST):
 	def __init__(self, expr, block, span):
@@ -24,8 +21,8 @@ class While(AST):
 		self.block = block
 	
 	def analyze(self, state, implicitType):
-		ifBlock = Block(self.block.exprs, ScopeType.IF, self.block.span)
-		elseBlock = Block([Break(self.span)], ScopeType.ELSE, self.span)
-		ifExpr = If(self.expr, ifBlock, elseBlock, self.span)
-		loopBlock = Block([ifExpr], ScopeType.LOOP, self.span)
-		state.analyzeNode(Loop(loopBlock, self.span), Void)
+		ifBlock = Block(self.block.exprs, self.block.span)
+		elseBlock = Block([Break(self.span)], self.span.endSpan())
+		ifExpr = If(self.expr, ifBlock, elseBlock, self.block.span)
+		loopBlock = Block([ifExpr], self.span)
+		state.analyzeNode(Loop(loopBlock, self.span))

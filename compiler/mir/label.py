@@ -9,7 +9,7 @@ class Label(MIR):
 		self.span = span
 		self.staticData = data
 	
-	def checkFlow(self, scope):
+	def commit(self, state):
 		pass
 	
 	def writeIR(self, state):

@@ -1,0 +1,18 @@
+import hashmap::HashMap
+import libc::printf
+
+fn main()
+    let map = HashMap::new()
+    
+    map->put("apple", 1)
+    map->put("banana", 2)
+    map->put("pomegranate", 3)
+    map->put("orange", 72)
+    
+    unsafe printf(
+        "orange %d, pomegranate %d, banana %d, apple %d, grape %d\n"
+        map->get("orange")
+        map->get("pomegranate")
+        map->get("banana")
+        map->get("apple")
+        map->get("grape"))

@@ -11,18 +11,16 @@ class FnCall(MIR):
 		self.dynDispatch = dynDispatch
 		self.type = type
 	
-	def checkFlow(self, scope):
-		self.access.checkFlow(scope)
+	def commit(self, state):
+		self.access.commit(state)
 		for arg in self.args:
-			arg.checkFlow(scope)
+			arg.commit(state)
 		for arg in self.cVarArgs:
-			arg.checkFlow(scope)
+			arg.commit(state)
 	
 	def writeIR(self, state):
 		for access in self.args:
 			access.writeIR(state)
-			if self.isDrop and state.loopInfo:
-				state.loopInfo.droppedSymbols.add(access.symbol)
 		
 		for access in self.cVarArgs:
 			access.writeIR(state)

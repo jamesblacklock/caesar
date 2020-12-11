@@ -1,5 +1,6 @@
 import ctypes
-from io       import StringIO
+from io import StringIO
+from .mir.mir import StaticDataType
 
 class FundamentalType:
 	def __init__(self, byteSize, types=None, isFloatType=False, aligned=True):
@@ -439,16 +440,17 @@ class Ret(Instr):
 		return 'ret'
 
 class BlockMarker(Instr):
-	def __init__(self, ast, index):
+	def __init__(self, ast, index, id):
 		super().__init__(ast)
 		self.index = index
+		self.id = id
 	
 	def pretty(self, fnIR):
 		inputs = ', '.join([str(t) for t in fnIR.blockDefs[self.index].inputs])
 		return '.{}({}):'.format(fnIR.blockDefs[self.index].label, inputs)
 	
 	def __str__(self):
-		return '.<{}>:'.format(self.index)
+		return '.<{}>:'.format(self.id)
 
 class Br(Instr):
 	def __init__(self, ast, index):
@@ -750,8 +752,9 @@ class FDiv(Instr):
 		return 'fdiv'
 
 class BlockDef:
-	def __init__(self, index, label, inputs, hasBackwardsCallers):
+	def __init__(self, index, id, label, inputs, hasBackwardsCallers):
 		self.index = index
+		self.id = id
 		self.label = label
 		self.inputs = inputs
 		self.hasBackwardsCallers = hasBackwardsCallers
@@ -762,22 +765,12 @@ class OperandInfo:
 		self.type = fType
 		self.symbol = symbol
 
-class LoopInfo:
-	def __init__(self, parent, ast, continueBlock, breakBlock, inputSymbols):
-		self.ast = ast
-		self.continueBlock = continueBlock
-		self.breakBlock = breakBlock
-		self.droppedSymbols = set()
-		self.inputSymbols = inputSymbols
-		self.parent = parent
-
 class IRState:
 	def __init__(self, fnDecl):
 		self.ast = fnDecl
 		self.name = fnDecl.mangledName
 		self.cVarArgs = fnDecl.cVarArgs
 		self.instr = []
-		self.loopInfo = None
 		self.staticDefs = []
 		self.retType = None
 		self.paramTypes = []
@@ -814,18 +807,12 @@ class IRState:
 		# print('{}{}# [{}]'.format(instrText, space, 
 		# 	', '.join([(t.symbol.name + ': ' if t.symbol else '') + str(t.type) for t in self.operandStack])))
 	
-	def defBlock(self, inputs, hasBackwardsCallers=False):
+	def defBlock(self, inputs, id, hasBackwardsCallers=False):
 		index = len(self.blockDefs)
-		label = '{}__{}'.format(self.name, index)
-		blockDef = BlockDef(index, label, inputs, hasBackwardsCallers)
+		label = '{}__{}'.format(self.name, id)
+		blockDef = BlockDef(index, id, label, inputs, hasBackwardsCallers)
 		self.blockDefs.append(blockDef)
 		return blockDef
-	
-	def pushLoopInfo(self, ast, continueBlock, breakBlock, inputSymbols):
-		self.loopInfo = LoopInfo(self.loopInfo, ast, continueBlock, breakBlock, inputSymbols)
-	
-	def popLoopInfo(self):
-		self.loopInfo = self.loopInfo.parent
 	
 	def setupLocals(self, inputTypes, inputSymbols):
 		operandStack = []
@@ -838,9 +825,6 @@ class IRState:
 		
 		self.operandStack = operandStack
 		self.operandsBySymbol = operandsBySymbol
-	
-	def localIsLoopInput(self, symbol):
-		return self.loopInfo and symbol in self.loopInfo.inputSymbols
 	
 	def localOffset(self, symbol):
 		i = len(self.operandStack) - 1 - self.operandsBySymbol[symbol].index
@@ -959,37 +943,52 @@ def getInputInfo(state):
 	
 	return inputTypes, inputSymbols
 
-def beginBlock(state, ast, blockDef):
-	inputTypes, inputSymbols = getInputInfo(state)
+def writeStaticValueIR(state, ast, staticValue):
+	if staticValue.dataType != StaticDataType.BYTES:
+		state.appendInstr(Imm(ast, staticValue.fType, staticValue.data))
+		return
 	
-	assert len(inputTypes) == len(blockDef.inputs)
-	for t, u in zip(inputTypes, blockDef.inputs):
-		assert t == u
+	b = staticValue.toBytes()
 	
-	state.setupLocals(inputTypes, inputSymbols)
-	state.appendInstr(BlockMarker(ast, blockDef.index))
+	if len(b) in (1, 2, 4, 8):
+		value = int.from_bytes(bytes(b), 'big')
+		state.appendInstr(Imm(ast, staticValue.fType, value))
+	
+	offset = 0
+	size = IPTR.byteSize
+	state.appendInstr(Res(ast, FundamentalType(len(b), types=[])))
+	
+	while True:
+		assert size > 0
+		fType = FundamentalType(size)
+		while offset+size <= len(b):
+			bRange = bytes(b[offset : offset + size])
+			value = int.from_bytes(bRange, 'big')
+			state.appendInstr(Imm(ast, fType, value))
+			state.appendInstr(Imm(ast, IPTR, offset))
+			state.appendInstr(FieldW(ast, 2))
+			offset += size
+		if offset == len(b):
+			break
+		size //= 2
+		
 
 def fnToIR(fnDecl):
-	# print(fnDecl)
-	
 	state = IRState(fnDecl)
 	
 	for (i, param) in enumerate(reversed(fnDecl.params)):
 		if param.fixed:
 			state.appendInstr(Fix(param, i))
 	
-	fnDecl.mirBody.writeIR(state)
-	
-	lastType = type(state.instr[-1])
-	assert lastType != Br and lastType != BrIf
-	if lastType != Ret:
-		state.appendInstr(Ret(fnDecl))
+	for block in fnDecl.cfg:
+		block.writeIR(state)
 	
 	return FnIR(state)
 
 def generateIR(mod):
 	for decl in mod.mods:
-		generateIR(decl)
+		if not decl.isImport:
+			generateIR(decl)
 	
 	for decl in mod.fns:
 		if decl.extern:

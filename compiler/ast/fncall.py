@@ -98,8 +98,6 @@ class FnCall(AST):
 		for _ in range(len(params), len(self.args)):
 			params.append(None)
 		
-		assert state.scope.dropBlock
-		
 		hasCVarArgs = fnType.cVarArgs if fnType else False
 		args = []
 		argFailed = False
@@ -109,7 +107,8 @@ class FnCall(AST):
 			if isSelfArg:
 				arg = selfArg
 				isSelfArg = False
-			arg = state.analyzeNode(arg, expectedType)
+			if arg:
+				arg = state.analyzeNode(arg, expectedType)
 			if arg == None or arg.type == None:
 				argFailed = True
 				continue
@@ -144,10 +143,5 @@ class FnCall(AST):
 			mir = None
 		else:
 			mir = FnCallMIR(access, args, cVarArgs, dynDispatch, returnType, self.span)
-		
-		for arg in args:
-			if arg.borrows:
-				lateRef = SymbolAccess.noop(arg.symbol, state.scope.dropBlock, arg.span)
-				state.scope.dropBlock.append(lateRef)
 		
 		return mir

@@ -2,9 +2,8 @@ import os
 from .ast            import AST, Name
 from ..sourcefile    import SourceFile
 from ..symbol.symbol import SymbolType
-from ..symbol.mod    import Mod
 from ..log           import logError, logExplain
-from ..              import tokenizer, parser, ir, amd64, build
+from ..              import tokenizer, parser, ir, amd64, build, platform
 
 ALL_IMPORTS = {}
 
@@ -49,6 +48,7 @@ class ImportTree(AST):
 
 class ImportInfo:
 	pass
+
 class Import(AST):
 	def __init__(self, importTree, span):
 		super().__init__(span)
@@ -72,10 +72,16 @@ class Import(AST):
 			name = item.path[i]
 			fileDir = filePath
 			filePath = '{}/{}'.format(filePath, name.content)
-			fileName = '{}.csr'.format(filePath)
-			if os.path.exists(fileName):
+			sourceFile = '{}.csr'.format(filePath)
+			objectFile = '{}.o'.format(filePath)
+			hasSource = os.path.exists(sourceFile)
+			hasObjectCode = os.path.exists(objectFile)
+			if hasSource or hasObjectCode:
+				assert hasSource
 				importInfo = ImportInfo()
-				importInfo.fileName = fileName
+				importInfo.id = filePath
+				importInfo.sourceFile = sourceFile if hasSource else None
+				importInfo.objectFile = objectFile if hasObjectCode else None
 				importInfo.dir = fileDir
 				importInfo.name = name
 				importInfo.symbolPath = item.path[i + 1:]
@@ -101,31 +107,37 @@ class Import(AST):
 		
 		name = importInfo.name
 		
-		if importInfo.fileName in ALL_IMPORTS:
-			importedMod = ALL_IMPORTS[importInfo.fileName]
+		if importInfo.id in ALL_IMPORTS:
+			importedMod = ALL_IMPORTS[importInfo.id]
 		else:
-			source = SourceFile(importInfo.fileName)
+			source = SourceFile(importInfo.sourceFile)
 			tok = tokenizer.tokenize(source)
 			ast = parser.parse(source, tok)
 			importedMod = state.analyze(ast)
-			ir.generateIR(importedMod)
-			asm = amd64.generateAsm(importedMod)
 			
-			asmFileName = '{}/{}.asm'.format(importInfo.dir, name.content)
-			objFileName = '{}/{}.o'.format(importInfo.dir, name.content)
+			checksum = None
+			if not state.forceRebuilds:
+				checksum = platform.readChecksum(importInfo)
 			
-			try:
-				outfile = open(asmFileName, 'w')
-				outfile.write(asm)
-				outfile.close()
-				build.buildObjFile(asmFileName, objFileName)
-			except Exception as e:
-				print(e)
+			if checksum != source.checksum:
+				ir.generateIR(importedMod)
+				asm = amd64.generateAsm(importedMod)
+				
+				asmFileName = '{}/{}.asm'.format(importInfo.dir, name.content)
+				importInfo.objectFile = '{}/{}.o'.format(importInfo.dir, name.content)
+				
+				try:
+					outfile = open(asmFileName, 'w')
+					outfile.write(asm)
+					outfile.close()
+					build.buildObjFile(asmFileName, importInfo.objectFile)
+				except IOError as e:
+					print(e)
 			
 			importedMod.mainFn = None
-			importedMod.objCodePath = objFileName
+			importedMod.objCodePath = importInfo.objectFile
 			setImportFlags(state, importedMod)
-			ALL_IMPORTS[importInfo.fileName] = importedMod
+			ALL_IMPORTS[importInfo.id] = importedMod
 		
 		if importedMod not in mod.mods:
 			mod.mods.append(importedMod)
@@ -157,6 +169,7 @@ class Import(AST):
 		else:
 			symbol.nameSpan = name.span
 			mod.symbolTable[name.content] = symbol
+			mod.imports.append(symbol)
 		
 		return (importedMod, symbol)
 	

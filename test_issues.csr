@@ -15,9 +15,9 @@ import libc { printf, malloc, free }
 # fn param_return_escaping_borrow(param: &int) -> &int
 #     param
 
-# fn param_escaping_borrow(param: &&mut int)
-#     let mut x = 5
-#     param^ = &mut x
+fn param_escaping_borrow(param: &&mut int)
+    let mut x = 5
+    param^ = &mut x
 
 # fn drop_old_ptr_value(s: &mut str)
 #     s^ = "duh"
@@ -29,15 +29,15 @@ import libc { printf, malloc, free }
 # struct OwnedFieldDropTest
 #     m1: owned(malloc, free) &void
 
-struct Thing { a: int }
+# struct Thing { a: int }
 
-fn moved_val_in_loop()
-    let mut x = 0
-    let mut s = Thing { a: 42 }
-    while x < 5
-        let t = s
-        unsafe printf("%d: %d\n", x, t.a)
-        x = x+1
+# fn moved_val_in_loop()
+#     let mut x = 0
+#     let mut s = Thing { a: 42 }
+#     while x < 5
+#         let t = s
+#         unsafe printf("%d: %d\n", x, t.a)
+#         x = x+1
 
 fn main()
     # let mut s = "asdf"->concat("qwer")

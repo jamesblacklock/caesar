@@ -25,6 +25,15 @@ pub struct str
     data: StrData
 
 impl str
+    pub fn clone(self: &str) -> str
+        let buf
+        
+        unsafe
+            buf = malloc(self^.size)
+            memcpy(borrow buf, (&self^.data as &&byte)^, self^.size)
+        
+        str { size: self^.size, data: Owned(buf) }
+    
     pub fn concat(self: &str, other: str) -> str
         let size = self^.size + other.size - 1
         let buf

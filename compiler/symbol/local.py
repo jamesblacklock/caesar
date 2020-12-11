@@ -36,6 +36,7 @@ class Local(ValueSymbol):
 		self.unused = True
 		self.isLocal = True
 		self.isParam = isParam
+		self.dropPoint = None
 		self.dropFn = None
 		self.fixed = False
 		self.reserve = False
@@ -51,10 +52,6 @@ class Local(ValueSymbol):
 		self.type = state.resolveTypeRefSig(self.ast.typeRef)
 		if self.type or self.dropFn:
 			self.checkDropFn(state)
-	
-	def declSymbol(self, scope):
-		self.dropBlock = scope.fnDecl.paramDropBlock if self.isParam else scope.dropBlock
-		scope.declSymbol(self)
 	
 	def checkDropFn(self, state):
 		if self.type and self.type.dropFn:

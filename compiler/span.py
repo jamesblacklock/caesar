@@ -1,26 +1,26 @@
-from re   import findall
-from enum import Enum
+from re import findall
 
 class Span:
-	def __init__(self, source, startLine, startColumn, endLine, endColumn):
+	def __init__(self, source, startLine, startColumn, endLine, endColumn, zeroWidth=False):
 		self.source = source
 		self.startLine = startLine
 		self.startColumn = startColumn
 		self.endLine = endLine
 		self.endColumn = endColumn
+		self.zeroWidth = zeroWidth
 	
 	@staticmethod
 	def merge(span1, span2):
 		if span1 == None: return span2
 		if span2 == None: return span1
-		return Span(span1.source, span1.startLine, span1.startColumn, span2.endLine, span2.endColumn)
-	
-	@staticmethod
-	def cursor(span):
-		return Span(span.source, span.startLine, span.startColumn, span.startLine, span.startColumn)
+		zeroWidth = \
+			span1.startLine == span2.startLine and span1.startColumn == span2.startColumn and \
+			span1.endLine == span2.endLine     and span1.endColumn == span2.endColumn and \
+			span1.zeroWidth and span2.zeroWidth
+		return Span(span1.source, span1.startLine, span1.startColumn, span2.endLine, span2.endColumn, zeroWidth)
 	
 	def clone(self):
-		return Span(self.source, self.startLine, self.startColumn, self.endLine, self.endColumn)
+		return Span(self.source, self.startLine, self.startColumn, self.endLine, self.endColumn, self.zeroWidth)
 	
 	def startSpan(self):
 		other = self.clone()
@@ -28,11 +28,28 @@ class Span:
 		other.endColumn = other.startColumn
 		return other
 	
-	def endSpan(self):
+	def endSpan(self, advance=False):
 		other = self.clone()
+		if advance:
+			other.endColumn += 1
+		other.zeroWidth = True
 		other.startLine = other.endLine
 		other.startColumn = other.endColumn
 		return other
+	
+	# def advance(self):
+	# 	self.endColumn += 1
+	# 	line = self.source.lines[self.startLine]
+	# 	if len(line) < self.endColumn and len(self.source.lines) >= self.endLine+1:
+	# 		self.endLine += 1
+	# 		self.endColumn = 1
+		
+	# 	self.startLine = self.endLine
+	# 	self.startColumn = self.endColumn
+	# 	return self
+	
+	def reveal(self):
+		print(revealSpan(self))
 
 class AnsiColor:
 	BLACK = '30'
@@ -63,7 +80,9 @@ def revealSpan(span, message='', leadingLines=2, followingLines=2, indicatorChar
 	# print lines containing span
 	output.append('\033[34;1m{:>4}|{}\033[0m'.format(line, gutterPadding)) # gutter
 	output.append(source.lines[line-1][:span.startColumn-1]) # leading content
-	output.append('\033[{};1m'.format(color)) # color
+	
+	if not span.zeroWidth:
+		output.append('\033[{};1m'.format(color)) # color
 	
 	# span content
 	if span.startLine == span.endLine:

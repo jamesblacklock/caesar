@@ -1,21 +1,22 @@
-from ..ast.ast import Symbol, Name, Attr
+from ..ast.ast import Symbol, Name
 from .symbol   import SymbolType
 from ..types   import typesMatch
-from ..scope   import ScopeType
-from ..log     import logError, logExplain
+from ..span    import Span
+from ..log     import logError, logWarning, logExplain
 from .trait    import Trait
 
 class Mod(Symbol):
 	def __init__(self, name, doccomment, decls, span):
 		super().__init__(name, span, doccomment)
 		self.topLevel = False
+		self.source = None
 		self.decls = decls
 		# self.types = []
 		self.fns = []
 		self.mods = []
 		self.statics = []
 		# self.consts = []
-		# self.imports = []
+		self.imports = []
 		self.mainFn = None
 		self.isImpl = False
 		self.isImport = False
@@ -24,18 +25,30 @@ class Mod(Symbol):
 		self.isStrMod = False
 		self.acquireDefault = None
 		self.releaseDefault = None
+		self.acquireDefaultSet = False
+		self.releaseDefaultSet = False
 		self.symbols = []
 		self.symbolTable = {}
+		self.isFnMod = False
+		self.strMod = None
 		
 		self.symbolType = SymbolType.MOD
+		self.unused = True
 		self.ast = self
+		self.parent = None
 	
 	def createSymbol(self, state):
 		return self
 	
 	def checkSig(self, state):
 		from .. import attrs
-		state.pushScope(ScopeType.MOD, self)
+		
+		self.parent = state.mod
+		state.mod = self
+		
+		if self.parent:
+			self.acquireDefault = self.parent.acquireDefault
+			self.releaseDefault = self.parent.releaseDefault
 		
 		attrs.invokeAttrs(state, self)
 		
@@ -49,13 +62,11 @@ class Mod(Symbol):
 				continue
 			symbol.checkSig(state)
 		
-		self.acquireDefault = state.scope.acquireDefault
-		self.releaseDefault = state.scope.releaseDefault
-		
-		state.popScope()
+		self.mangledName = state.mangleName(self)
+		state.mod = self.parent
 	
 	def analyze(self, state, deps):
-		state.pushScope(ScopeType.MOD, self)
+		state.mod = self
 		
 		deps.push(self)
 		for symbol in self.symbols:
@@ -67,21 +78,15 @@ class Mod(Symbol):
 		for fn in self.fns:
 			fn.analyzeBody(state)
 		
-		state.popScope()
-	
-	def pretty(self, output, indent=0):
-		output.write('mod {}\n'.format(self.name), indent)
-		for decl in self.decls:
-			decl.pretty(output, indent + 1)
-			output.write('\n\n')
-
-IMPL_COUNTER = 0
+		for symbol in self.imports:
+			if symbol.unused and not symbol == self.strMod.symbolTable['str']:
+				logWarning(state, symbol.nameSpan, 'unused import')
+		
+		state.mod = self.parent
 
 class Impl(Mod):
 	def __init__(self, path, traitPath, doccomment, decls, span):
-		global IMPL_COUNTER
-		name = Name('$impl{}'.format(IMPL_COUNTER), span.startSpan())
-		IMPL_COUNTER += 1
+		name = Name('$impl???', Span.merge(path[0].span, path[-1].span))
 		super().__init__(name, doccomment, decls, span)
 		self.isImpl = True
 		self.path = path
@@ -92,11 +97,13 @@ class Impl(Mod):
 		self.vtblName = None
 	
 	def checkSig(self, state):
-		super().checkSig(state)
-		
 		symbol = state.lookupSymbol(self.path, inTypePosition=True)
 		if symbol:
 			self.type = symbol.type
+			if symbol:
+				self.name = '$impl{}'.format(state.mangleName(symbol))
+		
+		super().checkSig(state)
 		
 		if self.traitPath:
 			for symbol in self.symbols:

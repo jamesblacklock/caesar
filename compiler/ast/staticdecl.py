@@ -1,5 +1,4 @@
 from .ast            import ValueSymbol
-from ..types         import typesMatch, Void
 from ..log           import logError
 from ..symbol.static import Static
 

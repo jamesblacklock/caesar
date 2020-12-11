@@ -10,9 +10,9 @@ class InfixOp(MIR):
 		self.op = op
 		self.type = type
 	
-	def checkFlow(self, scope):
-		self.l.checkFlow(scope)
-		self.r.checkFlow(scope)
+	def commit(self, state):
+		self.l.commit(state)
+		self.r.commit(state)
 	
 	def writeIR(self, state):
 		if self.op == InfixOps.PLUS:

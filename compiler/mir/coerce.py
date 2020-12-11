@@ -7,33 +7,33 @@ class Coerce(MIR):
 		self.access = access
 		self.type = type
 	
-	def checkFlow(self, scope):
-		self.access.checkFlow(scope)
+	def commit(self, state):
+		self.access.commit(state)
 		if self.access.borrows:
 			self.borrows = self.access.borrows
 	
-	def staticEval(self, state):
-		staticValue = self.access.staticEval(state)
-		if staticValue == None:
-			return None
+	# def staticEval(self, state):
+	# 	staticValue = self.access.staticEval(state)
+	# 	if staticValue == None:
+	# 		return None
 		
-		if staticValue.dataType == StaticDataType.INT and self.type.isIntLikeType:
-			outOfRange = False
-			if staticValue.data < self.type.MIN:
-				outOfRange = True
-				staticValue.data = self.type.MIN
-			elif staticValue.data > self.type.MAX:
-				outOfRange = True
-				staticValue.data = self.type.MAX
+	# 	if staticValue.dataType == StaticDataType.INT and self.type.isIntLikeType:
+	# 		outOfRange = False
+	# 		if staticValue.data < self.type.MIN:
+	# 			outOfRange = True
+	# 			staticValue.data = self.type.MIN
+	# 		elif staticValue.data > self.type.MAX:
+	# 			outOfRange = True
+	# 			staticValue.data = self.type.MAX
 			
-			if outOfRange:
-				logWarning(state, self.access.span, 'value out of range for type `{}` and will be clamped'
-					.format(self.type))
+	# 		if outOfRange:
+	# 			logWarning(state, self.access.span, 'value out of range for type `{}` and will be clamped'
+	# 				.format(self.type))
 			
-			staticValue.fType = ir.FundamentalType.fromResolvedType(self.type)
-			return staticValue
-		else:
-			return None
+	# 		staticValue.fType = ir.FundamentalType.fromResolvedType(self.type)
+	# 		return staticValue
+	# 	else:
+	# 		return None
 	
 	def writeTraitCoercionIR(self, state):
 		vtblName = self.access.type.baseType.traitImpls[self.type.baseType].vtblName
