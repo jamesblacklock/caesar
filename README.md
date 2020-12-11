@@ -29,6 +29,7 @@ Currently Linux x64 and macOS x64 targets are supported. Cross-compilation is no
 
 - macOS dependencies:
 
+	- [macholib](https://github.com/ronaldoussoren/macholib)
 	- [NASM](https://www.nasm.us/)
 
 - Linux dependencies:
