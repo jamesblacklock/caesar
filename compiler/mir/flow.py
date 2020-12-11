@@ -171,6 +171,7 @@ class CFGBuilder:
 			if type(access) != SymbolRead and not isRValue:
 				access = SymbolAccess.read(flow, access)
 		
+		self.failed = flow.failed
 		return access
 	
 	def decl(self, symbol):

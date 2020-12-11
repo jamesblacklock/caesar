@@ -1,5 +1,5 @@
 import murmur3::MurmurHash3_x64_128
-import libc { malloc, calloc, free, printf }
+import libc { malloc, calloc, free }
 import drop::Drop
 
 fn getHash(key: &str) -> uint64

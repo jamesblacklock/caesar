@@ -11,12 +11,13 @@ class FieldState:
 		self.field = field
 		self.init = init
 		self.moved = False
+		self.movedSpan = None
 		# self.borrows = set()
 	
 	def cloneForNewBlock(self):
-		other = FieldState(self.field)
-		other.init = self.init
+		other = FieldState(self.field, self.init)
 		other.moved = self.moved
+		other.movedSpan = self.movedSpan
 		# other.borrows = set(self.borrows)
 		return other
 
@@ -25,7 +26,15 @@ class FieldStates(dict):
 		if field in self:
 			return super().__getitem__(field)
 		else:
-			return FieldState(field, True)
+			info = FieldState(field, True)
+			self[field] = info
+			return info
+	
+	def cloneForNewBlock(self):
+		other = FieldStates()
+		for (k, v) in self.items():
+			other[k] = v.cloneForNewBlock()
+		return other
 
 class SymbolState:
 	def __init__(self, symbol):
@@ -36,7 +45,7 @@ class SymbolState:
 		self.wasRead = False
 		self.wasWritten = False
 		self.lastUse = None
-		self.lastSpan = symbol.span
+		self.movedSpan = None
 		self.unused = True
 		self.init = symbol.isParam
 		self.moved = False
@@ -53,19 +62,20 @@ class SymbolState:
 		other.wasRead = False
 		other.wasWritten = False
 		other.lastUse = None
-		other.lastSpan = self.lastSpan
+		other.movedSpan = self.movedSpan
 		other.unused = self.unused
 		other.init = self.init
 		other.moved = self.moved
 		other.borrows = set(self.borrows)
 		other.borrowedBy = dict(self.borrowedBy)
+		other.fieldState = self.fieldState.cloneForNewBlock()
 		return other
 	
 	def merge(self, other):
 		self.unused = self.unused or other.unused
 		self.init = self.init and other.init
 		self.moved = self.moved or other.moved
-		self.lastSpan = other.lastSpan
+		self.movedSpan = other.movedSpan
 		self.borrows.update(other.borrows)
 		self.borrowedBy.update(other.borrowedBy)
 	
@@ -78,7 +88,6 @@ class SymbolState:
 		self.wasRead = access.ref
 		self.wasWritten = access.write
 		self.lastUse = access
-		self.lastSpan = access.span
 
 class CFGBlock:
 	def __init__(self, ancestors, span):
@@ -148,7 +157,7 @@ class CFGBlock:
 					message = 'value was moved out; `{}` must be reinitialized before next loop iteration'
 				else:
 					message = 'value was moved out; `{}` must be initialized during next loop iteration'
-				logError(state, reverseInfo.lastSpan, message.format(reverseInfo.symbol.name))
+				logError(state, reverseInfo.movedSpan, message.format(reverseInfo.symbol.name))
 	
 	def addAncestor(self, state, ancestor):
 		assert not self.mir
@@ -211,19 +220,22 @@ class CFGBlock:
 		if not (info.wasDeclared or info.wasRedeclared):
 			self.inputs.add(access.symbol)
 	
+	def refLiveCheck(self, state, access, info):
+		if not info.init:
+			logError(state, access.span, '`{}` has not been initialized'.format(access.symbol.name))
+		elif info.moved:
+			logError(state, access.span, 'the value in `{}` has been moved'.format(access.symbol.name))
+			logExplain(state, info.movedSpan, '`{}` was moved here'.format(access.symbol.name))
+	
 	def refRead(self, state, access, info):
 		symbol = info.symbol
 		
-		if info.moved or not info.init:
-			if info.moved:
-				logError(state, access.span, 'the value in `{}` has been moved'.format(symbol.name))
-				logExplain(state, info.lastSpan, '`{}` was moved here'.format(symbol.name))
-			else:
-				logError(state, access.span, '`{}` has not been initialized'.format(symbol.name))
+		self.refLiveCheck(state, access, info)
 		
 		access.borrows = info.borrows
 		
 		info.moved = not access.copy
+		info.movedSpan = access.span
 	
 	def refWrite(self, state, access, info):
 		if info.init and not info.moved and info.lastUse:
@@ -246,11 +258,46 @@ class CFGBlock:
 		
 		info.symbol.fixed = True
 	
+	def fieldLiveCheck(self, state, access, fieldInfo):
+		if not fieldInfo.init:
+			logError(state, access.fieldSpan, 'field `{}` has not been initialized'.format(access.field.name))
+		elif fieldInfo.moved:
+			logError(state, access.fieldSpan, 'the value in field `{}` has been moved'.format(access.field.name))
+			logExplain(state, fieldInfo.movedSpan, 'field `{}` was moved here'.format(access.field.name))
+	
 	def fieldRead(self, state, access, info):
-		pass
+		symbol = info.symbol
+		field = access.field
+		fieldSpan = access.fieldSpan
+		# isIndex = len(access.dynOffsets) > 0
+		
+		self.refLiveCheck(state, access, info)
+		
+		if field:
+			# if field not in info.fieldInfo:
+			# 	uninit = info.uninit or info.typeModifiers and field in info.typeModifiers.uninitFields
+			# 	fieldInfo = FieldInfo(field, uninit)
+			# 	info.fieldInfo[field] = fieldInfo
+			# else:
+			fieldInfo = info.fieldState[field]
+			self.fieldLiveCheck(state, access, fieldInfo)
+			fieldInfo.movedSpan = fieldSpan
+			fieldInfo.moved = not field.type.isCopyable
 	
 	def fieldWrite(self, state, access, info):
-		pass
+		symbol = info.symbol
+		field = access.field
+		fieldSpan = access.fieldSpan
+		# isIndex = len(access.dynOffsets) > 0
+		
+		self.refLiveCheck(state, access, info)
+		
+		if field:
+			fieldInfo = info.fieldState[field]
+			if fieldInfo.init and not fieldInfo.moved:
+				self.dropField(state, symbol, field, access.beforeWriteDropPoint)
+			fieldInfo.moved = False
+			fieldInfo.init = True
 	
 	def fieldAddr(self, state, access, info):
 		pass
@@ -403,18 +450,17 @@ class CFGBlock:
 						logWarning(state, symbol.span, 
 							'I can\'t drop `enum`s properly; field `{}` will not be dropped'.format(field.name))
 	
-	# def dropField(self, state, symbol, field, block, span):
-	# 	fieldState = self.symbolState[symbol].fieldState
-	# 	if field not in fieldState or not fieldState[field].uninit:
-	# 		if field.type.isOwnedType:
-	# 			logError(state, symbol.span, 
-	# 				'owned value in field `{}` was not discarded'.format(field.name))
-	# 			logExplain(state, span, 'value escapes here')
+	def dropField(self, state, symbol, field, dropPoint):
+		fieldInfo = self.symbolState[symbol].fieldState[field]
+		if fieldInfo.init and not fieldInfo.moved:
+			if field.type.isOwnedType:
+				logError(state, symbol.span, 'owned value in field `{}` was not discarded'.format(field.name))
+				logExplain(state, dropPoint.span, 'value escapes here')
 			
-	# 		if field.type.dropFn:
-	# 			self.callDropFn(field.type.dropFn, symbol, field, fieldBase, block.exprs, span)
+			if field.type.dropFn:
+				self.callDropFn(field.type.dropFn, symbol, field, fieldBase, dropPoint)
 			
-	# 		self.dropFields(state, symbol, field, field.offset, block.exprs, span)
+			self.dropFields(state, symbol, field, field.offset, dropPoint)
 	
 	def dropInd(self, state, symbol, dropPoint, indLevel):
 		if symbol.type.typeAfterDeref(indLevel).isOwnedType:

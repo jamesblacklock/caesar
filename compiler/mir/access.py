@@ -372,7 +372,7 @@ class SymbolWrite(SymbolAccess):
 		else:
 			self.accessType = AccessType.REF_WRITE
 		
-		if self.deref:
+		if self.deref or self.field:
 			self.beforeWriteDropPoint = state.dropPoint
 			state.appendDropPoint()
 		

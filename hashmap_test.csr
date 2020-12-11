@@ -10,7 +10,7 @@ fn main()
     map->put("orange", 72)
     
     unsafe printf(
-        "%d, %d, %d, %d, %d\n"
+        "orange %d, pomegranate %d, banana %d, apple %d, grape %d\n"
         map->get("orange")
         map->get("pomegranate")
         map->get("banana")
