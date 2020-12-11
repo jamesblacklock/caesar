@@ -1,4 +1,4 @@
-from .mir    import MIR
+from .mir    import MIR, TypeModifiers
 from .access import SymbolAccess, SymbolRead, AccessType
 from .fncall import FnCall
 from .drop   import DropSymbol
@@ -53,6 +53,7 @@ class SymbolState:
 		self.borrowedBy = {}
 		self.staticValue = None
 		self.fieldState = FieldStates()
+		self.typeModifiers = TypeModifiers()
 	
 	def cloneForNewBlock(self):
 		other = SymbolState(self.symbol)
@@ -251,7 +252,7 @@ class CFGBlock:
 			borrowedInfo.borrowedBy[info.symbol] = access.rvalue
 		
 		if access.rvalue.typeModifiers:
-            info.typeModifiers = access.rvalue.typeModifiers.clone()
+			info.typeModifiers = access.rvalue.typeModifiers.clone()
 		
 		info.init = True
 		info.moved = False
@@ -289,8 +290,8 @@ class CFGBlock:
 			fieldInfo.moved = not field.type.isCopyable
 			
 			# movedFields = allFields(use.field.type)
-            # movedFields.add(use.field)
-            # info.typeModifiers.uninitFields.update(movedFields)
+			# movedFields.add(use.field)
+			# info.typeModifiers.uninitFields.update(movedFields)
 	
 	def fieldWrite(self, state, access, info):
 		symbol = info.symbol
