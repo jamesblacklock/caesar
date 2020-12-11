@@ -93,7 +93,7 @@ class Import(AST):
 	def importItem(state, mod, item):
 		searchPaths = [
 			'compiler/stdlib',
-			'.'
+			os.path.split(mod.source.fileName)[0]
 		]
 		
 		for path in searchPaths:
@@ -131,6 +131,7 @@ class Import(AST):
 					outfile.write(asm)
 					outfile.close()
 					build.buildObjFile(asmFileName, importInfo.objectFile)
+					os.remove(asmFileName)
 				except IOError as e:
 					print(e)
 			

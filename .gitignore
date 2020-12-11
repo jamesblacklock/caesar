@@ -5,3 +5,4 @@ __pycache__
 .vscode
 *.asm
 misc_untracked
+.VSCodeCounter
