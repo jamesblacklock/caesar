@@ -36,6 +36,7 @@ class SymbolState:
 		self.wasRead = False
 		self.wasWritten = False
 		self.lastUse = None
+		self.lastSpan = symbol.span
 		self.unused = True
 		self.init = symbol.isParam
 		self.moved = False
@@ -52,6 +53,7 @@ class SymbolState:
 		other.wasRead = False
 		other.wasWritten = False
 		other.lastUse = None
+		other.lastSpan = self.lastSpan
 		other.unused = self.unused
 		other.init = self.init
 		other.moved = self.moved
@@ -63,6 +65,7 @@ class SymbolState:
 		self.unused = self.unused or other.unused
 		self.init = self.init and other.init
 		self.moved = self.moved or other.moved
+		self.lastSpan = other.lastSpan
 		self.borrows.update(other.borrows)
 		self.borrowedBy.update(other.borrowedBy)
 	
@@ -75,6 +78,7 @@ class SymbolState:
 		self.wasRead = access.ref
 		self.wasWritten = access.write
 		self.lastUse = access
+		self.lastSpan = access.span
 
 class CFGBlock:
 	def __init__(self, ancestors, span):
@@ -140,11 +144,11 @@ class CFGBlock:
 			inputIsLive = inputInfo.init and not inputInfo.moved
 			reverseIsLive = reverseInfo.init and not reverseInfo.moved
 			if inputIsLive and not reverseIsLive:
-				logError(state, reverseInfo.lastUse.span, 
-					'value was moved out; `{}` must be reinitialized before next loop iteration'.format(reverseInfo.symbol.name))
-			# elif reverseIsLive and not inputIsLive:
-			# 	logError(self.state, reverseInfo.lastUse.span, 
-			# 		'value was moved out; `{}` must be reinitialized before next loop iteration'.format(reverseInfo.symbol.name))
+				if reverseInfo.symbol.mut:
+					message = 'value was moved out; `{}` must be reinitialized before next loop iteration'
+				else:
+					message = 'value was moved out; `{}` must be initialized during next loop iteration'
+				logError(state, reverseInfo.lastSpan, message.format(reverseInfo.symbol.name))
 	
 	def addAncestor(self, state, ancestor):
 		assert not self.mir
@@ -213,7 +217,7 @@ class CFGBlock:
 		if info.moved or not info.init:
 			if info.moved:
 				logError(state, access.span, 'the value in `{}` has been moved'.format(symbol.name))
-				logExplain(state, info.lastUse.span, '`{}` was moved here'.format(symbol.name))
+				logExplain(state, info.lastSpan, '`{}` was moved here'.format(symbol.name))
 			else:
 				logError(state, access.span, '`{}` has not been initialized'.format(symbol.name))
 		

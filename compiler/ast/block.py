@@ -79,8 +79,9 @@ class Block(AST):
 			access = None
 		
 		if state.scope.parent == None:
-			state.block.didReturn = True
-			state.block.returnAccess = access
+			if not state.block.didReturn:
+				state.block.didReturn = True
+				state.block.returnAccess = access
 		
 		if unreachable:
 			logWarning(state, unreachable, 'unreachable code')
