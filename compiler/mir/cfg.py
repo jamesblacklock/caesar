@@ -1,10 +1,31 @@
 from .mir    import MIR
-from .access import SymbolAccess, SymbolRead
+from .access import SymbolAccess, SymbolRead, AccessType
 from .fncall import FnCall
 from .drop   import DropSymbol
 from ..ir    import Br, BrIf, Ret, BlockMarker, Raise, getInputInfo
 from ..log   import logError, logExplain
 from ..types import PtrType
+
+class FieldState:
+	def __init__(self, field, init):
+		self.field = field
+		self.init = init
+		self.moved = False
+		# self.borrows = set()
+	
+	def cloneForNewBlock(self):
+		other = FieldState(self.field)
+		other.init = self.init
+		other.moved = self.moved
+		# other.borrows = set(self.borrows)
+		return other
+
+class FieldStates(dict):
+	def __getitem__(self, field):
+		if field in self:
+			return super().__getitem__(field)
+		else:
+			return FieldState(field, True)
 
 class SymbolState:
 	def __init__(self, symbol):
@@ -21,6 +42,7 @@ class SymbolState:
 		self.borrows = set()
 		self.borrowedBy = {}
 		self.staticValue = None
+		self.fieldState = FieldStates()
 	
 	def cloneForNewBlock(self):
 		other = SymbolState(self.symbol)
@@ -154,29 +176,56 @@ class CFGBlock:
 		
 		info = self.symbolState[access.symbol]
 		
-		if access.write:
-			if access.deref:
-				self.derefWriteSymbol(state, access, info)
-			elif access.isFieldAccess:
-				self.fieldWriteSymbol(state, access, info)
-			else:
-				self.writeSymbol(state, access, info)
-		elif access.addr:
-			self.addrSymbol(state, access, info)
-		elif access.deref:
-			self.derefSymbol(state, access, info)
+		if access.accessType == AccessType.REF_READ:
+			self.refRead(state, access, info)
+		elif access.accessType == AccessType.REF_WRITE:
+			self.refWrite(state, access, info)
+		elif access.accessType == AccessType.REF_ADDR:
+			self.refAddr(state, access, info)
+		elif access.accessType == AccessType.FIELD_READ:
+			self.fieldRead(state, access, info)
+		elif access.accessType == AccessType.FIELD_WRITE:
+			self.fieldWrite(state, access, info)
+		elif access.accessType == AccessType.FIELD_ADDR:
+			self.fieldAddr(state, access, info)
+		elif access.accessType == AccessType.DEREF_READ:
+			self.derefRead(state, access, info)
+		elif access.accessType == AccessType.DEREF_WRITE:
+			self.derefWrite(state, access, info)
+		elif access.accessType == AccessType.DEREF_FIELD_READ:
+			self.derefFieldRead(state, access, info)
+		elif access.accessType == AccessType.DEREF_FIELD_WRITE:
+			self.derefFieldWrite(state, access, info)
 		else:
-			self.readSymbol(state, access, info)
+			assert 0
 		
 		info.recordTouch(access)
+		for borrowed in info.borrows:
+			borrowedInfo = self.symbolState[borrowed.symbol]
+			borrowedInfo.recordTouch(access)
+		
 		if not (info.wasDeclared or info.wasRedeclared):
 			self.inputs.add(access.symbol)
 	
-	def writeSymbol(self, state, access, info):
+	def refRead(self, state, access, info):
+		symbol = info.symbol
+		
+		if info.moved or not info.init:
+			if info.moved:
+				logError(state, access.span, 'the value in `{}` has been moved'.format(symbol.name))
+				logExplain(state, info.lastUse.span, '`{}` was moved here'.format(symbol.name))
+			else:
+				logError(state, access.span, '`{}` has not been initialized'.format(symbol.name))
+		
+		access.borrows = info.borrows
+		
+		info.moved = not access.copy
+	
+	def refWrite(self, state, access, info):
 		if info.init and not info.moved and info.lastUse:
 			self.dropLastUse(state, info)
 		
-		if not access.symbol.mut and info.init:
+		if not info.symbol.mut and info.init:
 			logError(state, access.lvalueSpan, 'assignment target is not mutable')
 		
 		info.borrows = access.rvalue.borrows
@@ -187,43 +236,23 @@ class CFGBlock:
 		info.init = True
 		info.moved = False
 	
-	def fieldWriteSymbol(self, state, access, info):
+	def refAddr(self, state, access, info):
+		if access.type.mut and not info.symbol.mut:
+			logError(state, access.span, 'mutable borrow of immutable symbol')
+		
+		info.symbol.fixed = True
+	
+	def fieldRead(self, state, access, info):
 		pass
 	
-	def derefWriteSymbol(self, state, access, info):
-		self.readSymbol(state, access, info)
-		
-		symbol = access.symbol
-		# isField = access.isFieldAccess
-		# field = access.field
-		# fieldSpan = access.fieldSpan
-		# isIndex = len(access.dynOffsets) > 0
-		
-		if symbol.type.isPtrType and not symbol.type.mut:
-			logError(state, access.lvalueSpan, 'assignment target is not mutable')
-		
-		# if info.borrows:
-		# 	for borrow in info.borrows:
-		# 		if borrow.symbol in self.symbolInfo:
-		# 			borrowInfo = self.symbolInfo[borrow.symbol]
-		# 			borrowInfo.borrowedBy.remove(info.symbol)
-		
-		# info.borrows = access.rvalue.borrows
-		
-		# if isField:
-		# 	pass
-		# else:
-		# 	self.dropInd(symbol, access.dropBeforeAssignBlock, access.deref)
-		
-		# assert access.borrows
-		# for borrow in access.borrows:
-		# 	borrowInfo = self.loadAndSaveSymbolInfo(borrow.symbol)
-		# 	if borrowInfo == None:
-		# 		continue
-		# 	self.writeSymbol(borrow, borrowInfo)
+	def fieldWrite(self, state, access, info):
+		pass
 	
-	def derefSymbol(self, state, access, info):
-		self.readSymbol(state, access, info)
+	def fieldAddr(self, state, access, info):
+		pass
+	
+	def derefRead(self, state, access, info):
+		self.refRead(state, access, info)
 		
 		symbol = access.symbol
 		
@@ -236,57 +265,65 @@ class CFGBlock:
 			else:
 				logError(state, access.span, '`{}` has not been initialized'.format(symbol.name))
 		
-		for borrow in info.borrows:
+		for borrowed in info.borrows:
 			errCount = 0
-			if borrow.symbol not in state.scope.symbols:
+			if borrowed.symbol not in state.scope.symbols:
 				if errCount == 0:
 					logError(state, access.span, 'borrowed value has gone out of scope')
 				errCount += 1
 				countStr = '' if errCount < 2 else '({}) '.format(errCount)
-				logExplain(state, borrow.span, 'borrow {}originally occurred here'.format(countStr))
-			# elif info.symbol != borrow.symbol:
-			# 	# borrowInfo = self.symbolInfo[borrow.symbol]
-			# 	borrowInfo.borrowedBy.add(info.symbol)
-			# 	self.setLastUse(borrowInfo, use, isRead)
-		
-		if access.ref:
-			info.moved = not access.copy
+				logExplain(state, borrowed.span, 'borrow {}originally occurred here'.format(countStr))
+			
+			borrowInfo = self.symbolState[borrowed.symbol]
+			if not borrowed.type.isCopyable:
+				self.refRead(state, borrowed, borrowInfo)
+				self.dropSymbol(state, borrowed.symbol, access.dropPoint)
 	
-	def readSymbol(self, state, access, info):
+	def derefWrite(self, state, access, info):
+		self.refRead(state, access, info)
+		
 		symbol = access.symbol
 		
-		if info.moved or not info.init:
-			if info.moved:
-				logError(state, access.span, 'the value in `{}` has been moved'.format(symbol.name))
-				# for use in info.lastUses:
-					# if use.ref:
-				logExplain(state, info.lastUse.span, '`{}` was moved here'.format(symbol.name))
-			else:
-				logError(state, access.span, '`{}` has not been initialized'.format(symbol.name))
+		if symbol.type.isPtrType and not symbol.type.mut:
+			logError(state, access.lvalueSpan, 'assignment target is not mutable')
 		
-		access.borrows = info.borrows
+		# if info.borrows:
+		# 	for borrowed in info.borrows:
+		# 		if borrowed.symbol in self.symbolState:
+		# 			borrowInfo = self.symbolState[borrowed.symbol]
+		# 			borrowInfo.borrowedBy.remove(info.symbol)
 		
-		for borrow in info.borrows:
-			borrowedInfo = self.symbolState[borrow.symbol]
-			borrowedInfo.recordTouch(access)
+		# info.borrows = access.rvalue.borrows
 		
-		if access.ref:
-			info.moved = not access.copy
+		self.dropInd(state, symbol, access.beforeWriteDropPoint, access.deref)
+		
+		errCount = 0
+		for borrowed in info.borrows:
+			if borrowed.symbol not in state.scope.symbols:
+				if errCount == 0:
+					logError(state, access.span, 'borrowed value has gone out of scope')
+				errCount += 1
+				countStr = '' if errCount < 2 else '({}) '.format(errCount)
+				logExplain(state, borrowed.span, 'borrow {}originally occurred here'.format(countStr))
+			
+			borrowInfo = self.symbolState[borrowed.symbol]
+			borrowInfo.borrows = access.rvalue.borrows
+			for borrowedBorrowed in borrowInfo.borrows:
+				borrowedBorrowedInfo = self.symbolState[borrowedBorrowed.symbol]
+				borrowedBorrowedInfo.borrowedBy[info.symbol] = access.rvalue
+			
+			borrowInfo.init = True
+			borrowInfo.moved = False
 	
-	def addrSymbol(self, state, access, info):
-		symbol = access.symbol
-		field = access.field
-		fieldSpan = access.fieldSpan
-		isIndex = len(access.dynOffsets) > 0
-		
-		if access.type.mut and not access.symbol.mut:
-			logError(state, access.span, 'mutable borrow of immutable symbol')
-		
-		symbol.fixed = True
+	def derefFieldRead(self, state, access, info):
+		pass
+	
+	def derefFieldWrite(self, state, access, info):
+		pass
 	
 	def releaseBorrows(self, symbol):
-		for borrow in self.symbolState[symbol].borrows:
-			del self.symbolState[borrow.symbol].borrowedBy[symbol]
+		for borrowed in self.symbolState[symbol].borrows:
+			del self.symbolState[borrowed.symbol].borrowedBy[symbol]
 	
 	def dropLastUse(self, state, info):
 		if info.lastUse.ref and \
@@ -363,8 +400,8 @@ class CFGBlock:
 							'I can\'t drop `enum`s properly; field `{}` will not be dropped'.format(field.name))
 	
 	# def dropField(self, state, symbol, field, block, span):
-	# 	fieldInfo = self.symbolInfo[symbol].fieldInfo
-	# 	if field not in fieldInfo or not fieldInfo[field].uninit:
+	# 	fieldState = self.symbolState[symbol].fieldState
+	# 	if field not in fieldState or not fieldState[field].uninit:
 	# 		if field.type.isOwnedType:
 	# 			logError(state, symbol.span, 
 	# 				'owned value in field `{}` was not discarded'.format(field.name))
@@ -375,19 +412,15 @@ class CFGBlock:
 			
 	# 		self.dropFields(state, symbol, field, field.offset, block.exprs, span)
 	
-	# def dropInd(self, symbol, block, indLevel):
-	# 	exprs = []
+	def dropInd(self, state, symbol, dropPoint, indLevel):
+		if symbol.type.typeAfterDeref(indLevel).isOwnedType:
+			logError(state, symbol.span, 'owned value was not discarded')
+			logExplain(state, dropPoint.span.endSpan(), 'value escapes here')
 		
-	# 	# if symbol.type.isOwnedType:
-	# 	# 	logError(self.state, symbol.span, 'owned value was not discarded')
-	# 	# 	logExplain(self.state, block.span.endSpan(), 'value escapes here')
+		if symbol.type.baseType.dropFn:
+			self.callDropFn(symbol.type.baseType.dropFn, symbol, None, 0, dropPoint, indLevel=indLevel)
 		
-	# 	if symbol.type.baseType.dropFn:
-	# 		self.callDropFn(symbol.type.baseType.dropFn, symbol, None, 0, exprs, block.span, indLevel=indLevel)
-		
-	# 	self.dropFields(symbol, None, 0, exprs, block.span, indLevel=indLevel)
-		
-	# 	block.exprs[:0] = exprs
+		self.dropFields(state, symbol, None, 0, dropPoint, indLevel=indLevel)
 	
 	def dropFields(self, state, symbol, field, fieldBase, dropPoint, indLevel=0):
 		span = dropPoint.span
@@ -401,9 +434,9 @@ class CFGBlock:
 		elif not t.isCompositeType:
 			return
 		
-		# fieldInfo = self.symbolInfo[symbol].fieldInfo
+		# fieldState = self.symbolState[symbol].fieldState
 		for field in reversed(t.fields):
-			# if field not in fieldInfo or not fieldInfo[field].uninit:
+			# if field not in fieldState or not fieldState[field].uninit:
 				if field.type.isOwnedType and not parentDropFn:
 					logError(state, symbol.span, 
 						'owned value in field `{}` was not discarded'.format(field.name))
@@ -465,29 +498,29 @@ class CFGBlock:
 				info = self.symbolState[param]
 				if info.borrows:
 					scopeErrCount = 0
-					for borrow in info.borrows:
+					for borrowed in info.borrows:
 						if scopeErrCount == 0:
 							logError(state, param.span, 
 								'borrowed value in `{}` escapes the function in which it was defined'.format(param.name))
 						scopeErrCount += 1
 						countStr = '' if scopeErrCount < 2 else '({}) '.format(scopeErrCount)
-						logExplain(state, borrow.span, 'borrow {}originally occurred here'.format(countStr))
+						logExplain(state, borrowed.span, 'borrow {}originally occurred here'.format(countStr))
 			
 			if self.returnAccess:
 				numOutputs = 1
 				info = self.symbolState[self.returnAccess.symbol]
 				if info.borrows:
 					scopeErrCount = 0
-					for borrow in info.borrows:
-						if borrow.symbol != self.returnAccess.symbol:
+					for borrowed in info.borrows:
+						if borrowed.symbol != self.returnAccess.symbol:
 							numOutputs += 1
-						if not borrow.symbol.isParam:
+						if not borrowed.symbol.isParam:
 							if scopeErrCount == 0:
 								logError(state, self.returnAccess.span, 
 									'borrowed value in return escapes the function in which it was defined')
 							scopeErrCount += 1
 							countStr = '' if scopeErrCount < 2 else '({}) '.format(scopeErrCount)
-							logExplain(state, borrow.span, 'borrow {}originally occurred here'.format(countStr))
+							logExplain(state, borrowed.span, 'borrow {}originally occurred here'.format(countStr))
 					
 					assert state.failed and numOutputs == len(self.outputs) or numOutputs == 1 and len(self.outputs) == 1
 	
