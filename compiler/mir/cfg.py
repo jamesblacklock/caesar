@@ -233,6 +233,7 @@ class CFGBlock:
 		self.refLiveCheck(state, access, info)
 		
 		access.borrows = info.borrows
+		access.typeModifiers = info.typeModifiers.clone()
 		
 		info.moved = not access.copy
 		info.movedSpan = access.span
@@ -248,6 +249,9 @@ class CFGBlock:
 		for borrowed in info.borrows:
 			borrowedInfo = self.symbolState[borrowed.symbol]
 			borrowedInfo.borrowedBy[info.symbol] = access.rvalue
+		
+		if access.rvalue.typeModifiers:
+            info.typeModifiers = access.rvalue.typeModifiers.clone()
 		
 		info.init = True
 		info.moved = False
@@ -283,6 +287,10 @@ class CFGBlock:
 			self.fieldLiveCheck(state, access, fieldInfo)
 			fieldInfo.movedSpan = fieldSpan
 			fieldInfo.moved = not field.type.isCopyable
+			
+			# movedFields = allFields(use.field.type)
+            # movedFields.add(use.field)
+            # info.typeModifiers.uninitFields.update(movedFields)
 	
 	def fieldWrite(self, state, access, info):
 		symbol = info.symbol
@@ -296,6 +304,12 @@ class CFGBlock:
 			fieldInfo = info.fieldState[field]
 			if fieldInfo.init and not fieldInfo.moved:
 				self.dropField(state, symbol, field, access.beforeWriteDropPoint)
+			
+			# initFields = allFields(use.field.type)
+			# initFields.difference_update(use.rvalue.typeModifiers.uninitFields)
+			# info.typeModifiers.uninitFields.difference_update(initFields)
+			# info.typeModifiers.uninitFields.discard(use.field)
+				
 			fieldInfo.moved = False
 			fieldInfo.init = True
 	
