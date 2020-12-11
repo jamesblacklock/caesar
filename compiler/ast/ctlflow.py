@@ -31,7 +31,6 @@ class Return(AST):
 		self.expr = expr
 	
 	def analyze(self, state, implicitType):
-		
 		expectedReturnType = state.fn.type.returnType
 		returnType = Void
 		
@@ -44,6 +43,7 @@ class Return(AST):
 				return
 			returnType = access.type
 			state.block.outputs.add(access.symbol)
+			state.block.returnAccess = access
 		
 		if not typesMatch(returnType, expectedReturnType):
 			span = self.expr.span if self.expr else self.span

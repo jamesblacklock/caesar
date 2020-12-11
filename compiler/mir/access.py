@@ -31,7 +31,6 @@ class SymbolAccess(MIR):
 	def __init__(self, span, hasValue):
 		super().__init__(span, hasValue)
 		self.symbol = None
-		self.isBorrowed = False
 		self.staticOffset = 0
 		self.dynOffsets = []
 		self.deref = 0
@@ -172,7 +171,6 @@ class SymbolRead(SymbolAccess):
 		self.borrow = False
 		self.borrows = set()
 		self.contracts = None
-		assert not self.isBorrowed
 		
 		return other
 	
@@ -275,7 +273,7 @@ class SymbolRead(SymbolAccess):
 			state.appendInstr(ir.Addr(expr, stackOffset))
 		else:
 			stackOffset = 0 if stackTop else state.localOffset(expr.symbol)
-			if expr.copy or expr.isBorrowed:
+			if expr.copy:
 				state.appendInstr(ir.Dup(expr, stackOffset))
 			elif stackOffset > 0:
 				state.appendInstr(ir.Raise(expr, stackOffset))

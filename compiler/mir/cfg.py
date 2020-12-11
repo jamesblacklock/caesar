@@ -76,6 +76,7 @@ class CFGBlock:
 		self.finalizedInputs = False
 		self.finalizedCount = 0
 		self.isEmpty = True
+		self.returnAccess = None
 		
 		if ancestors:
 			self.ancestors = ancestors
@@ -458,6 +459,37 @@ class CFGBlock:
 				self.dropLastUse(state, info)
 			elif self.id == 1 and info.symbol.unused and info.symbol.isParam:
 				self.dropSymbol(state, info.symbol, info.symbol.dropPoint)
+		
+		if not self.successors:
+			for param in state.fn.type.params:
+				info = self.symbolState[param]
+				if info.borrows:
+					scopeErrCount = 0
+					for borrow in info.borrows:
+						if scopeErrCount == 0:
+							logError(state, param.span, 
+								'borrowed value in `{}` escapes the function in which it was defined'.format(param.name))
+						scopeErrCount += 1
+						countStr = '' if scopeErrCount < 2 else '({}) '.format(scopeErrCount)
+						logExplain(state, borrow.span, 'borrow {}originally occurred here'.format(countStr))
+			
+			if self.returnAccess:
+				numOutputs = 1
+				info = self.symbolState[self.returnAccess.symbol]
+				if info.borrows:
+					scopeErrCount = 0
+					for borrow in info.borrows:
+						if borrow.symbol != self.returnAccess.symbol:
+							numOutputs += 1
+						if not borrow.symbol.isParam:
+							if scopeErrCount == 0:
+								logError(state, self.returnAccess.span, 
+									'borrowed value in return escapes the function in which it was defined')
+							scopeErrCount += 1
+							countStr = '' if scopeErrCount < 2 else '({}) '.format(scopeErrCount)
+							logExplain(state, borrow.span, 'borrow {}originally occurred here'.format(countStr))
+					
+					assert state.failed and numOutputs == len(self.outputs) or numOutputs == 1 and len(self.outputs) == 1
 	
 	def writeIR(self, state):
 		if self.ancestors:
