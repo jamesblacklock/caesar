@@ -53,7 +53,7 @@ class Block(AST):
 			access = state.analyzeNode(lastExpr, implicitType)
 			state.appendDropPoint()
 		
-		if access and (access.deref or not access.ref or not self.hasValue):
+		if access and (access.deref or not access.ref or not access.symbol.isLocal or not self.hasValue):
 			(symbol, write, access) = accessmod.createTempTriple(access)
 			state.decl(symbol)
 			state.analyzeNode(write)

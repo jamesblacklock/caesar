@@ -1,0 +1,14 @@
+import libc::printf
+
+struct S[type T, int U]
+    t: T
+
+impl S
+    fn u(self: &S) -> int
+        U
+        S::U
+
+fn main()
+    let v: S[str, 5] = S { t: "hello" }
+    unsafe
+        printf("%s, %d\n", v.t->data(), v->u())

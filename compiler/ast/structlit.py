@@ -37,10 +37,13 @@ class StructLit(AST):
 					variant = symbol
 					enumType = variant.enumType
 					implicitType = variant.type
+				elif symbol.symbolType == SymbolType.PARAM_TYPE:
+					if implicitType.symbol.paramType != symbol:
+						logError(state, span, 'missing type parameters for type `{}`'.format(symbol.name))
 				else:
 					implicitType = symbol.type
-					if implicitType.isUnknown:
-						implicitType = None
+					# if implicitType and implicitType.isUnknown:
+					# 	implicitType = None
 				
 				if implicitType and not implicitType.isStructType:
 					span = self.path[-1].span if self.path else self.span
@@ -53,6 +56,8 @@ class StructLit(AST):
 			
 			if implicitType.symbol.hasPrivateFields or implicitType.symbol.hasReadOnlyFields:
 				symbolMod = implicitType.symbol.mod
+				while symbolMod.transparent:
+					symbolMod = symbolMod.parent
 				mod = state.mod
 				while True:
 					if mod == symbolMod:

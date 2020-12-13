@@ -5,6 +5,7 @@ class SymbolType(Enum):
 	VALUE = 'VALUE'
 	# FN = 'FN'
 	TYPE = 'TYPE'
+	PARAM_TYPE = 'PARAM_TYPE'
 	VARIANT = 'VARIANT'
 
 class Symbol:

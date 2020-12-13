@@ -22,7 +22,7 @@ class Static(ValueSymbol):
 	def checkSig(self, state):
 		self.extern = self.ast.extern
 		if self.ast.typeRef:
-			self.type = state.resolveTypeRefSig(self.ast.typeRef)
+			self.type = self.ast.typeRef.resolveSig(state)
 		if not self.isConst:
 			self.mangledName = state.mangleName(self)
 	

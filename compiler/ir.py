@@ -814,6 +814,17 @@ class IRState:
 		self.blockDefs.append(blockDef)
 		return blockDef
 	
+	def setupInlineCall(self, inputSymbols):
+		count = len(inputSymbols)
+		offset = len(self.operandStack) - count
+		while count > 0:
+			info = self.operandStack[-count]
+			if info.symbol:
+				del self.operandsBySymbol[info.symbol]
+			info.symbol = inputSymbols[-count]
+			self.operandsBySymbol[info.symbol] = info
+			count -= 1
+	
 	def setupLocals(self, inputTypes, inputSymbols):
 		operandStack = []
 		operandsBySymbol = {}

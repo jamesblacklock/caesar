@@ -1,8 +1,8 @@
-from .ast            import ValueSymbol
+from .ast            import ValueSymbolAST
 from ..log           import logError
 from ..symbol.static import Static
 
-class StaticDecl(ValueSymbol):
+class StaticDecl(ValueSymbolAST):
 	def __init__(self, name, typeRef, doccomment, extern, mut, expr, span):
 		super().__init__(name, typeRef, span, doccomment, extern)
 		self.mangledName = None

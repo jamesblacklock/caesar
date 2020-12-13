@@ -40,7 +40,7 @@ class Attr(AST):
 		self.name = name
 		self.args = args
 
-class Symbol(AST):
+class SymbolAST(AST):
 	def __init__(self, name, span, doccomment=None, extern=False):
 		super().__init__(span)
 		self.nameSpan = name.span if name else span
@@ -50,7 +50,7 @@ class Symbol(AST):
 		self.extern = extern
 		self.pub = False
 
-class ValueSymbol(Symbol):
+class ValueSymbolAST(SymbolAST):
 	def __init__(self, name, typeRef, span, doccomment=None, extern=False):
 		super().__init__(name, span, doccomment, extern)
 		self.typeRef = typeRef

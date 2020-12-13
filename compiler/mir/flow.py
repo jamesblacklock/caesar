@@ -192,6 +192,7 @@ class CFGBuilder:
 		self.dropPoint = CFGDropPoint(self.block.span)
 	
 	def finalize(self):
+		returnBlocks = []
 		blocks = []
 		for block in self.blocks:
 			if block.id != 1:
@@ -206,23 +207,33 @@ class CFGBuilder:
 						logWarning(self, block.span, 'unreachable code')
 					continue
 			blocks.append(block)
+			# if not block.successors:
+			# 	returnBlocks.append(block)
 		
 		self.blocks = blocks
+		
+		# if len(returnBlocks) > 1 or len(returnBlocks) == 1 and returnBlocks[0] != blocks[-1]:
+		# 	returnBlock = CFGBlock(returnBlocks, self.fn.span)
+		# 	self.appendBlock(returnBlock)
+		
 		self.blocks[0].finalizeInputs(self)
 		
 		for block in self.blocks:
 			block.finalize(self)
 	
-	def staticEval(self, symbol):
-		assert len(self.blocks) == 1 and len(self.blocks[0].inputs) == 0
-		self.block = self.blocks[0]
+	def staticEval(self, symbol, blocks=None):
+		savedBlock = self.block
+		if blocks == None:
+			blocks = self.blocks
 		
-		for mir in self.block.mir:
-			if mir.staticSideEffects(self) == False:
-				return None
+		for block in blocks:
+			self.block = block
+			for mir in self.block.mir:
+				if mir.staticSideEffects(self) == False:
+					return None
 		
-		self.block = None
-		return self.blocks[0].symbolState[symbol].staticValue
+		self.block = savedBlock
+		return blocks[-1].symbolState[symbol].staticValue
 	
 	def staticWrite(self, symbol, staticValue):
 		self.block.symbolState[symbol].staticValue = staticValue
@@ -238,7 +249,7 @@ class CFGBuilder:
 		return self.ssstate.lookupSymbol(path, symbolTable, inTypePosition, inValuePosition)
 	
 	def resolveTypeRef(self, typeRef):
-		return self.ssstate.resolveTypeRef(typeRef)
+		return self.ssstate.finishResolvingType(typeRef.resolveSig(self.ssstate, self))
 	
 	def typeCheck(self, expr, expectedType):
 		return self.ssstate.typeCheck(expr, expectedType)

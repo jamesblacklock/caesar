@@ -70,6 +70,15 @@ class SymbolAccess(MIR):
 		return tempRead
 	
 	@staticmethod
+	def readSymbol(symbol, span):
+		read = SymbolRead(span)
+		read.symbol = symbol
+		read.type = symbol.type
+		read.ref = True
+		read.accessType = AccessType.REF_READ
+		return read
+	
+	@staticmethod
 	def write(state, symbol, expr):
 		write = SymbolWrite(expr, expr.span)
 		write.symbol = symbol
@@ -623,6 +632,8 @@ def _SymbolAccess__analyzeSymbolAccess(state, expr, access, implicitType=None):
 			pub = (fieldInfo.pub and fieldInfo.mut) if access.write else fieldInfo.pub
 			if not pub:
 				symbolMod = t.symbol.mod
+				while symbolMod.transparent:
+					symbolMod = symbolMod.parent
 				mod = state.mod
 				while True:
 					if mod == symbolMod:

@@ -39,7 +39,7 @@ class Enum(Symbol):
 			v.enumType = self.type
 			v.tag = StaticData(i, StaticDataType.INT, fTagType)
 			if v.ast.typeRef:
-				v.type = state.resolveTypeRefSig(v.ast.typeRef)
+				v.type = v.ast.typeRef.resolveSig(state)
 	
 	def analyze(self, state, deps):
 		if self in deps:

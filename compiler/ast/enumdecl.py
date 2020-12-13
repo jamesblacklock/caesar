@@ -1,4 +1,4 @@
-from .ast          import AST, Symbol
+from .ast          import AST, SymbolAST
 from ..symbol.enum import Enum, Variant
 
 class VariantDecl(AST):
@@ -14,7 +14,7 @@ class VariantDecl(AST):
 	def createSymbol(self, state):
 		return Variant(self)
 
-class EnumDecl(Symbol):
+class EnumDecl(SymbolAST):
 	def __init__(self, name, doccomment, variants, span):
 		super().__init__(name, span, doccomment)
 		self.variants = variants

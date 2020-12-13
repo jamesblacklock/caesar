@@ -1,5 +1,6 @@
-from .ast            import AST, Symbol
-from ..symbol.struct import Struct
+from .ast               import AST, SymbolAST
+from ..symbol.struct    import Struct
+from ..symbol.paramtype import ParamTypeSymbol
 
 class UnionFields(AST):
 	def __init__(self, fields, span):
@@ -19,16 +20,23 @@ class FieldDecl(AST):
 		self.pub = pub
 		self.mut = mut
 
-class StructDecl(Symbol):
-	def __init__(self, name, isUnion, doccomment, fields, pub, span):
+class StructDecl(SymbolAST):
+	def __init__(self, name, isUnion, doccomment, typeParams, fields, pub, span):
 		super().__init__(name, span, doccomment)
+		self.typeParams = typeParams
 		self.fieldDecls = fields
 		self.isUnion = isUnion
 		self.pub = pub
 		self.anon = not self.name
 	
 	def createSymbol(self, state):
+		if self.typeParams:
+			return ParamTypeSymbol(self, self.typeParams) 
 		return Struct(self)
+	
+	def resolveSig(self, state):
+		symbol = self.createSymbol(state)
+		return symbol.type
 	
 	def flattenedFieldDecls(self):
 		flattened = []

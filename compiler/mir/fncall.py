@@ -18,9 +18,21 @@ class FnCall(MIR):
 		for arg in self.cVarArgs:
 			arg.commit(state)
 	
+	def writeInlineIR(self, state):
+		symbols = [s for s in self.access.symbol.params]
+		state.setupInlineCall(symbols)
+		
+		for block in self.access.symbol.cfg:
+			block.writeIR(state, noReturn=True)
+	
 	def writeIR(self, state):
 		for access in self.args:
 			access.writeIR(state)
+		
+		# if self.access.symbol.inline:
+		# 	assert not (self.cVarArgs or self.dynDispatch)
+		# 	self.writeInlineIR(state)
+		# 	return
 		
 		for access in self.cVarArgs:
 			access.writeIR(state)

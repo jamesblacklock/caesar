@@ -27,7 +27,7 @@ class Fn(ValueSymbol):
 	def checkSig(self, state):
 		returnType = Void
 		if self.ast.returnTypeRef:
-			returnType = state.resolveTypeRefSig(self.ast.returnTypeRef)
+			returnType = self.ast.returnTypeRef.resolveSig(state)
 		
 		for param in self.params:
 			param.checkSig(state)
@@ -88,7 +88,7 @@ class Fn(ValueSymbol):
 		
 		state.failed = state.failed or flow.failed
 		
-		# print(self)
+		print(self)
 		
 	
 	# def checkDropFnScope(self, state):

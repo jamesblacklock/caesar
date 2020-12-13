@@ -1,7 +1,7 @@
-from .ast               import Symbol
+from .ast               import SymbolAST
 from ..symbol.typealias import TypeAlias
 
-class TypeDecl(Symbol):
+class TypeDecl(SymbolAST):
 	def __init__(self, name, typeRef, span, doccomment):
 		super().__init__(name, span, doccomment)
 		self.typeRef = typeRef
@@ -10,6 +10,6 @@ class TypeDecl(Symbol):
 		return TypeAlias(self)
 	
 	# def analyzeSig(self, state):
-	# 	self.baseType = state.resolveTypeRefSig(self.typeRef)
+	# 	self.baseType = self.typeRef.resolveSig(state)
 	# 	self.byteSize = self.baseType.byteSize
 	# 	self.align = self.baseType.align

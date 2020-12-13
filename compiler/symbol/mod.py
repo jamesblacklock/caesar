@@ -1,11 +1,11 @@
-from ..ast.ast import Symbol, Name
+from ..ast.ast import SymbolAST, Name
 from .symbol   import SymbolType
-from ..types   import typesMatch
+from ..types   import typesMatch, TypeMod
 from ..span    import Span
 from ..log     import logError, logWarning, logExplain
 from .trait    import Trait
 
-class Mod(Symbol):
+class Mod(SymbolAST):
 	def __init__(self, name, doccomment, decls, span):
 		super().__init__(name, span, doccomment)
 		self.topLevel = False
@@ -31,6 +31,7 @@ class Mod(Symbol):
 		self.symbolTable = {}
 		self.isFnMod = False
 		self.strMod = None
+		self.transparent = False
 		
 		self.symbolType = SymbolType.MOD
 		self.unused = True
@@ -75,13 +76,14 @@ class Mod(Symbol):
 			symbol.analyze(state, deps)
 		deps.pop()
 		
-		for fn in self.fns:
-			fn.analyzeBody(state)
-		
-		for symbol in self.imports:
-			isStrType = self.strMod and symbol == self.strMod.symbolTable['str']
-			if symbol.unused and not isStrType:
-				logWarning(state, symbol.nameSpan, 'unused import')
+		if not state.checkOnly:
+			for fn in self.fns:
+				fn.analyzeBody(state)
+			
+			for symbol in self.imports:
+				isStrType = self.strMod and symbol == self.strMod.symbolTable['str']
+				if symbol.unused and not isStrType:
+					logWarning(state, symbol.nameSpan, 'unused import')
 		
 		state.mod = self.parent
 
@@ -101,8 +103,7 @@ class Impl(Mod):
 		symbol = state.lookupSymbol(self.path, inTypePosition=True)
 		if symbol:
 			self.type = symbol.type
-			if symbol:
-				self.name = '$impl{}'.format(state.mangleName(symbol))
+			self.name = '$impl{}'.format(state.mangleName(symbol))
 		
 		super().checkSig(state)
 		
@@ -113,7 +114,7 @@ class Impl(Mod):
 			symbol = state.lookupSymbol(self.traitPath, inTypePosition=True)
 			if symbol:
 				self.trait = symbol.type
-			if self.trait and self.type:
+			if self.type and self.trait:
 				if self.trait.isTraitType:
 					if self.trait in self.type.traitImpls:
 						otherImpl = self.type.traitImpls[self.trait]
@@ -168,7 +169,10 @@ class Impl(Mod):
 			logError()
 			return
 		
+		state.mod = TypeMod(state.mod, self.type)
+		self.parent = state.mod
 		super().analyze(state, deps)
+		state.mod = state.mod.parent
 		
 		if self.trait:
 			self.vtbl = []
@@ -181,7 +185,7 @@ class Impl(Mod):
 				implFn = symbolTable[symbol.name]
 				self.vtbl.append(implFn.mangledName)
 
-class TraitDecl(Symbol):
+class TraitDecl(SymbolAST):
 	def __init__(self, name, doccomment, pub, decls, span):
 		# super().__init__(name, span, doccomment, isTraitType=True)
 		super().__init__(name, span, doccomment)

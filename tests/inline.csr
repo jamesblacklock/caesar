@@ -1,0 +1,11 @@
+import libc::printf
+
+@inline
+fn call_fn_inline(a: int, b: float, c: bool) -> int
+    if c
+        a + b as int + c as int
+    else
+        1
+
+fn main()
+    unsafe printf("%d == 8\n", call_fn_inline(4, 3.2, true))

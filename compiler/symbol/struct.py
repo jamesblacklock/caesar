@@ -1,5 +1,5 @@
 from .symbol          import Symbol, SymbolType
-from ..types          import Type
+from ..types          import Type, TypeMod
 
 class Struct(Symbol):
 	def __init__(self, ast):
@@ -13,13 +13,16 @@ class Struct(Symbol):
 		self.mod = None
 		self.hasPrivateFields = False
 		self.hasReadOnlyFields = False
+		self.paramType = None
 	
 	@property
 	def symbolTable(self):
 		return self.type.symbolTable
 	
 	def checkSig(self, state):
-		self.mod = state.mod
+		self.mod = TypeMod(state.mod, self)
+		state.mod = self.mod
+		
 		self.fieldDecls = self.ast.flattenedFieldDecls()
 		declaredFields = {}
 		fieldNames = []
@@ -31,16 +34,24 @@ class Struct(Symbol):
 				logError(state, field.nameSpan, 'duplicate field name')
 				logExplain(state, declaredFields[field.name].nameSpan, 
 					'field `{}` was previously declared here'.format(field.name))
-			else:
-				declaredFields[field.name] = field.nameSpan
-				fieldType = state.resolveTypeRefSig(field.typeRef)
+				continue
+			
+			declaredFields[field.name] = field.nameSpan
+			fieldType = field.typeRef.resolveSig(state)
+			if fieldType:
 				fieldNames.append(field.name)
 				types.append(fieldType)
 		
 		self.fieldNames = fieldNames
 		self.types = types
+		
+		state.mod = state.mod.parent
 	
 	def analyze(self, state, deps):
+		if self.analyzed:
+			return
+		self.analyzed = True
+		
 		if self in deps:
 			s = 0
 		

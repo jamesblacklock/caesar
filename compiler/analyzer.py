@@ -1,41 +1,16 @@
-import ctypes
 from .symbol.symbol  import SymbolType, Deps
-from .ast.typeref    import NamedTypeRef, PtrTypeRef, ArrayTypeRef, OwnedTypeRef
-from .types          import FieldInfo, PtrType, ArrayType, OwnedType, \
-                            Void, Bool, Byte, Char, Int8, UInt8, Int16, UInt16, Int32, UInt32, \
-                            Int64, UInt64, ISize, USize, Float32, Float64, typesMatch, canCoerce, tryPromote
+from .types          import BUILTIN_TYPES, typesMatch, canCoerce, tryPromote, FieldInfo
 from .log            import logError, logExplain
 from .ast.ast        import Attr
 from .attrs          import invokeAttrs
 from .symbol.mod     import Mod, Impl
 from .symbol.trait   import Trait
-from .symbol.enum    import Enum
 from .symbol.fn      import Fn, CConv
 from .symbol.static  import Static
-from .ast.structdecl import StructDecl
-from .ast.tupledecl  import TupleDecl
 # from .symbol.alias   import AliasDecl
 from .ast.importexpr import Import
 from .               import platform
 
-BUILTIN_TYPES = {
-	Void.name:    Void,
-	Bool.name:    Bool,
-	Byte.name:    Byte,
-	Int8.name:    Int8,
-	UInt8.name:   UInt8,
-	Int16.name:   Int16,
-	UInt16.name:  UInt16,
-	Int32.name:   Int32,
-	UInt32.name:  UInt32,
-	Char.name:    Char,
-	Int64.name:   Int64,
-	UInt64.name:  UInt64,
-	ISize.name:   ISize,
-	USize.name:   USize,
-	Float32.name: Float32,
-	Float64.name: Float64
-}
 
 class FieldLayout:
 	def __init__(self, align, byteSize, fields):
@@ -52,30 +27,6 @@ def finishAnalyzingStructType(state, resolvedType, deps):
 	for field in resolvedType.fields:
 		field.type = state.finishResolvingType(field.type, deps)
 	return resolvedType
-
-def analyzeOwnedTypeRefSig(state, ownedTypeRef):
-	baseType = state.resolveTypeRefSig(ownedTypeRef.baseType)
-	if not baseType.isCopyable:
-		logError(state, ownedTypeRef.baseType.span, 'base type of owned type must be copyable')
-	
-	acquire = None
-	release = None
-	acquireSpan = ownedTypeRef.acquire.span if ownedTypeRef.acquire else ownedTypeRef.span
-	releaseSpan = ownedTypeRef.release.span if ownedTypeRef.release else ownedTypeRef.span
-	
-	if ownedTypeRef.acquire:
-		acquire = state.lookupSymbol(ownedTypeRef.acquire.path, inValuePosition=True)
-		if acquire and type(acquire) != Fn:
-			logError(state, ownedTypeRef.acquire.span, '`{}` must be a function'.format(acquire.name))
-			acquire = None
-	
-	if ownedTypeRef.release:
-		release = state.lookupSymbol(ownedTypeRef.release.path, inValuePosition=True)
-		if release and type(release) != Fn:
-			logError(state, ownedTypeRef.release.span, '`{}` must be a function'.format(release.name))
-			release = None
-	
-	return OwnedType(baseType, acquire, release, acquireSpan, releaseSpan, ownedTypeRef.span)
 
 def finishAnalyzingOwnedType(state, ownedType, deps):
 	ok = True
@@ -156,18 +107,24 @@ def buildSymbolTable(state, mod):
 			mod.symbolTable[symbol.name] = symbol
 			mod.symbols.append(symbol)
 
-def analyze(ast, forceRebuilds=False):
+def analyze(ast, forceRebuilds=False, checkOnly=False):
 	return AnalyzerState.analyze(None, ast, forceRebuilds)
 
 class AnalyzerState:
-	def __init__(self, ast, forceRebuilds):
+	def __init__(self, ast, forceRebuilds, checkOnly):
 		self.failed = False
 		self.forceRebuilds = forceRebuilds
+		self.checkOnly = checkOnly
 		self.ast = ast
 		self.mod = None
 	
-	def analyze(state, ast, forceRebuilds=False):
-		state = AnalyzerState(ast, state.forceRebuilds if state else forceRebuilds)
+	def analyze(state, ast, forceRebuilds=None, checkOnly=None):
+		if forceRebuilds == None:
+			forceRebuilds = state.forceRebuilds if state else False
+		if checkOnly == None:
+			checkOnly = state.checkOnly if state else False
+		
+		state = AnalyzerState(ast, forceRebuilds, checkOnly)
 		
 		buildSymbolTable(state, ast)
 		
@@ -182,28 +139,6 @@ class AnalyzerState:
 			exit(1)
 		
 		return ast
-	
-	def resolveTypeRefSig(state, typeRef):
-		if type(typeRef) == NamedTypeRef:
-			builtinName = typeRef.path[0].content if len(typeRef.path) == 1 else None
-			if builtinName in BUILTIN_TYPES:
-				return BUILTIN_TYPES[builtinName]
-			
-			result = state.lookupSymbol(typeRef.path, inTypePosition=True)
-			return result.type if result else None#UnknownType
-		elif type(typeRef) == OwnedTypeRef:
-			return analyzeOwnedTypeRefSig(state, typeRef)
-		elif type(typeRef) == PtrTypeRef:
-			baseType = state.resolveTypeRefSig(typeRef.baseType)
-			return PtrType(baseType, typeRef.indLevel, typeRef.mut)
-		elif type(typeRef) == ArrayTypeRef:
-			baseType = state.resolveTypeRefSig(typeRef.baseType)
-			return ArrayType(baseType, typeRef.count)
-		elif type(typeRef) in (TupleDecl, StructDecl):
-			symbol = typeRef.createSymbol(state)
-			return symbol.type
-		else:
-			assert 0
 	
 	def finishResolvingType(state, resolvedType, deps=None):
 		if deps == None:
@@ -226,7 +161,7 @@ class AnalyzerState:
 		return resolvedType
 	
 	def resolveTypeRef(state, typeRef):
-		return state.finishResolvingType(state.resolveTypeRefSig(typeRef))
+		return state.finishResolvingType(typeRef.resolveSig(state))
 	
 	def typeCheck(state, expr, expectedType):
 		if not (expr.type and expectedType):
@@ -253,7 +188,7 @@ class AnalyzerState:
 			elif decl.symbolType == SymbolType.MOD:
 				letter = 'M'
 				mod = mod.parent
-			elif decl.symbolType == SymbolType.TYPE:
+			elif decl.symbolType in (SymbolType.TYPE, SymbolType.PARAM_TYPE):
 				letter = 'T'
 				mod = mod.parent
 			else:
@@ -318,6 +253,10 @@ class AnalyzerState:
 		if symbolName.content == '_':
 			logError(self, symbolName.span, '`_` is not a valid symbol name')
 			return None
+		elif not path and symbolName.content in BUILTIN_TYPES:
+			assert not inTypePosition
+			logError(self, symbolName.span, 'found type reference where a value was expected')
+			return None
 		else:
 			mod = self.mod
 			symbol = None
@@ -337,7 +276,7 @@ class AnalyzerState:
 				if name.content == '_':
 					logError(self, name.span, '`_` is not a valid symbol name')
 					return None
-				elif symbol.symbolType in (SymbolType.MOD, SymbolType.TYPE):
+				elif symbol.symbolType in (SymbolType.MOD, SymbolType.TYPE, SymbolType.PARAM_TYPE):
 					symbolName = name
 					if name.content not in symbol.symbolTable:
 						symbol = None
@@ -360,11 +299,11 @@ class AnalyzerState:
 		if symbol == None:
 			logError(self, symbolName.span, 'cannot resolve the symbol `{}`'.format(symbolName.content))
 		elif inTypePosition and not inValuePosition:
-			if symbol.symbolType not in (SymbolType.TYPE, SymbolType.VARIANT):
+			if symbol.symbolType not in (SymbolType.TYPE, SymbolType.PARAM_TYPE, SymbolType.VARIANT):
 				logError(self, symbolName.span, '`{}` is not a type'.format(symbolName.content))
 				symbol = None
 		elif inValuePosition and not inTypePosition:
-			if symbol.symbolType not in (SymbolType.VALUE, SymbolType.VARIANT):
+			if symbol.symbolType not in (SymbolType.VALUE, SymbolType.PARAM_TYPE, SymbolType.VARIANT):
 				if symbol.symbolType == SymbolType.TYPE:
 					found = 'type reference'
 				elif symbol.symbolType == SymbolType.MOD:

@@ -10,7 +10,7 @@ from .ast.structdecl import FieldDecl, StructDecl, UnionFields
 from .ast.tupledecl  import TupleDecl
 from .ast.enumdecl   import EnumDecl, VariantDecl
 from .ast.ast        import Attr, Name
-from .ast.typeref    import PtrTypeRef, NamedTypeRef, ArrayTypeRef, OwnedTypeRef
+from .ast.typeref    import PtrTypeRef, NamedTypeRef, ParamTypeRef, ArrayTypeRef, OwnedTypeRef
 from .symbol.mod     import Mod, Impl, TraitDecl
 from .ast.fndecl     import FnDecl, CConv
 from .ast.staticdecl import StaticDecl, ConstDecl
@@ -36,6 +36,8 @@ from .ast.typedecl   import TypeDecl
 from .ast.isexpr     import Pattern, IsExpr
 from .ast.importexpr import Import, ImportTree
 from .ast.sizeof     import Sizeof, Offsetof
+from .ast.typeparam  import TypeParam
+from .types          import BUILTIN_TYPES
 
 INFIX_PRECEDENCE = {
 	TokenType.ARROW:  1000, TokenType.AS:        900, TokenType.IS:      900, TokenType.LSHIFT:    800, 
@@ -64,6 +66,7 @@ class ParserState:
 		self.eof               = self.tok.type == TokenType.EOF
 		self.indentLevels      = [0]
 		self.failed            = False
+		self.isParsingTypeRef = []
 	
 	def advance(self):
 		if self.eof:
@@ -380,6 +383,28 @@ def parseFieldDecl(state, isUnion):
 	fieldDecl.attrs = fieldAttrs
 	return fieldDecl
 
+def parseTypeParam(state):
+	span = state.tok.span
+	if not expectType(state, TokenType.TYPE, TokenType.NAME):
+		return None
+	
+	valueType = None
+	if state.tok.type != TokenType.TYPE:
+		if state.tok.content in BUILTIN_TYPES:
+			valueType = BUILTIN_TYPES[state.tok.content]
+		else:
+			logError(state, state.tok.span, '`{}`: invalid type for type parameter'.format(state.tok.content))
+	
+	state.advance()
+	state.skipSpace()
+	
+	if not expectType(state, TokenType.NAME):
+		return None
+	
+	name = Name.fromTok(state.tok)
+	state.advance()
+	return TypeParam(name, valueType, Span.merge(span, name.span))
+
 def parseStructOrUnionDecl(state, doccomment, anon, pub, isUnion):
 	span = state.tok.span
 	if state.tok.type in (TokenType.STRUCT, TokenType.UNION):
@@ -393,10 +418,16 @@ def parseStructOrUnionDecl(state, doccomment, anon, pub, isUnion):
 		state.advance()
 		state.skipSpace()
 	
-	block = parseBlock(state, lambda s: parseFieldDecl(s, isUnion))
-	span = Span.merge(span, block.span)
+	params = None
+	if name and state.tok.type == TokenType.LBRACK:
+		paramsBlock = parseBlock(state, parseTypeParam, BlockMarkers.BRACK, True)
+		params = paramsBlock.list
+		span = Span.merge(span, paramsBlock.span)
 	
-	return StructDecl(name, isUnion, doccomment, block.list, pub, span)
+	fields = parseBlock(state, lambda s: parseFieldDecl(s, isUnion))
+	span = Span.merge(span, fields.span)
+	
+	return StructDecl(name, isUnion, doccomment, params, fields.list, pub, span)
 
 def parseStructDecl(state, doccomment, anon, pub=False):
 	return parseStructOrUnionDecl(state, doccomment, anon, pub, False)
@@ -456,7 +487,7 @@ def parseName(state):
 def parsePattern(state):
 	# if state.tok.type == TokenType.OWNED:
 	# 	return parseOwnedTypeRef(state)
-	# elif state.tok.type in (TokenType.AMP, TokenType.AND):
+	# elif state.tok.type == TokenType.AMP:
 	# 	return parsePtrTypeRef(state)
 	# elif state.tok.type == TokenType.LBRACK:
 	# 	return parseArrayTypeRef(state)
@@ -642,9 +673,9 @@ def parseBlock(state, parseItem, blockMarkers=BlockMarkers.BRACE,
 def parsePtrTypeRef(state):
 	span = state.tok.span
 	indLevel = 0
-	while state.tok.type in (TokenType.AMP, TokenType.AND):
+	while state.tok.type == TokenType.AMP:
 		span = Span.merge(span, state.tok.span)
-		indLevel += 1 if state.tok.type == TokenType.AMP else 2
+		indLevel += 1
 		state.advance()
 		state.skipSpace()
 	
@@ -737,10 +768,73 @@ def parseOwnedTypeRef(state):
 	
 	return typeRef
 
+# disambiguate in situation where the item parsed may be a type reference or may be a value expression
+# i.e. for template instantiation
+def parseTypeRefOrValueExpr(state):
+	isParsingTypeRef = state.isParsingTypeRef[-1]
+	definitelyTypeRef = \
+		(TokenType.OWNED, TokenType.AMP, TokenType.TUPLE, 
+		TokenType.LBRACE, TokenType.STRUCT, TokenType.UNION, TokenType.VOID)
+	definitelyValueExpr = \
+		(TokenType.LPAREN, TokenType.DOT, TokenType.DEREFDOT,
+		TokenType.CARET, TokenType.AS, *INFIX_PRECEDENCE)
+	
+	if isParsingTypeRef == True:
+		return parseTypeRef(state)
+	elif isParsingTypeRef == False:
+		return parseValueExpr(state)
+	elif state.tok.type in definitelyTypeRef:
+		state.isParsingTypeRef[-1] = True
+		return parseTypeRef(state)
+	elif state.tok.type not in (TokenType.LPAREN, TokenType.NAME):
+		state.isParsingTypeRef[-1] = False
+		return parseValueExpr(state)
+	elif state.tok.type == TokenType.LPAREN:
+		state.isParsingTypeRef.append(None)
+		block = parseBlock(state, parseTypeRefOrValueExpr, BlockMarkers.PAREN, True)
+		wasTypeRef = state.isParsingTypeRef[-1]
+		assert wasTypeRef != None
+		state.isParsingTypeRef.pop()
+		
+		state.isParsingTypeRef[-1] = False
+		if wasTypeRef:
+			state.isParsingTypeRef[-1] = True
+			return TupleDecl(None, None, block.list, True, block.span)
+		elif len(block.list) == 1 and not block.trailingSeparator:
+			expr = block.list[0]
+			expr.span = block.span
+			return expr
+		else:
+			return TupleLit(block.list, block.span)
+	else:
+		assert state.tok.type == TokenType.NAME
+		offset = state.offset
+		path = parsePath(state)
+		if state.tok.type == TokenType.LBRACK:
+			state.rollback(offset)
+			state.isParsingTypeRef[-1] = True
+			return parseNamedTypeRef(state)
+		elif state.tok.type in definitelyValueExpr:
+			state.rollback(offset)
+			state.isParsingTypeRef[-1] = False
+			return parseValueExpr(state)
+		else:
+			return NamedTypeRef(path.path, path.span, maybeValue=True)
+
+def parseNamedTypeRef(state):
+	path = parsePath(state)
+	if state.tok.type == TokenType.LBRACK:
+		state.isParsingTypeRef.append(None)
+		args = parseBlock(state, parseTypeRefOrValueExpr, BlockMarkers.BRACK, True)
+		state.isParsingTypeRef.pop()
+		return ParamTypeRef(path.path, args.list, Span.merge(path.span, args.span))
+	else:
+		return NamedTypeRef(path.path, path.span)
+
 def parseTypeRef(state):
 	if state.tok.type == TokenType.OWNED:
 		return parseOwnedTypeRef(state)
-	elif state.tok.type in (TokenType.AMP, TokenType.AND):
+	elif state.tok.type == TokenType.AMP:
 		return parsePtrTypeRef(state)
 	elif state.tok.type == TokenType.LBRACK:
 		return parseArrayTypeRef(state)
@@ -750,10 +844,14 @@ def parseTypeRef(state):
 		return parseStructDecl(state, None, True)
 	elif state.tok.type == TokenType.UNION:
 		return parseUnionDecl(state, None, True)
-	elif expectType(state, TokenType.NAME, TokenType.VOID):
-		path = parsePath(state)
-		return NamedTypeRef(path.path, path.span)
+	elif state.tok.type == TokenType.VOID:
+		voidTok = state.tok
+		state.advance()
+		return NamedTypeRef([Name.fromTok(voidTok)], state.tok.span)
+	elif state.tok.type == TokenType.NAME:
+		return parseNamedTypeRef(state)
 	else:
+		logError(state, state.tok.span, 'expected type reference, found {}'.format(typesStr, state.tok.type.desc()))
 		return None
 
 def parseSimpleFnCall(state, expr):

@@ -3,6 +3,12 @@ from .mir.coerce import Coerce
 
 PLATFORM_WORD_SIZE = 8
 
+class TypeMod:
+	def __init__(self, parent, t):
+		self.parent = parent
+		self.symbolTable = t.symbolTable
+		self.transparent = True
+
 class Type:
 	def __init__(self, name=None, span=None, symbol=None,
 		byteSize=None, align=None, isDefinite=True, isEnumType=False, 
@@ -245,6 +251,25 @@ Int64   = PrimitiveType('int64',   8,   isIntType=True, isSigned=True)
 ISize   = PrimitiveType('isize',  SZ,   isIntType=True, isSigned=True)
 Float32 = PrimitiveType('float',   4, isFloatType=True, isSigned=True)
 Float64 = PrimitiveType('float64', 8, isFloatType=True, isSigned=True)
+
+BUILTIN_TYPES = {
+	Void.name:    Void,
+	Bool.name:    Bool,
+	Byte.name:    Byte,
+	Int8.name:    Int8,
+	UInt8.name:   UInt8,
+	Int16.name:   Int16,
+	UInt16.name:  UInt16,
+	Int32.name:   Int32,
+	UInt32.name:  UInt32,
+	Char.name:    Char,
+	Int64.name:   Int64,
+	UInt64.name:  UInt64,
+	ISize.name:   ISize,
+	USize.name:   USize,
+	Float32.name: Float32,
+	Float64.name: Float64
+}
 
 I8_MAX  = 127
 I16_MAX = 32767

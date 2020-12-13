@@ -1,8 +1,8 @@
-from .ast        import ValueSymbol
+from .ast        import ValueSymbolAST
 from ..symbol.fn import Fn, CConv
 from ..log       import logError
 
-class FnDecl(ValueSymbol):
+class FnDecl(ValueSymbolAST):
 	def __init__(self, name, doccomment, pub, extern, cconv, unsafe, 
 		params, cVarArgs, returnType, body, span, cVarArgsSpan):
 		super().__init__(name, None, span, doccomment, extern)

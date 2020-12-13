@@ -2,7 +2,7 @@ from .mir    import MIR, TypeModifiers
 from .access import SymbolAccess, SymbolRead, AccessType
 from .fncall import FnCall
 from .drop   import DropSymbol
-from ..ir    import Br, BrIf, Ret, BlockMarker, Raise, getInputInfo
+from ..ir    import Br, BrIf, Dup, Ret, BlockMarker, Raise, getInputInfo
 from ..log   import logError, logExplain
 from ..types import PtrType
 
@@ -218,7 +218,7 @@ class CFGBlock:
 			borrowedInfo = self.symbolState[borrowed.symbol]
 			borrowedInfo.recordTouch(access)
 		
-		if not (info.wasDeclared or info.wasRedeclared):
+		if info.symbol.isLocal and not (info.wasDeclared or info.wasRedeclared):
 			self.inputs.add(access.symbol)
 	
 	def refLiveCheck(self, state, access, info):
@@ -589,7 +589,7 @@ class CFGBlock:
 					
 					assert state.failed and numOutputs == len(self.outputs) or numOutputs == 1 and len(self.outputs) == 1
 	
-	def writeIR(self, state):
+	def writeIR(self, state, noReturn=False):
 		if self.ancestors:
 			assert self.irBlockDef
 			state.setupLocals(self.irBlockDef.inputs, self.irInputSymbols)
@@ -601,8 +601,11 @@ class CFGBlock:
 		inputTypes, inputSymbols = getInputInfo(state)
 		if self.successors:
 			if self.branchOn:
-				inputTypes.pop()
-				inputSymbols.pop()
+				if self.branchOn in self.outputs:
+					state.appendInstr(Dup(self, 0))
+				else:
+					inputTypes.pop()
+					inputSymbols.pop()
 			
 			for block in self.successors:
 				if block.irBlockDef == None:
@@ -626,7 +629,7 @@ class CFGBlock:
 			else:
 				assert len(self.successors) == 1
 				state.appendInstr(Br(self, self.successors[0].irBlockDef.index))
-		else:
+		elif not noReturn:
 			assert self.didReturn
 			# state.didBreak = True
 			

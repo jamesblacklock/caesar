@@ -1,7 +1,7 @@
-from .ast           import Symbol
+from .ast           import SymbolAST
 from ..symbol.tuple import Tuple
 
-class TupleDecl(Symbol):
+class TupleDecl(SymbolAST):
 	def __init__(self, name, doccomment, typeRefs, pub, span):
 		super().__init__(name, span, doccomment)
 		self.typeRefs = typeRefs
@@ -10,3 +10,7 @@ class TupleDecl(Symbol):
 	
 	def createSymbol(self, state):
 		return Tuple(self)
+	
+	def resolveSig(self, state):
+		symbol = self.createSymbol(state)
+		return symbol.type

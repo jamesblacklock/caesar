@@ -1,4 +1,4 @@
-from .ast           import AST, ValueSymbol
+from .ast           import AST, ValueSymbolAST
 from ..mir.access   import SymbolWrite
 from ..symbol.local import Local
 
@@ -6,7 +6,7 @@ class CVarArgsParam(AST):
 	def __init__(self, span):
 		super().__init__(span)
 
-class LocalDecl(ValueSymbol):
+class LocalDecl(ValueSymbolAST):
 	def __init__(self, name, typeRef, mut, span):
 		super().__init__(name, typeRef, span)
 		self.mut = mut

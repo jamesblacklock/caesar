@@ -49,7 +49,7 @@ class Local(ValueSymbol):
 	
 	def checkSig(self, state):
 		assert self.isParam
-		self.type = state.resolveTypeRefSig(self.ast.typeRef)
+		self.type = self.ast.typeRef.resolveSig(state)
 		if self.type or self.dropFn:
 			self.checkDropFn(state)
 	

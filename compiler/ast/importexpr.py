@@ -113,13 +113,13 @@ class Import(AST):
 			source = SourceFile(importInfo.sourceFile)
 			tok = tokenizer.tokenize(source)
 			ast = parser.parse(source, tok)
-			importedMod = state.analyze(ast)
 			
 			checksum = None
 			if not state.forceRebuilds:
 				checksum = platform.readChecksum(importInfo)
 			
 			if checksum != source.checksum:
+				importedMod = state.analyze(ast)
 				ir.generateIR(importedMod)
 				asm = amd64.generateAsm(importedMod)
 				
@@ -134,6 +134,8 @@ class Import(AST):
 					os.remove(asmFileName)
 				except IOError as e:
 					print(e)
+			else:
+				importedMod = state.analyze(ast, checkOnly=True)
 			
 			importedMod.mainFn = None
 			importedMod.objCodePath = importInfo.objectFile
