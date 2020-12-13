@@ -1,5 +1,5 @@
 from .ast.valueref      import ValueRef
-from .ast.primitive     import IntLit
+from .ast.primitive     import IntLit, BoolLit
 from .ast.strlit        import StrLit
 from .ast.localdecl     import LetDecl, FnParam
 from .ast.fndecl        import FnDecl, CConv
@@ -66,6 +66,12 @@ def dropTraitAttr(state, decl, params, span):
 def leakAttr(state, decl, params, span):
 	decl.leakOwned = True
 
+def inlineAttr(state, decl, params, span):
+	if len(params) == 0 or params[0].value:
+		decl.alwaysInline = True
+	else:
+		decl.neverInline = True
+
 AcquireAttr = AttrInfo('acquire_default', acquireDefaultAttr, [FnDecl], [])
 ReleaseAttr = AttrInfo('release_default', releaseDefaultAttr, [FnDecl], [])
 CConvAttr = AttrInfo('cconv', cconvAttr, [FnDecl], [AttrArg(StrLit)])
@@ -75,6 +81,7 @@ NoStrAttr = AttrInfo('no_str', noStrAttr, [Mod], [])
 StrModAttr = AttrInfo('str_mod', strModAttr, [Mod], [])
 DropTraitAttr = AttrInfo('drop_trait', dropTraitAttr, [TraitDecl], [])
 LeakAttr = AttrInfo('leak', leakAttr, [ValueRef], [])
+InlineAttr = AttrInfo('inline', inlineAttr, [FnDecl], [AttrArg(BoolLit, optional=True)])
 
 builtinAttrs = {
 	AcquireAttr.name: AcquireAttr, 
@@ -85,7 +92,8 @@ builtinAttrs = {
 	NoStrAttr.name: NoStrAttr, 
 	StrModAttr.name: StrModAttr, 
 	DropTraitAttr.name: DropTraitAttr,
-	LeakAttr.name: LeakAttr
+	LeakAttr.name: LeakAttr,
+	InlineAttr.name: InlineAttr
 }
 
 def invokeAttrs(state, expr):

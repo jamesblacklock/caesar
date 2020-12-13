@@ -22,6 +22,7 @@ class Fn(ValueSymbol):
 		self.isFn = True
 		self.unsafe = False
 		self.cfg = None
+		self.inline = False
 	
 	def checkSig(self, state):
 		returnType = Void
@@ -31,6 +32,7 @@ class Fn(ValueSymbol):
 		for param in self.params:
 			param.checkSig(state)
 		
+		self.inline = self.ast.alwaysInline
 		self.cVarArgs = self.ast.cVarArgs
 		self.unsafe = self.ast.unsafe or self.ast.extern
 		if self.ast.cconv == CConv.C:

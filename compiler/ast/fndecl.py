@@ -14,6 +14,8 @@ class FnDecl(ValueSymbol):
 		self.cconv = cconv
 		self.unsafe = unsafe
 		self.pub = pub
+		self.alwaysInline = False
+		self.neverInline = False
 	
 	def createSymbol(self, state):
 		symbolNames = {}
