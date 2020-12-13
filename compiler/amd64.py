@@ -993,15 +993,39 @@ def itof(state, ir, nextIR):
 		src = reg
 	
 	state.appendInstr('cvtsi2sd' if ir.type == F64 else 'cvtsi2ss',
-			Operand(dest, Usage.DEST, ir.type), 
-			Operand(src, Usage.SRC))
+		Operand(dest, Usage.DEST, ir.type), 
+		Operand(src, Usage.SRC))
 	
 	dest.type = ir.type
 	state.popOperand()
 	state.pushOperand(dest)
 
 def ftoi(state, ir, nextIR):
-	assert 0
+	src = state.getOperand(0)
+	
+	if src.storage not in (Storage.XMM, Storage.STACK):
+		reg = state.findXmmReg(src.type)
+		if src == None:
+			reg = state.xmm8
+			stack = saveReg(state, reg)
+			state.moveOperand(reg, stack)
+			reg.type = src.type
+		moveData(state, src, reg)
+		src = reg
+	
+	dest = state.findReg(ir.type)
+	if dest == None:
+		reg = state.rax
+		stack = saveReg(state, reg)
+		state.moveOperand(reg, stack)
+		reg.type = ir.type
+	
+	state.appendInstr('cvttsd2si' if src.type == F64 else 'cvttss2si',
+		Operand(dest, Usage.DEST), 
+		Operand(src, Usage.SRC))
+	
+	state.popOperand()
+	state.pushOperand(dest)
 
 def neg(state, ir, nextIR):
 	target = state.getOperand(0)
@@ -1741,8 +1765,12 @@ irToAsmFns = {
 def saveReg(state, reg, exclude=[]):
 	assert reg.active
 	
+	opcode = 'mov'
+	if reg.storage == Storage.XMM:
+		opcode = 'movq' if reg.type.byteSize == 8 else 'movd'
+	
 	stack = state.findTarget(reg.type, True, exclude=exclude)
-	state.appendInstr('movq' if reg.storage == Storage.XMM else 'mov', 
+	state.appendInstr(opcode, 
 		Operand(stack, Usage.DEST), 
 		Operand(reg, Usage.SRC))
 	
