@@ -12,10 +12,12 @@ class CConv(Enum):
 	C = 'C'
 
 class Fn(ValueSymbol):
-	def __init__(self, ast, params):
+	def __init__(self, ast, params, genericParams, genericSymbolTable):
 		super().__init__(ast.name, ast.nameSpan, ast.span, ast.pub)
 		self.ast = ast
 		self.params = params
+		self.genericSymbolTable = genericSymbolTable
+		self.genericParams = genericParams
 		self.mangledName = None
 		self.isDropFnForType = None
 		self.analyzed = False
@@ -26,9 +28,12 @@ class Fn(ValueSymbol):
 		self.cfg = None
 		self.inline = False
 		self.genericReq = set()
-		self.isGeneric = False
+		self.isGeneric = genericParams != None
 	
 	def checkSig(self, state):
+		if self.genericSymbolTable:
+			state.mod = PatchMod(state.mod, self.genericSymbolTable)
+		
 		for param in self.params:
 			param.checkSig(state)
 			if param.type and param.type.isGenericType and param.type.byteSize == None:
@@ -40,8 +45,8 @@ class Fn(ValueSymbol):
 			if returnType and returnType.isGenericType and returnType.byteSize == None:
 				self.genericReq.add(returnType.symbol)
 		
-		for param in self.params:
-			param.checkSig(state)
+		if self.genericSymbolTable:
+			state.mod = state.mod.parent
 		
 		self.inline = self.ast.alwaysInline
 		self.cVarArgs = self.ast.cVarArgs
@@ -65,9 +70,15 @@ class Fn(ValueSymbol):
 		
 		deps.push(self)
 		
+		if self.genericSymbolTable:
+			state.mod = PatchMod(state.mod, self.genericSymbolTable)
+		
 		state.finishResolvingType(self.type.returnType, deps)
 		for param in self.type.params:
 			state.finishResolvingType(param.type, deps)
+		
+		if self.genericSymbolTable:
+			state.mod = state.mod.parent
 		
 		deps.pop()
 		self.analyzed = True
@@ -75,6 +86,9 @@ class Fn(ValueSymbol):
 	def analyzeBody(self, state):
 		if not self.ast.body:
 			return
+		
+		if self.genericSymbolTable:
+			state.mod = PatchMod(state.mod, self.genericSymbolTable)
 		
 		flow = CFGBuilder(state, self, state.mod)
 		flow.beginScope(self.ast.body.span, unsafe=self.unsafe)
@@ -89,6 +103,9 @@ class Fn(ValueSymbol):
 		flow.analyzeNode(self.ast.body, self.type.returnType if self.type else None)
 		
 		flow.endScope()
+		
+		if self.genericSymbolTable:
+			state.mod = state.mod.parent
 		
 		if not flow.failed:
 			flow.finalize()

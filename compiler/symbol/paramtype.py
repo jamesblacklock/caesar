@@ -1,11 +1,7 @@
-from .symbol           import Symbol, ValueSymbol, SymbolType, Deps
-from ..ast.genericinst import GenericAssocConst, GenericAssocType, FnInst, GenericType
-from .fn               import Fn
+from .symbol           import Symbol, SymbolType
+from ..ast.genericinst import GenericAssocConst, GenericAssocType, GenericType
 from .struct           import Struct
-from ..types           import typesMatch
 from ..log             import logError, logExplain
-from ..mir.flow        import CFGBuilder
-from ..mir.access      import SymbolAccess
 
 class ParamTypeInst:
 	def __init__(self, paramType, defaultType):
@@ -13,16 +9,17 @@ class ParamTypeInst:
 		self.type = defaultType
 
 class ParamTypeSymbol(Symbol):
-	def __init__(self, ast, typeParams):
+	def __init__(self, ast, genericParams):
 		super().__init__(SymbolType.PARAM_TYPE, ast.name, ast.nameSpan, ast.span, ast.pub)
 		self.ast = ast
-		self.typeParams = typeParams
+		self.genericParams = genericParams
 		self.mod = None
 		self.genericStruct = Struct(self.ast)
 		self.genericStruct.type.isGenericType = True
 		self.type = self.genericStruct.type
 		self.analyzed = False
 		self.sigWasChecked = False
+		self.isGeneric = True
 	
 	@property
 	def symbolTable(self):
@@ -30,7 +27,7 @@ class ParamTypeSymbol(Symbol):
 	
 	def checkSig(self, state):
 		paramNames = {}
-		for param in self.typeParams:
+		for param in self.genericParams:
 			if param.name.content in paramNames:
 				logError(state, param.span, 'duplicate parameter name')
 				logExplain(state, paramNames[param.name.content], '`{}` was previously declared here'.format(param.name.content))
@@ -58,70 +55,3 @@ class ParamTypeSymbol(Symbol):
 			self.checkSig(state)
 		
 		self.genericStruct.analyze(state, deps)
-	
-	def constructFromArgs(self, state, args, span):
-		if len(args) != len(self.typeParams):
-			logError(state, span, 'type instantiated with wrong number of arguments (expected {}, found {})'
-				.format(len(self.typeParams), len(args)))
-			return None
-		
-		symbolTable = {}
-		
-		for (param, arg) in zip(self.typeParams, args):
-			if param.valueType:
-				if not (arg.hasValue or arg.maybeValue):
-					logError(state, arg.span, 'found type reference where a value was expected')
-					continue
-				
-				state.beginScope(self.span)
-				
-				if not arg.hasValue and arg.maybeValue:
-					symbol = state.lookupSymbol(arg.path, inValuePosition=True)
-					if symbol == None:
-						continue
-					mir = SymbolAccess.readSymbol(symbol, arg.span)
-				else:
-					mir = state.analyzeNode(arg, param.valueType)
-				
-				state.appendDropPoint()
-				block = state.block
-				state.endScope()
-				
-				if mir == None or mir.type == None:
-					assert state.failed
-					continue
-				
-				if not typesMatch(param.valueType, mir.type):
-					logError(state, arg.span, 'expected type {}, found {}'.format(param.valueType, mir.type))
-					continue
-				
-				staticValue = state.staticEval(mir.symbol, [block])
-				if staticValue == None:
-					logError(state, arg.span, 'expression cannot be statically evaluated')
-					continue
-				
-				symbol = GenericAssocConst(param, staticValue, arg.span)
-			else:
-				if arg.hasValue:
-					logError(state, arg.span, 'found value expression where a type was expected')
-					continue
-				
-				t = state.resolveTypeRef(arg)
-				symbol = GenericAssocType(param, t, arg.span)
-		
-			symbolTable[param.name.content] = symbol
-		
-		structSymbol = Struct(self.ast)
-		structSymbol.paramType = self
-		structSymbol.type.symbolTable = symbolTable
-		structSymbol.analyze(state.ssstate, Deps(self.ast))
-		
-		for symbol in self.type.symbolTable.values():
-			if symbol.name in symbolTable:
-				continue
-			assert type(symbol) == Fn
-			symbolTable[symbol.name] = symbol
-		
-		return structSymbol.type
-		
-			

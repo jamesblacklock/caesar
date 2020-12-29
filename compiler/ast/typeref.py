@@ -1,9 +1,8 @@
-from .ast               import AST
-from ..log              import logError
-from ..symbol.fn        import Fn
-from ..symbol.paramtype import ParamTypeSymbol, ParamTypeInst
-from ..types            import BUILTIN_TYPES, PtrType, ArrayType, OwnedType
-from ..mir.flow         import CFGBuilder
+from .ast        import AST
+from ..log       import logError
+from ..symbol.fn import Fn
+from ..types     import BUILTIN_TYPES, PtrType, ArrayType, OwnedType
+from ..mir.flow  import CFGBuilder
 
 class TypeRef(AST):
 	def __init__(self, name, span):
@@ -28,30 +27,14 @@ class NamedTypeRef(TypeRef):
 		return res.type if res else None
 
 class ParamTypeRef(TypeRef):
-	def __init__(self, path, args, span):
-		super().__init__(path[-1].content, span)
-		self.path = path
-		self.args = args
+	def __init__(self, inst, span):
+		super().__init__(inst.path[-1].content, span)
+		self.inst = inst
 	
 	def resolveSig(self, state, flow=None):
-		builtinName = self.path[0].content if len(self.path) == 1 else None
-		if builtinName in BUILTIN_TYPES:
-			res = BUILTIN_TYPES[builtinName]
-		else:
-			res = state.lookupSymbol(self.path, inTypePosition=True)
-		
-		if type(res) == ParamTypeInst:
-			res = res.paramType
-		
-		if res == None:
-			return None
-		elif type(res) != ParamTypeSymbol:
-			name = '::'.join(self.path)
-			logError(state, self.span, 'type `{}` is not a parameterized type'.format(name))
-		else:
-			if flow == None:
-				flow = CFGBuilder(state, self, state.mod)
-			return res.constructFromArgs(flow, self.args, self.span)
+		symbol = self.inst.constructType(flow if flow else CFGBuilder(state, self, state.mod))
+		if symbol:
+			return symbol.type
 
 class OwnedTypeRef(TypeRef):
 	def __init__(self, baseType, acquire, release, span):

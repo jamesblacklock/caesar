@@ -11,7 +11,6 @@ from .symbol.static  import Static
 from .ast.importexpr import Import
 from .               import platform
 
-
 class FieldLayout:
 	def __init__(self, align, byteSize, fields):
 		self.align = align

@@ -18,6 +18,7 @@ class Symbol:
 		self.type = type
 		self.isImport = False
 		self.unused = True
+		self.isGeneric = False
 
 class ValueSymbol(Symbol):
 	def __init__(self, name, nameSpan, span, pub=False, type=None):
@@ -27,7 +28,6 @@ class ValueSymbol(Symbol):
 		self.isStatic = False
 		self.isConst = False
 		self.isFn = False
-		self.isGeneric = False
 
 class Deps:
 	def __init__(self, symbol):

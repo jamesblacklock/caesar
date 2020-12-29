@@ -5,8 +5,9 @@ from .genericinst import GenericAssocConst, GenericAssocType, GenericType
 
 class FnDecl(ValueSymbolAST):
 	def __init__(self, name, doccomment, pub, extern, cconv, unsafe, 
-		params, cVarArgs, returnType, body, span, cVarArgsSpan):
+		genericParams, params, cVarArgs, returnType, body, span, cVarArgsSpan):
 		super().__init__(name, None, span, doccomment, extern)
+		self.genericParams = genericParams
 		self.params = params
 		self.cVarArgs = cVarArgs
 		self.cVarArgsSpan = cVarArgsSpan
@@ -19,6 +20,28 @@ class FnDecl(ValueSymbolAST):
 		self.neverInline = False
 	
 	def createSymbol(self, state):
+		paramNames = {}
+		genericSymbolTable = None
+		genericParams = None
+		if self.genericParams:
+			genericParams = []
+			genericSymbolTable = {}
+			for param in self.genericParams:
+				if param.name in paramNames:
+					logError(state, param.span, 'duplicate parameter name')
+					logExplain(state, paramNames[param.name], '`{}` was previously declared here'.format(param.name))
+					continue
+				
+				if param.valueType:
+					symbol = GenericAssocConst(param, None, param.span)
+				else:
+					symbol = GenericAssocType(param, None, param.span)
+					symbol.type = GenericType(param.name.content, param.name.span, symbol)
+			
+			genericParams.append(param)
+			genericSymbolTable[param.name.content] = symbol
+			paramNames[param.name.content] = param.span
+		
 		symbolNames = {}
 		params = []
 		for param in self.params:
@@ -38,5 +61,5 @@ class FnDecl(ValueSymbolAST):
 			logError(state, self.cVarArgsSpan, 'may not use C variadic parameter without the C calling convention')
 			cVarArgs = False
 		
-		self.symbol = Fn(self, params)
+		self.symbol = Fn(self, params, genericParams, genericSymbolTable)
 		return self.symbol

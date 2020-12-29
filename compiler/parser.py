@@ -835,9 +835,14 @@ def parseTypeRefOrValueExpr(state):
 
 def parseNamedTypeRef(state):
 	path = parsePath(state)
+	
+	if state.tok.type == TokenType.PATH and state.nextTok.type == TokenType.LBRACK:
+		state.advance()
+	
 	if state.tok.type == TokenType.LBRACK:
 		args = parseBlock(state, parseTypeRefOrValueExpr, BlockMarkers.BRACK, True)
-		return ParamTypeRef(path.path, args.list, Span.merge(path.span, args.span))
+		inst = GenericInst(path.path, args.list, Span.merge(path.span, args.span))
+		return ParamTypeRef(inst, inst.span)
 	else:
 		return NamedTypeRef(path.path, path.span)
 
@@ -1365,22 +1370,17 @@ def parseValueExprImpl(state, precedence, noSkipSpace, allowSimpleFnCall):
 	elif state.tok.type == TokenType.NAME:
 		path = parsePath(state)
 		
-		hasGenericArgs = False
-		genericBlock = None
 		if state.tok.type == TokenType.PATH and state.nextTok.type == TokenType.LBRACK:
 			state.advance()
 			genericBlock = parseBlock(state, parseTypeRefOrValueExpr, BlockMarkers.BRACK, True)
-			state.skipSpace()
-			hasGenericArgs = True
-		
-		if isStructStart(state):
-			if genericBlock:
-				typeRef = ParamTypeRef(path.path, genericBlock.list, Span.merge(path.span, genericBlock.span))
-			else:
-				typeRef = NamedTypeRef(path.path, path.span)
-			expr = parseStructLit(state, typeRef)
-		elif hasGenericArgs:
 			expr = GenericInst(path.path, genericBlock.list, Span.merge(path.span, genericBlock.span))
+			state.skipSpace()
+			if isStructStart(state):
+				typeRef = ParamTypeRef(expr, expr.span)
+				expr = parseStructLit(state, typeRef)
+		elif isStructStart(state):
+			typeRef = NamedTypeRef(path.path, path.span)
+			expr = parseStructLit(state, typeRef)
 		else:
 			expr = ValueRef(path.path, path.span)
 	elif state.tok.type == TokenType.STRING:
