@@ -1,6 +1,7 @@
 from .symbol import Symbol, SymbolType
 from ..types import Type
 from .mod    import PatchMod
+from ..log   import logError, logError
 
 class Struct(Symbol):
 	def __init__(self, ast):
@@ -50,7 +51,8 @@ class Struct(Symbol):
 		self.types = types
 		
 		state.mod = state.mod.parent
-		self.mangledName = state.mangleName(self)
+		if self.name:
+			self.mangledName = state.mangleName(self)
 		self.type.mangledName = self.mangledName
 	
 	def analyze(self, state, deps):

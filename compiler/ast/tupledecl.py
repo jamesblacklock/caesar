@@ -11,6 +11,6 @@ class TupleDecl(SymbolAST):
 	def createSymbol(self, state):
 		return Tuple(self)
 	
-	def resolveSig(self, state):
+	def resolveSig(self, state, flow=None):
 		symbol = self.createSymbol(state)
 		return symbol.type

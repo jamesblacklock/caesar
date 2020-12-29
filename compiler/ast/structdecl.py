@@ -34,7 +34,7 @@ class StructDecl(SymbolAST):
 			return ParamTypeSymbol(self, self.typeParams) 
 		return Struct(self)
 	
-	def resolveSig(self, state):
+	def resolveSig(self, state, flow=None):
 		symbol = self.createSymbol(state)
 		return symbol.type
 	
