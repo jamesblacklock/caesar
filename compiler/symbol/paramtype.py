@@ -1,31 +1,16 @@
-from .symbol      import Symbol, ValueSymbol, SymbolType, Deps
-from .fn          import Fn
-from .struct      import Struct
-from ..types      import typesMatch
-from ..log        import logError, logExplain
-from ..mir.flow   import CFGBuilder
-from ..mir.access import SymbolAccess
+from .symbol           import Symbol, ValueSymbol, SymbolType, Deps
+from ..ast.genericinst import GenericAssocConst, GenericAssocType, FnInst, GenericType
+from .fn               import Fn
+from .struct           import Struct
+from ..types           import typesMatch
+from ..log             import logError, logExplain
+from ..mir.flow        import CFGBuilder
+from ..mir.access      import SymbolAccess
 
-class ParamTypeAssocConst(ValueSymbol):
-	def __init__(self, param, staticValue, span):
-		super().__init__(param.name.content, param.name.span, span, True)
-		self.ast = param
-		self.staticValue = staticValue
-		self.isConst = True
-		self.type = param.valueType
-		self.contracts = {}
-
-class ParamTypeAssocType(Symbol):
-	def __init__(self, param, type, span):
-		super().__init__(SymbolType.TYPE, param.name.content, param.name.span, span, True)
-		self.ast = param
-		self.type = type
-
-class ParamTypeMod:
-	def __init__(self):
-		self.symbolTable = {}
-		self.parent = None
-		self.transparent = True
+class ParamTypeInst:
+	def __init__(self, paramType, defaultType):
+		self.paramType = paramType
+		self.type = defaultType
 
 class ParamTypeSymbol(Symbol):
 	def __init__(self, ast, typeParams):
@@ -50,9 +35,10 @@ class ParamTypeSymbol(Symbol):
 				continue
 			
 			if param.valueType:
-				symbol = ParamTypeAssocConst(param, None, param.span)
+				symbol = GenericAssocConst(param, None, param.span)
 			else:
-				symbol = ParamTypeAssocType(param, None, param.span)
+				symbol = GenericAssocType(param, None, param.span)
+				symbol.type = GenericType(param.name.content, param.name.span, symbol)
 			
 			self.genericStruct.symbolTable[param.name.content] = symbol
 			paramNames[param.name.content] = param.span
@@ -110,14 +96,14 @@ class ParamTypeSymbol(Symbol):
 					logError(state, arg.span, 'expression cannot be statically evaluated')
 					continue
 				
-				symbol = ParamTypeAssocConst(param, staticValue, arg.span)
+				symbol = GenericAssocConst(param, staticValue, arg.span)
 			else:
 				if arg.hasValue:
 					logError(state, arg.span, 'found value expression where a type was expected')
 					continue
 				
 				t = state.resolveTypeRef(arg)
-				symbol = ParamTypeAssocType(param, t, arg.span)
+				symbol = GenericAssocType(param, t, arg.span)
 		
 			symbolTable[param.name.content] = symbol
 		

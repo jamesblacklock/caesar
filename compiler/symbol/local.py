@@ -47,6 +47,10 @@ class Local(ValueSymbol):
 	def createTemp(span):
 		return Local(None, None, False, span)
 	
+	def resolveGenericParam(self, symbolTable):
+		assert self.isParam
+		return Local(self.ast, self.type.resolveGenerics(symbolTable), True)
+	
 	def checkSig(self, state):
 		assert self.isParam
 		self.type = self.ast.typeRef.resolveSig(state)

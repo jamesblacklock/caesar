@@ -1,5 +1,6 @@
-from .symbol          import Symbol, SymbolType
-from ..types          import Type, TypeMod
+from .symbol import Symbol, SymbolType
+from ..types import Type
+from .mod    import PatchMod
 
 class Struct(Symbol):
 	def __init__(self, ast):
@@ -20,7 +21,7 @@ class Struct(Symbol):
 		return self.type.symbolTable
 	
 	def checkSig(self, state):
-		self.mod = TypeMod(state.mod, self)
+		self.mod = PatchMod(state.mod, self.symbolTable)
 		state.mod = self.mod
 		
 		self.fieldDecls = self.ast.flattenedFieldDecls()
@@ -85,3 +86,7 @@ class StructType(Type):
 		self.fieldDict = {field.name: field for field in self.fields}
 		if self.anon:
 			self.name = '{{{}}}'.format(', '.join('{}: {}'.format(f.name, f.type.name) for f in self.fields))
+	
+	def resolveGenerics(self, symbolTable):
+		if self.name in symbolTable:
+			return symbolTable[self.name].type

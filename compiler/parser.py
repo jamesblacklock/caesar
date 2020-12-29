@@ -771,7 +771,13 @@ def parseOwnedTypeRef(state):
 # disambiguate in situation where the item parsed may be a type reference or may be a value expression
 # i.e. for template instantiation
 def parseTypeRefOrValueExpr(state):
+	doPop = False
+	if len(state.isParsingTypeRef) == 0:
+		state.isParsingTypeRef.append(None)
+		doPop = True
+	
 	isParsingTypeRef = state.isParsingTypeRef[-1]
+	
 	definitelyTypeRef = \
 		(TokenType.OWNED, TokenType.AMP, TokenType.TUPLE, 
 		TokenType.LBRACE, TokenType.STRUCT, TokenType.UNION, TokenType.VOID)
@@ -780,15 +786,15 @@ def parseTypeRefOrValueExpr(state):
 		TokenType.CARET, TokenType.AS, *INFIX_PRECEDENCE)
 	
 	if isParsingTypeRef == True:
-		return parseTypeRef(state)
+		result = parseTypeRef(state)
 	elif isParsingTypeRef == False:
-		return parseValueExpr(state)
+		result = parseValueExpr(state)
 	elif state.tok.type in definitelyTypeRef:
 		state.isParsingTypeRef[-1] = True
-		return parseTypeRef(state)
+		result = parseTypeRef(state)
 	elif state.tok.type not in (TokenType.LPAREN, TokenType.NAME):
 		state.isParsingTypeRef[-1] = False
-		return parseValueExpr(state)
+		result = parseValueExpr(state)
 	elif state.tok.type == TokenType.LPAREN:
 		state.isParsingTypeRef.append(None)
 		block = parseBlock(state, parseTypeRefOrValueExpr, BlockMarkers.PAREN, True)
@@ -799,13 +805,13 @@ def parseTypeRefOrValueExpr(state):
 		state.isParsingTypeRef[-1] = False
 		if wasTypeRef:
 			state.isParsingTypeRef[-1] = True
-			return TupleDecl(None, None, block.list, True, block.span)
+			result = TupleDecl(None, None, block.list, True, block.span)
 		elif len(block.list) == 1 and not block.trailingSeparator:
 			expr = block.list[0]
 			expr.span = block.span
-			return expr
+			result = expr
 		else:
-			return TupleLit(block.list, block.span)
+			result = TupleLit(block.list, block.span)
 	else:
 		assert state.tok.type == TokenType.NAME
 		offset = state.offset
@@ -813,20 +819,23 @@ def parseTypeRefOrValueExpr(state):
 		if state.tok.type == TokenType.LBRACK:
 			state.rollback(offset)
 			state.isParsingTypeRef[-1] = True
-			return parseNamedTypeRef(state)
+			result = parseNamedTypeRef(state)
 		elif state.tok.type in definitelyValueExpr:
 			state.rollback(offset)
 			state.isParsingTypeRef[-1] = False
-			return parseValueExpr(state)
+			result = parseValueExpr(state)
 		else:
-			return NamedTypeRef(path.path, path.span, maybeValue=True)
+			result = NamedTypeRef(path.path, path.span, maybeValue=True)
+	
+	if doPop:
+		state.isParsingTypeRef.pop()
+	
+	return result
 
 def parseNamedTypeRef(state):
 	path = parsePath(state)
 	if state.tok.type == TokenType.LBRACK:
-		state.isParsingTypeRef.append(None)
 		args = parseBlock(state, parseTypeRefOrValueExpr, BlockMarkers.BRACK, True)
-		state.isParsingTypeRef.pop()
 		return ParamTypeRef(path.path, args.list, Span.merge(path.span, args.span))
 	else:
 		return NamedTypeRef(path.path, path.span)

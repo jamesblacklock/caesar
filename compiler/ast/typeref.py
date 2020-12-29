@@ -1,7 +1,7 @@
 from .ast               import AST
 from ..log              import logError
 from ..symbol.fn        import Fn
-from ..symbol.paramtype import ParamTypeSymbol
+from ..symbol.paramtype import ParamTypeSymbol, ParamTypeInst
 from ..types            import BUILTIN_TYPES, PtrType, ArrayType, OwnedType
 from ..mir.flow         import CFGBuilder
 
@@ -39,6 +39,9 @@ class ParamTypeRef(TypeRef):
 			res = BUILTIN_TYPES[builtinName]
 		else:
 			res = state.lookupSymbol(self.path, inTypePosition=True)
+		
+		if type(res) == ParamTypeInst:
+			res = res.paramType
 		
 		if res == None:
 			return None

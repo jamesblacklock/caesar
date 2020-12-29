@@ -1,9 +1,24 @@
 from ..ast.ast import SymbolAST, Name
 from .symbol   import SymbolType
-from ..types   import typesMatch, TypeMod
+from ..types   import typesMatch
 from ..span    import Span
 from ..log     import logError, logWarning, logExplain
 from .trait    import Trait
+
+class PatchMod:
+	def __init__(self, parent, symbolTable):
+		self.parent = parent
+		self.symbolTable = symbolTable
+		self.transparent = True
+	
+	def __getattr__(self, key):
+		if key == 'parent':
+			return self.parent
+		elif key == 'symbolTable':
+			return self.symbolTable
+		elif key == 'transparent':
+			return True
+		return getattr(self.parent, key)
 
 class Mod(SymbolAST):
 	def __init__(self, name, doccomment, decls, span):
@@ -34,6 +49,7 @@ class Mod(SymbolAST):
 		self.transparent = False
 		
 		self.symbolType = SymbolType.MOD
+		self.isFn = False
 		self.unused = True
 		self.ast = self
 		self.parent = None
@@ -169,7 +185,7 @@ class Impl(Mod):
 			logError()
 			return
 		
-		state.mod = TypeMod(state.mod, self.type)
+		state.mod = PatchMod(state.mod, self.type.symbolTable)
 		self.parent = state.mod
 		super().analyze(state, deps)
 		state.mod = state.mod.parent

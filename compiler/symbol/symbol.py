@@ -27,6 +27,7 @@ class ValueSymbol(Symbol):
 		self.isStatic = False
 		self.isConst = False
 		self.isFn = False
+		self.isGeneric = False
 
 class Deps:
 	def __init__(self, symbol):

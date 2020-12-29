@@ -4,6 +4,7 @@ from ..symbol.symbol    import SymbolType
 from ..mir.createstruct import CreateStruct, FieldInit
 from ..mir.primitive    import IntValue
 from ..log              import logError
+from .typeref           import ParamTypeRef
 
 class FieldLit(AST):
 	def __init__(self, name, expr, span):
@@ -31,15 +32,20 @@ class StructLit(AST):
 		variant = None
 		if self.typeRef:
 			variants = implicitType.symbolTable if implicitType and implicitType.isEnumType else None
-			symbol = state.lookupSymbol(self.typeRef.path, variants, inTypePosition=True)
+			if type(self.typeRef) == ParamTypeRef:
+				t = state.resolveTypeRef(self.typeRef)
+				symbol = t.symbol if t else None
+			else:
+				symbol = state.lookupSymbol(self.typeRef.path, variants, inTypePosition=True)
+			
 			if symbol:
 				if symbol.symbolType == SymbolType.VARIANT:
 					variant = symbol
 					enumType = variant.enumType
 					implicitType = variant.type
 				elif symbol.symbolType == SymbolType.PARAM_TYPE:
-					if implicitType.symbol.paramType != symbol:
-						logError(state, span, 'missing type parameters for type `{}`'.format(symbol.name))
+					if implicitType and implicitType.symbol.paramType != symbol:
+						logError(state, self.typeRef.span, 'missing type parameters for type `{}`'.format(symbol.name))
 				else:
 					implicitType = symbol.type
 					# if implicitType and implicitType.isUnknown:

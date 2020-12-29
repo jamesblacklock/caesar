@@ -369,7 +369,7 @@ class SymbolWrite(SymbolAccess):
 		if self.type == None:
 			self.type = self.symbol.type
 		if self.field and self.field.isUnionField and not state.scope.allowUnsafe:
-			logError(state, fnCall.expr.span, 'writing union fields is unsafe; context is safe')
+			logError(state, self.span, 'writing union fields is unsafe; context is safe')
 		
 		if self.isFieldAccess:
 			if self.deref:

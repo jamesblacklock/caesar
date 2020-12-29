@@ -673,6 +673,9 @@ class CFGDropPoint(MIR):
 		self.span = span
 		self.mir = []
 	
+	def staticSideEffects(self, state):
+		return True
+	
 	def append(self, mir):
 		self.mir.append(mir)
 	

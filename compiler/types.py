@@ -3,19 +3,13 @@ from .mir.coerce import Coerce
 
 PLATFORM_WORD_SIZE = 8
 
-class TypeMod:
-	def __init__(self, parent, t):
-		self.parent = parent
-		self.symbolTable = t.symbolTable
-		self.transparent = True
-
 class Type:
 	def __init__(self, name=None, span=None, symbol=None,
 		byteSize=None, align=None, isDefinite=True, isEnumType=False, 
 		isFnType=False, isPtrType=False, isStructType=False, isTraitType=False, 
 		isIntType=False, isIntLikeType=False, isFloatType=False, isOptionType=False, 
 		isPrimitiveType=False, isSigned=False, isArrayType=False, isOwnedType=False, 
-		isTupleType=False, isCompositeType=False, isUnknown=False):#, isTypeDef=False):
+		isTupleType=False, isCompositeType=False, isGenericType=False, isUnknown=False):#, isTypeDef=False):
 		self.name = name
 		self.span = span
 		self.symbol = symbol
@@ -43,6 +37,7 @@ class Type:
 		self.dropFn = None
 		self.symbolTable = {}
 		self.traitImpls = {}
+		self.isGenericType = isGenericType
 	
 	@property
 	def isVoidType(self):
@@ -61,6 +56,11 @@ class Type:
 		
 		return False
 	
+	def resolveGenerics(self, symbolTable):
+		if self.isGenericType:
+			assert 0
+		return self
+	
 	def __str__(self):
 		if self.name == None:
 			self.updateName()
@@ -72,7 +72,8 @@ class OwnedType(Type):
 			span=span, 
 			byteSize=baseType.byteSize, 
 			align=baseType.align, 
-			isOwnedType=True)
+			isOwnedType=True,
+			isGenericType=baseType.isGenericType)
 		self.baseType = baseType
 		self.acquire = acquire
 		self.release = release
@@ -84,6 +85,17 @@ class OwnedType(Type):
 		self.name = 'owned({}, {}) {}'.format(
 			self.acquire.name if self.acquire else '<unknown>', 
 			self.release.name if self.release else '<unknown>', self.baseType.name)
+	
+	def resolveGenerics(self, symbolTable):
+		if not self.isGenericType:
+			return self
+		return OwnedType(
+			self.baseType.resolveGenerics(symbolTable), 
+			self.acquire, 
+			self.release, 
+			self.acquireSpan, 
+			self.releaseSpan, 
+			self.span)
 
 class PrimitiveType(Type):
 	def __init__(self, name, byteSize, isIntType=False, 
@@ -97,6 +109,7 @@ class PrimitiveType(Type):
 			isIntType=isIntType, 
 			isFloatType=isFloatType, 
 			isSigned=isSigned)
+		self.mangledName = 'T{}{}'.format(len(name), name)
 
 class OptionType(Type):
 	def __init__(self, *types):
@@ -109,6 +122,12 @@ class OptionType(Type):
 			align=align, 
 			isOptionType=True)
 		self.types = types
+		self.isGenericType = len([None for t in types if t.isGenericType]) > 0
+	
+	def resolveGenerics(self, symbolTable):
+		if not self.isGenericType:
+			return self
+		return OptionType([t.resolveGenerics(symbolTable) for t in self.types])
 
 class FnType(Type):
 	def __init__(self, unsafe, params, returnType, cVarArgs, cconv):
@@ -119,6 +138,11 @@ class FnType(Type):
 		self.params = params
 		self.cVarArgs = cVarArgs
 		self.cconv = cconv
+		self.isGenericType = returnType and returnType.isGenericType
+		for p in params:
+			if self.isGenericType:
+				break
+			self.isGenericType = p.type and p.type.isGenericType
 	
 	def updateName(self):
 		for p in self.params: p.type.updateName()
@@ -129,6 +153,16 @@ class FnType(Type):
 			', ' if self.cVarArgs and len(self.params) > 0 else '',
 			'...' if self.cVarArgs else '',
 			self.returnType.name)
+	
+	def resolveGenerics(self, symbolTable):
+		if not self.isGenericType:
+			return self
+		return FnType(
+			self.unsafe, 
+			[p.resolveGenericParam(symbolTable) for p in self.params], 
+			self.returnType.resolveGenerics(symbolTable), 
+			self.cVarArgs, 
+			self.cconv)
 
 class FieldInfo:
 	def __init__(self, name, symbolType, offset, isUnionField=False, pub=True, mut=True):
@@ -151,7 +185,8 @@ class PtrType(Type):
 			isIntLikeType=not isTraitPtr, 
 			isPrimitiveType=not isTraitPtr, 
 			isPtrType=True, 
-			isCompositeType=isTraitPtr)
+			isCompositeType=isTraitPtr,
+			isGenericType=baseType.isGenericType)
 		
 		if isTraitPtr:
 			self.fields = [
@@ -180,6 +215,11 @@ class PtrType(Type):
 			return self.baseType
 		else:
 			return PtrType(self.baseType, self.indLevel - count, self.mut)
+	
+	def resolveGenerics(self, symbolTable):
+		if not self.isGenericType:
+			return self
+		return PtrType(self.baseType.resolveGenerics(symbolTable), self.indLevel, self.mut)
 
 class ArrayFields:
 	def __init__(self, elementType, count):
@@ -208,7 +248,8 @@ class ArrayType(Type):
 			byteSize=byteSize, 
 			align=baseType.align, 
 			isArrayType=True, 
-			isCompositeType=True)
+			isCompositeType=True,
+			isGenericType=baseType.isGenericType)
 		self.baseType = baseType
 		self.count = count
 		self.fields = ArrayFields(baseType, count)
@@ -218,6 +259,11 @@ class ArrayType(Type):
 	def updateName(self):
 		self.baseType.updateName()
 		self.name = '[{} * {}]'.format(self.baseType.name, self.count)
+	
+	def resolveGenerics(self, symbolTable):
+		if not self.isGenericType:
+			return self
+		return ArrayType(self.baseType.resolveGenerics(symbolTable), self.count)
 
 # class IndefiniteIntType(Type):
 # 	def __init__(self, initialValue):

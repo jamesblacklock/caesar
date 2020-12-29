@@ -1,5 +1,6 @@
 from enum       import Enum
 from .symbol    import ValueSymbol
+from .mod       import PatchMod
 from ..log      import logError, logExplain
 from ..types    import Void
 from ..types    import FnType
