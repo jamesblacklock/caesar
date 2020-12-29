@@ -44,6 +44,7 @@ class CFGBuilder:
 		self.failed = False
 		self.blockId = 1
 		self.dropPoint = None
+		self.genericReq = set()
 	
 	def createDiscardBuilder(self):
 		discard = CFGBuilder(self.ssstate, self.fn, self.mod)
@@ -181,6 +182,10 @@ class CFGBuilder:
 		self.block.decl(symbol)
 	
 	def access(self, access):
+		if access.type and access.type.isGenericType and access.type.byteSize == None:
+			self.genericReq.add(access.type.symbol)
+		elif access.symbol and access.symbol.isGeneric:
+			self.genericReq.add(access.symbol)
 		self.block.access(self, access)
 	
 	def append(self, mir):

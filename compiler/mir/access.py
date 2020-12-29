@@ -271,7 +271,8 @@ class SymbolRead(SymbolAccess):
 			stackTop = True
 		elif self.symbol.isConst:
 			assert not self.addr
-			ir.writeStaticValueIR(state, self, self.symbol.staticValue)
+			symbol = state.ast.genericInc[self.symbol] if self.symbol.isGeneric else self.symbol
+			ir.writeStaticValueIR(state, self, symbol.staticValue)
 			stackTop = True
 		else:
 			assert type(self.symbol) == Local

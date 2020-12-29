@@ -1,6 +1,7 @@
-from .ast        import ValueSymbolAST
-from ..symbol.fn import Fn, CConv
-from ..log       import logError
+from .ast         import ValueSymbolAST
+from ..symbol.fn  import Fn, CConv
+from ..log        import logError, logExplain
+from .genericinst import GenericAssocConst, GenericAssocType, GenericType
 
 class FnDecl(ValueSymbolAST):
 	def __init__(self, name, doccomment, pub, extern, cconv, unsafe, 

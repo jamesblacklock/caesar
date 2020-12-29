@@ -123,6 +123,9 @@ class Impl(Mod):
 		if symbol:
 			self.type = symbol.type
 			self.name = '$impl{}'.format(state.mangleName(symbol))
+			if symbol.symbolType == SymbolType.PARAM_TYPE:
+				# bring in the params (unless they are shadowed)
+				self.symbolTable = { **symbol.symbolTable, **self.symbolTable }
 		
 		super().checkSig(state)
 		

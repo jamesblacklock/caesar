@@ -25,11 +25,20 @@ class Fn(ValueSymbol):
 		self.cVarArgs = False
 		self.cfg = None
 		self.inline = False
+		self.genericReq = set()
+		self.isGeneric = False
 	
 	def checkSig(self, state):
+		for param in self.params:
+			param.checkSig(state)
+			if param.type and param.type.isGenericType and param.type.byteSize == None:
+				self.genericReq.add(param.type.symbol)
+		
 		returnType = Void
 		if self.ast.returnTypeRef:
 			returnType = self.ast.returnTypeRef.resolveSig(state)
+			if returnType and returnType.isGenericType and returnType.byteSize == None:
+				self.genericReq.add(returnType.symbol)
 		
 		for param in self.params:
 			param.checkSig(state)
@@ -84,12 +93,14 @@ class Fn(ValueSymbol):
 		if not flow.failed:
 			flow.finalize()
 			self.cfg = flow.blocks
+			self.genericReq.update(flow.genericReq)
+			self.isGeneric = len(self.genericReq) > 0
 			# if self.isDropFnForType:
 			# 	self.checkDropFnScope(state)
 		
 		state.failed = state.failed or flow.failed
 		
-		print(self)
+		# print(self)
 		
 	
 	# def checkDropFnScope(self, state):
