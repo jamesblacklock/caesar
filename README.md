@@ -39,7 +39,7 @@ Currently Linux x64 and macOS x64 targets are supported. Cross-compilation is no
 
 "Hello world" example:
 
-	extern "C" fn printf(fmt: &byte, ...) -> int
+	import libc::printf
 	
 	fn main()
 	    unsafe printf("Hello World!\n")
