@@ -161,6 +161,7 @@ class SymbolRead(SymbolAccess):
 		self.hasValue = True
 		self.typeModifiers = None
 		self.leakOwned = False
+		self.typeFailed = False
 	
 	def moveToClone(self):
 		other = SymbolRead(self.span)
@@ -205,7 +206,7 @@ class SymbolRead(SymbolAccess):
 		
 		self.symbol.unused = False
 		
-		if self.type == None:
+		if self.type == None and not self.typeFailed:
 			self.type = self.symbol.type
 		if self.isFieldAccess and self.field and self.field.isUnionField and not state.scope.allowUnsafe:
 			logError(state, self.span, 'reading union fields is unsafe; context is safe')
@@ -673,6 +674,8 @@ def _SymbolAccess__analyzeSymbolAccess(state, expr, access, implicitType=None):
 			logError(state, expr.index.span, 'index must be type usize (found {})'.format(index.type))
 		
 		if failed:
+			access.type = None
+			access.typeFailed = True
 			return
 		
 		staticIndex = index.staticEval(state)

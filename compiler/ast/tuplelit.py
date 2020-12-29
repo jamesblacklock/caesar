@@ -1,7 +1,9 @@
 from .ast               import AST
-from ..types            import Void, ArrayType, getAlignedSize
+from ..types            import USize, Void, ArrayType, getAlignedSize, PtrType
 from ..symbol.tuple     import TupleType
 from ..mir.createstruct import CreateStruct, FieldInit
+from ..mir.primitive    import IntValue
+from ..mir.access       import SymbolAccess
 from ..log              import logError
 from ..span             import Span
 
@@ -92,4 +94,20 @@ class ArrayLit(AST):
 		type = ArrayType(elementType, count)
 		alignedSize = getAlignedSize(elementType)
 		inits = [FieldInit(access, type.fields[i]) for (i, access) in enumerate(accesses)]
-		return CreateStruct(inits, type, self.span)
+		dataStruct = CreateStruct(inits, type, self.span)
+		
+		assert implicitType and implicitType.name == 'arr'
+		
+		ArrType = implicitType
+		arrDataPtr = SymbolAccess.read(state, dataStruct)
+		arrDataPtr.symbol.mut = True
+		arrDataPtr.ref = False
+		arrDataPtr.addr = True
+		arrDataPtr.type = PtrType(arrDataPtr.type, 1, True)
+		
+		structValue = CreateStruct.create(state, ArrType, self.span, [
+			CreateStruct.init('count', IntValue(count, USize, self.span)),
+			CreateStruct.init('data', arrDataPtr)
+		])
+		
+		return structValue
