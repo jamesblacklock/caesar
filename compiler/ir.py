@@ -43,6 +43,7 @@ class FundamentalType:
 	
 	@staticmethod
 	def fromResolvedType(resolvedType):
+		assert resolvedType.byteSize
 		if resolvedType.isCompositeType:
 			return FundamentalType.fromCompositeType(resolvedType)
 		elif resolvedType.isEnumType:

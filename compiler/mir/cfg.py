@@ -559,7 +559,7 @@ class CFGBlock:
 				self.dropSymbol(state, info.symbol, info.symbol.dropPoint)
 		
 		if not self.successors:
-			for param in state.fn.type.params:
+			for param in state.fn.params:
 				info = self.symbolState[param]
 				if info.borrows:
 					scopeErrCount = 0

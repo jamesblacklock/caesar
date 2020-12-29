@@ -21,6 +21,7 @@ class Fn(ValueSymbol):
 		self.extern = False
 		self.isFn = True
 		self.unsafe = False
+		self.cVarArgs = False
 		self.cfg = None
 		self.inline = False
 	
@@ -68,12 +69,11 @@ class Fn(ValueSymbol):
 		flow = CFGBuilder(state, self, state.mod)
 		flow.beginScope(self.ast.body.span, unsafe=self.unsafe)
 		
-		if self.type and self.type.params:
-			for param in self.type.params:
-				param.dropPoint = flow.dropPoint
-				flow.decl(param)
-				flow.block.inputs.add(param)
-			flow.appendDropPoint()
+		for param in self.params:
+			param.dropPoint = flow.dropPoint
+			flow.decl(param)
+			flow.block.inputs.add(param)
+		flow.appendDropPoint()
 		
 		self.ast.body.hasScope = False
 		flow.analyzeNode(self.ast.body, self.type.returnType if self.type else None)

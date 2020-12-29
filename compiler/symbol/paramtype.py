@@ -93,6 +93,7 @@ class ParamTypeSymbol(Symbol):
 				else:
 					mir = state.analyzeNode(arg, param.valueType)
 				
+				state.appendDropPoint()
 				block = state.block
 				state.endScope()
 				

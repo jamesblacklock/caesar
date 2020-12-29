@@ -1093,14 +1093,14 @@ class Path:
 		self.path = path
 		self.span = span
 
-def parsePath(state, allowTrailingPath=False):
+def parsePath(state):
 	path = [Name.fromTok(state.tok)]
 	span = state.tok.span
 	state.advance()
 	onOneLine = True
 	
 	while state.tok.type == TokenType.PATH:
-		if allowTrailingPath and state.nextTok.type != TokenType.NAME:
+		if state.nextTok.type != TokenType.NAME:
 			break
 		
 		span = Span.merge(span, state.tok.span)
