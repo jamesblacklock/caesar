@@ -181,25 +181,25 @@ class AnalyzerState:
 			return '{}{}'.format(prefix, decl.name)
 		else:
 			letter = None
-			if type(decl) == Fn:
-				letter = 'F'
-			elif type(decl) == Static:
-				letter = 'S'
-			elif decl.symbolType == SymbolType.MOD:
+			if decl.symbolType == SymbolType.MOD:
 				letter = 'M'
 				mod = mod.parent
 			elif decl.symbolType in (SymbolType.TYPE, SymbolType.PARAM_TYPE):
 				letter = 'T'
-				mod = mod.parent
+			elif decl.isFn:
+				letter = 'F'
+			elif decl.isStatic:
+				letter = 'S'
 			else:
 				assert 0
 			
 			mangled = '{}{}{}'.format(letter, len(decl.name), decl.name)
 			while mod:
-				if mod.isFnMod:
-					mangled = 'F{}{}{}'.format(len(mod.name), mod.name, mangled)
-				else:
-					mangled = 'M{}{}{}'.format(len(mod.name), mod.name, mangled)
+				if not mod.transparent:
+					if mod.isFnMod:
+						mangled = 'F{}{}{}'.format(len(mod.name), mod.name, mangled)
+					else:
+						mangled = 'M{}{}{}'.format(len(mod.name), mod.name, mangled)
 				
 				mod = mod.parent
 			
@@ -220,13 +220,14 @@ class AnalyzerState:
 		for (t, n, f) in zip(types, fieldNames, fieldInfo):
 			if t.isVoidType:
 				continue
-			elif t.byteSize == None:
-				assert 0
 			
-			maxAlign = max(maxAlign, t.align)
+			byteSize = t.byteSize if t.byteSize != None else 0
+			align = t.align if t.align != None else 1
 			
-			if offset % t.align > 0:
-				offset += t.align - offset % t.align
+			maxAlign = max(maxAlign, align)
+			
+			if offset % align > 0:
+				offset += align - offset % align
 			
 			isUnionField = f.unionField if f else False
 			noOffset     =   f.noOffset if f else False
@@ -236,9 +237,9 @@ class AnalyzerState:
 			fields.append(FieldInfo(n, t, offset, isUnionField, pub, mut))
 			
 			if noOffset:
-				unionSize = max(unionSize, t.byteSize)
+				unionSize = max(unionSize, byteSize)
 			else:
-				offset += max(unionSize, t.byteSize)
+				offset += max(unionSize, byteSize)
 				unionSize = 0
 		
 		if unionSize > 0:

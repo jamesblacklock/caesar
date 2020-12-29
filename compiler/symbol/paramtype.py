@@ -19,8 +19,10 @@ class ParamTypeSymbol(Symbol):
 		self.typeParams = typeParams
 		self.mod = None
 		self.genericStruct = Struct(self.ast)
+		self.genericStruct.type.isGenericType = True
 		self.type = self.genericStruct.type
 		self.analyzed = False
+		self.sigWasChecked = False
 	
 	@property
 	def symbolTable(self):
@@ -44,13 +46,15 @@ class ParamTypeSymbol(Symbol):
 			paramNames[param.name.content] = param.span
 		
 		self.genericStruct.checkSig(state)
+		self.mangledName = state.mangleName(self)
+		self.sigWasChecked = True
 	
 	def analyze(self, state, deps):
 		if self.analyzed:
 			return
 		self.analyzed = True
 		
-		if self.mod == None:
+		if self.sigWasChecked == False:
 			self.checkSig(state)
 		
 		self.genericStruct.analyze(state, deps)

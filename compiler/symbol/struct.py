@@ -15,6 +15,7 @@ class Struct(Symbol):
 		self.hasPrivateFields = False
 		self.hasReadOnlyFields = False
 		self.paramType = None
+		self.mangledName = None
 	
 	@property
 	def symbolTable(self):
@@ -42,11 +43,15 @@ class Struct(Symbol):
 			if fieldType:
 				fieldNames.append(field.name)
 				types.append(fieldType)
+				if fieldType.isGenericType and fieldType.byteSize == None:
+					self.type.isGenericType = True
 		
 		self.fieldNames = fieldNames
 		self.types = types
 		
 		state.mod = state.mod.parent
+		self.mangledName = state.mangleName(self)
+		self.type.mangledName = self.mangledName
 	
 	def analyze(self, state, deps):
 		if self.analyzed:

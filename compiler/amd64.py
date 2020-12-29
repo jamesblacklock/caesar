@@ -1836,7 +1836,7 @@ def defineStatics(mod, output):
 		defineStatics(decl, output)
 	
 	for decl in mod.fns:
-		if decl.extern:
+		if decl.extern or decl.isGeneric:
 			continue
 		
 		for staticDef in decl.ir.staticDefs:
@@ -1863,7 +1863,7 @@ def defineFns(mod, output):
 		defineFns(decl, output)
 	
 	for decl in mod.fns:
-		if decl.extern:
+		if decl.extern or decl.isGeneric:
 			continue
 		
 		assert not decl.isImport

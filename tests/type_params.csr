@@ -12,7 +12,7 @@ impl S
         self^.t = t
 
 fn generic[type T](t: T) -> T
-    t + 1
+    t
 
 fn main()
     let v: S[str, 511] = S { t: "hello" }

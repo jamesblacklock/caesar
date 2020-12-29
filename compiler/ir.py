@@ -781,11 +781,12 @@ class IRState:
 		self.didBreak = False
 		
 		inputSymbols = []
-		for param in fnDecl.params:
-			if param.type.isVoidType:
+		# for generic fn instances, fnDecl.params are distinct from fnDecl.type.params
+		for (param, instParam) in zip(fnDecl.params, fnDecl.type.params):
+			if instParam.type.isVoidType:
 				continue
 			
-			fType = FundamentalType.fromResolvedType(param.type)
+			fType = FundamentalType.fromResolvedType(instParam.type)
 			inputSymbols.append(param)
 			self.paramTypes.append(fType)
 		
@@ -1003,7 +1004,7 @@ def generateIR(mod):
 			generateIR(decl)
 	
 	for decl in mod.fns:
-		if decl.extern:
+		if decl.extern or decl.isGeneric:
 			continue
 		
 		decl.ir = fnToIR(decl)
