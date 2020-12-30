@@ -3,8 +3,9 @@ from ..ast.genericinst import GenericAssocConst, GenericAssocType, GenericType
 from .struct           import Struct
 from ..log             import logError, logExplain
 
-class ParamTypeInst:
+class ParamTypeInst(Symbol):
 	def __init__(self, paramType, defaultType):
+		super().__init__(SymbolType.TYPE, paramType.name, paramType.nameSpan, paramType.span)
 		self.paramType = paramType
 		self.type = defaultType
 
@@ -26,6 +27,8 @@ class ParamTypeSymbol(Symbol):
 		return self.type.symbolTable
 	
 	def checkSig(self, state):
+		self.genericStruct.symbolTable[self.name] = ParamTypeInst(self, self.genericStruct.type)
+		
 		paramNames = {}
 		for param in self.genericParams:
 			if param.name.content in paramNames:

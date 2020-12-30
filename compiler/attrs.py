@@ -60,6 +60,13 @@ def strModAttr(state, decl, params, span):
 	decl.noStrImport = True
 	decl.isStrMod = True
 
+def arrModAttr(state, decl, params, span):
+	decl.noArrImport = True
+	decl.isArrMod = True
+
+def noArrAttr(state, decl, params, span):
+	decl.noArrImport = True
+
 def dropTraitAttr(state, decl, params, span):
 	decl.isDropTrait = True
 
@@ -79,21 +86,25 @@ AlignAttr = AttrInfo('align', alignAttr, [StructDecl, FieldDecl], [AttrArg(IntLi
 DropAttr = AttrInfo('drop', dropAttr, [LetDecl, FnParam], [AttrArg(ValueRef)])
 NoStrAttr = AttrInfo('no_str', noStrAttr, [Mod], [])
 StrModAttr = AttrInfo('str_mod', strModAttr, [Mod], [])
+NoArrAttr = AttrInfo('no_arr', noArrAttr, [Mod], [])
+ArrModAttr = AttrInfo('arr_mod', arrModAttr, [Mod], [])
 DropTraitAttr = AttrInfo('drop_trait', dropTraitAttr, [TraitDecl], [])
 LeakAttr = AttrInfo('leak', leakAttr, [ValueRef], [])
 InlineAttr = AttrInfo('inline', inlineAttr, [FnDecl], [AttrArg(BoolLit, optional=True)])
 
 builtinAttrs = {
-	AcquireAttr.name: AcquireAttr, 
-	ReleaseAttr.name: ReleaseAttr, 
-	CConvAttr.name: CConvAttr, 
-	AlignAttr.name: AlignAttr, 
-	DropAttr.name: DropAttr, 
-	NoStrAttr.name: NoStrAttr, 
-	StrModAttr.name: StrModAttr, 
+	AcquireAttr.name: AcquireAttr,
+	ReleaseAttr.name: ReleaseAttr,
+	CConvAttr.name: CConvAttr,
+	AlignAttr.name: AlignAttr,
+	DropAttr.name: DropAttr,
+	NoStrAttr.name: NoStrAttr,
+	StrModAttr.name: StrModAttr,
+	NoArrAttr.name: NoArrAttr,
+	ArrModAttr.name: ArrModAttr,
 	DropTraitAttr.name: DropTraitAttr,
 	LeakAttr.name: LeakAttr,
-	InlineAttr.name: InlineAttr
+	InlineAttr.name: InlineAttr,
 }
 
 def invokeAttrs(state, expr):

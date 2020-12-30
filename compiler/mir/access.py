@@ -37,9 +37,9 @@ def createTempTriple(expr):
 	return (symbol, write, read)
 
 class DynOffset:
-	def __init__(self, expr, factor):
+	def __init__(self, expr, baseType):
 		self.expr = expr
-		self.factor = factor
+		self.baseType = baseType
 
 class SymbolAccess(MIR):
 	def __init__(self, span, hasValue):
@@ -57,6 +57,7 @@ class SymbolAccess(MIR):
 		self.type = None
 		self.dropPoint = None
 		self.accessType = None
+		self.typeFailed = False
 	
 	@staticmethod
 	def read(state, expr):
@@ -144,9 +145,7 @@ class SymbolAccess(MIR):
 					s += ' + '
 				else:
 					needPlus = True
-				s += str(dynOff.expr)
-				if dynOff.factor:
-					s += '*{}'.format(dynOff.factor)
+				s += str(dynOff.expr) + '*{}'.format(dynOff.baseType.name)
 			s += ']'
 		if self.write:
 			s += ' = ' + str(self.rvalue)
@@ -161,7 +160,6 @@ class SymbolRead(SymbolAccess):
 		self.hasValue = True
 		self.typeModifiers = None
 		self.leakOwned = False
-		self.typeFailed = False
 	
 	def moveToClone(self):
 		other = SymbolRead(self.span)
@@ -300,8 +298,9 @@ class SymbolRead(SymbolAccess):
 				else:
 					doAdd = True
 				dyn.expr.writeIR(state)
-				if dyn.factor:
-					state.appendInstr(ir.Imm(self, ir.IPTR, dyn.factor))
+				factor = getAlignedSize(dyn.baseType)
+				if factor > 1:
+					state.appendInstr(ir.Imm(self, ir.IPTR, factor))
 					state.appendInstr(ir.Mul(self))
 			
 			fType = ir.FundamentalType.fromResolvedType(self.type)
@@ -346,7 +345,7 @@ class SymbolWrite(SymbolAccess):
 	
 	def analyze(self, state, ignoredImplicitType):
 		self.symbol.unused = False
-		if self.type == None:
+		if self.type == None and not self.typeFailed:
 			self.type = self.symbol.type
 		if self.rvalueImplicitType == None:
 			self.rvalueImplicitType = self.type
@@ -440,8 +439,9 @@ class SymbolWrite(SymbolAccess):
 				doAdd = True
 			for dyn in self.dynOffsets:
 				dyn.expr.writeIR(state)
-				if dyn.factor:
-					state.appendInstr(ir.Imm(self, ir.IPTR, dyn.factor))
+				factor = getAlignedSize(dyn.baseType)
+				if factor > 1:
+					state.appendInstr(ir.Imm(self, ir.IPTR, factor))
 					state.appendInstr(ir.Mul(self))
 				if doAdd:
 					state.appendInstr(ir.Add(self))
@@ -707,8 +707,7 @@ def _SymbolAccess__analyzeSymbolAccess(state, expr, access, implicitType=None):
 					access.field = fieldInfo
 					access.fieldSpan = index.span
 		else:
-			factor = getAlignedSize(access.type.baseType)
-			access.dynOffsets.append(DynOffset(index, factor if factor > 1 else None))
+			access.dynOffsets.append(DynOffset(index, access.type.baseType))
 		
 		access.type = access.type.baseType
 	else:

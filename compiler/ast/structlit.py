@@ -3,8 +3,9 @@ from ..symbol.struct    import StructType
 from ..symbol.symbol    import SymbolType
 from ..mir.createstruct import CreateStruct, FieldInit
 from ..mir.primitive    import IntValue
-from ..log              import logError
+from ..log              import logError, logExplain
 from .typeref           import ParamTypeRef
+from ..types            import Void
 
 class FieldLit(AST):
 	def __init__(self, name, expr, span):
@@ -30,6 +31,7 @@ class StructLit(AST):
 	def analyze(self, state, implicitType):
 		enumType = None
 		variant = None
+		
 		if self.typeRef:
 			variants = implicitType.symbolTable if implicitType and implicitType.isEnumType else None
 			if type(self.typeRef) == ParamTypeRef:
@@ -44,15 +46,16 @@ class StructLit(AST):
 					enumType = variant.enumType
 					implicitType = variant.type
 				elif symbol.symbolType == SymbolType.PARAM_TYPE:
-					if implicitType and implicitType.symbol.paramType != symbol:
+					if not (implicitType and implicitType.isStructType and implicitType.symbol.paramType == symbol):
 						logError(state, self.typeRef.span, 'missing type parameters for type `{}`'.format(symbol.name))
+						implicitType = None
 				else:
 					implicitType = symbol.type
 					# if implicitType and implicitType.isUnknown:
 					# 	implicitType = None
 				
 				if implicitType and not implicitType.isStructType:
-					span = self.path[-1].span if self.path else self.span
+					span = self.typeRef.span if self.typeRef else self.span
 					logError(state, span, 'type `{}` is not a struct type'.format(implicitType.name))
 					implicitType = None
 		
@@ -108,11 +111,13 @@ class StructLit(AST):
 			return None
 		
 		resolvedType = implicitType
+		typeError = False
 		if resolvedType == None:
 			fieldTypes = []
 			fieldNames = []
 			for field in self.fields:
-				fieldTypes.append(accesses[field.name].type)
+				t = accesses[field.name].type
+				fieldTypes.append(t if t else Void)
 				fieldNames.append(field.name)
 			
 			fieldInfo = None

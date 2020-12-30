@@ -113,9 +113,11 @@ def lexSpace(state):
 	
 	tok = lexToken(state, ttype, test)
 	
-	if isIndent and not re.match(regex, tok.content):
-		state.error = 'inconsistent indentation; expected {}, found {}'.format(expected, found)
-		state.errorToken = tok
+	if isIndent:
+		tok.indentLevel = len(tok.content)
+		if not re.match(regex, tok.content):
+			state.error = 'inconsistent indentation; expected {}, found {}'.format(expected, found)
+			state.errorToken = tok
 	
 	return tok
 

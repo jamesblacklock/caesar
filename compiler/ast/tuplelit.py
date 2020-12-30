@@ -96,16 +96,19 @@ class ArrayLit(AST):
 		inits = [FieldInit(access, type.fields[i]) for (i, access) in enumerate(accesses)]
 		dataStruct = CreateStruct(inits, type, self.span)
 		
-		assert implicitType and implicitType.name == 'arr'
+		if not state.mod.arrMod:
+			return dataStruct
 		
-		ArrType = implicitType
+		if not (implicitType and implicitType.isStructType and implicitType.symbol.paramType == state.mod.arrMod.ArrType):
+			return dataStruct
+		
 		arrDataPtr = SymbolAccess.read(state, dataStruct)
 		arrDataPtr.symbol.mut = True
 		arrDataPtr.ref = False
 		arrDataPtr.addr = True
 		arrDataPtr.type = PtrType(arrDataPtr.type, 1, True)
 		
-		structValue = CreateStruct.create(state, ArrType, self.span, [
+		structValue = CreateStruct.create(state, implicitType, self.span, [
 			CreateStruct.init('count', IntValue(count, USize, self.span)),
 			CreateStruct.init('data', arrDataPtr)
 		])

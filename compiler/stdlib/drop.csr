@@ -1,4 +1,5 @@
 @@no_str
+@@no_arr
 
 @drop_trait
 pub trait Drop fn drop(self: &mut Drop)

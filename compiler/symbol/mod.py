@@ -39,6 +39,8 @@ class Mod(SymbolAST):
 		self.objCodePath = None
 		self.noStrImport = False
 		self.isStrMod = False
+		self.noArrImport = False
+		self.isArrMod = False
 		self.acquireDefault = None
 		self.releaseDefault = None
 		self.acquireDefaultSet = False

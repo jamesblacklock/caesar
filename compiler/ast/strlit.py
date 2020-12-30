@@ -60,15 +60,12 @@ class StrLit(AST):
 		bytePtrType = types.PtrType(types.Byte, 1, False)
 		label = Label(staticData.label, bytePtrType, staticData, self.span)
 		
-		if state.mod.noStrImport or implicitType and types.typesMatch(implicitType, bytePtrType):
+		if not state.mod.strMod or implicitType and types.typesMatch(implicitType, bytePtrType):
 			return state.analyzeNode(label)
 		
-		StrType = state.mod.strMod.symbolTable['str'].type
-		StrDataType = state.mod.strMod.symbolTable['StrData'].type
-		
 		size = len(staticData.data)
-		tagValue = StrDataType.symbolTable['Static'].tag.data
-		structValue = CreateStruct.create(state, StrType, self.span, [
+		tagValue = state.mod.strMod.StrDataType.symbolTable['Static'].tag.data
+		structValue = CreateStruct.create(state, state.mod.strMod.StrType, self.span, [
 			CreateStruct.init('size', IntValue(size, types.USize, self.span)),
 			CreateStruct.initStruct('data', [
 				CreateStruct.initStruct('$data', [CreateStruct.init('$Static', label)]),

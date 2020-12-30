@@ -130,6 +130,16 @@ class AnalyzerState:
 		invokeAttrs(state, ast)
 		if not ast.noStrImport:
 			(state.ast.strMod, _) = Import.doImport(state, ast, ['str', 'str'])
+		elif ast.isStrMod:
+			ast.strMod = ast
+			ast.StrType = ast.symbolTable['str']
+			ast.StrDataType = ast.symbolTable['StrData']
+		
+		if not ast.noArrImport:
+			(ast.arrMod, _) = Import.doImport(state, ast, ['arr', 'arr'])
+		elif ast.isArrMod:
+			ast.arrMod = ast
+			ast.ArrType = ast.symbolTable['arr']
 		
 		ast.checkSig(state)
 		ast.analyze(state, Deps(ast))

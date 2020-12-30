@@ -1,4 +1,5 @@
 @@str_mod
+@@no_arr
 
 import drop::Drop
 import libc::memcpy

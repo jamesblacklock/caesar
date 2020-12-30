@@ -145,13 +145,14 @@ class GenericInst(AST):
 			structSymbol = Struct(genericSymbol.ast)
 			structSymbol.paramType = genericSymbol
 			structSymbol.type.symbolTable = self.argSymbolTable
+			structSymbol.type.symbolTable[genericSymbol.name] = structSymbol
 			structSymbol.analyze(state.ssstate, Deps(genericSymbol.ast))
 			structSymbol.mangledName += '$inst' + self.mangledArgs
 			
 			for symbol in genericSymbol.type.symbolTable.values():
 				if symbol.name in self.argSymbolTable:
 					continue
-				assert type(symbol) == Fn and symbol.isGeneric
+				assert type(symbol) == Fn
 				fnSymbolTable = dict(self.argSymbolTable)
 				fnSymbolTable[genericSymbol.name] = ParamTypeInst(genericSymbol, structSymbol.type)
 				self.argSymbolTable[symbol.name] = FnInst.getFnInst(state, symbol, fnSymbolTable, self.argInfo)

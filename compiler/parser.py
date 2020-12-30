@@ -155,7 +155,7 @@ def expectIndent(state):
 		if state.tok.type == TokenType.COMMENT:
 			state.skipSpace()
 	
-	level = 0 if indentTok == None else len(indentTok.content)
+	level = 0 if indentTok == None else indentTok.indentLevel
 	if level != state.indentLevel:
 		logError(state, state.tok.span, 'expected indent level {}, found level {}'
 				.format(state.indentLevel, level))
@@ -170,7 +170,7 @@ def checkIndent(state):
 	if state.tok.type != TokenType.INDENT:
 		return 0
 	
-	return len(state.tok.content)
+	return state.tok.indentLevel
 
 def isIndentMatch(state):
 	level = checkIndent(state)
@@ -194,7 +194,7 @@ def expectIndentIncrease(state):
 		if state.tok.type == TokenType.COMMENT:
 			state.skipSpace()
 	
-	level = 0 if indentTok == None else len(indentTok.content)
+	level = 0 if indentTok == None else indentTok.indentLevel
 	if level <= state.indentLevel:
 		logError(state, state.tok.span, 'expected indented block')
 		return False
@@ -608,9 +608,18 @@ def parseBlock(state, parseItem, blockMarkers=BlockMarkers.BRACE,
 		else:
 			state.skipEmptyLines()
 			if isIndentDecrease(state) or state.tok.type == TokenType.EOF:
-				# decreased indent level on the next line or end of file
-				state.rollback(offset)
-				break
+				indentLevel = checkIndent(state)
+				if indentLevel != None and indentLevel not in state.indentLevels:
+					# invalid indent decrease
+					expected = state.indentLevel
+					logError(state, state.nextTok.span, 'expected indent level {}, found level {}'.format(
+						expected, indentLevel))
+					state.tok.indentLevel = expected
+					state.rollback(offset)
+				else:
+					# decreased indent level on the next line or end of file
+					state.rollback(offset)
+					break
 		
 		# no close marker, rollback
 		state.rollback(offset)
@@ -915,8 +924,7 @@ def parseIf(state):
 	state.skipEmptyLines()
 	elseBlock = None
 	if state.tok.type == TokenType.ELSE or \
-		state.tok.type == TokenType.INDENT and \
-		len(state.tok.content) == state.indentLevel and \
+		checkIndent(state) == state.indentLevel and \
 		state.tokens[state.offset+1].type == TokenType.ELSE:
 		if state.tok.type == TokenType.INDENT:
 			expectIndent(state)
