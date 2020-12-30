@@ -723,17 +723,15 @@ def parseArrayTypeRef(state):
 		return None
 	state.advance()
 	state.skipSpace()
-	if expectType(state, TokenType.INTEGER) == False:
-		return None
-	count = int(state.tok.content)
-	state.advance()
-	state.skipSpace()
+	
+	factor = parseValueExpr(state)
+	
 	if expectType(state, TokenType.RBRACK) == False:
 		return None
 		
 	span = Span.merge(span, state.tok.span)
 	state.advance()
-	return ArrayTypeRef(baseType, count, span)
+	return ArrayTypeRef(baseType, factor, span)
 
 def parseOwnedTypeRef(state):
 	def parseItem(state):

@@ -2,6 +2,7 @@ from ..span  import Span
 from .cfg    import CFGBlock, CFGDropPoint
 from .access import SymbolAccess, SymbolRead
 from ..log   import logError, logWarning
+from .mir    import GENERIC_STATIC_DATA
 
 class Scope:
 	def __init__(self, parent, span, loop, branch, unsafe, contracts):
@@ -227,6 +228,11 @@ class CFGBuilder:
 			block.finalize(self)
 	
 	def staticEval(self, symbol, blocks=None):
+		if symbol.isConst:
+			if symbol.isGeneric:
+				return GENERIC_STATIC_DATA
+			return symbol.staticValue
+		
 		savedBlock = self.block
 		if blocks == None:
 			blocks = self.blocks

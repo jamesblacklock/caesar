@@ -13,12 +13,15 @@ class GenericAssocConst(ValueSymbol):
 		self.ast = param
 		self.staticValue = staticValue
 		self.isConst = True
-		self.isGeneric = True
+		self.isGeneric = staticValue == None
 		self.type = param.valueType
 		self.contracts = {}
 		if self.staticValue:
 			assert self.staticValue.dataType == StaticDataType.INT
 			self.mangledName = 'C{}i{}'.format(len(str(self.staticValue.data)) + 1, self.staticValue.data)
+		else:
+			self.mangledName = 'C2i?'
+		
 
 class GenericAssocType(Symbol):
 	def __init__(self, param, type, span):
@@ -94,6 +97,7 @@ class GenericInst(AST):
 				block = state.block
 				state.endScope()
 				
+				staticValue = None
 				if mir == None or mir.type == None:
 					assert state.failed
 				elif param and not typesMatch(param.valueType, mir.type):

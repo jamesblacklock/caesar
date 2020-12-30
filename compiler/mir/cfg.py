@@ -69,6 +69,7 @@ class SymbolState:
 		other.moved = self.moved
 		other.borrows = set(self.borrows)
 		other.borrowedBy = dict(self.borrowedBy)
+		other.staticValue = self.staticValue
 		other.fieldState = self.fieldState.cloneForNewBlock()
 		return other
 	

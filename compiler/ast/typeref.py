@@ -1,8 +1,9 @@
 from .ast        import AST
 from ..log       import logError
 from ..symbol.fn import Fn
-from ..types     import BUILTIN_TYPES, PtrType, ArrayType, OwnedType
+from ..types     import BUILTIN_TYPES, PtrType, ArrayType, OwnedType, USize, typesMatch
 from ..mir.flow  import CFGBuilder
+from ..mir.mir   import StaticDataType, GENERIC_STATIC_DATA
 
 class TypeRef(AST):
 	def __init__(self, name, span):
@@ -86,12 +87,41 @@ class PtrTypeRef(TypeRef):
 		return PtrType(baseType, self.indLevel, self.mut) if baseType else None
 
 class ArrayTypeRef(TypeRef):
-	def __init__(self, baseType, count, span):
-		name = '[{} * {}]'.format(baseType.name, count)
+	def __init__(self, baseType, factor, span):
+		name = '[{} * <unresolved>]'.format(baseType.name)
 		super().__init__(name, span)
 		self.baseType = baseType
-		self.count = count
+		self.factor = factor
 	
 	def resolveSig(self, state, flow=None):
 		baseType = self.baseType.resolveSig(state)
-		return ArrayType(baseType, self.count) if baseType else None
+		
+		if flow == None:
+			state = CFGBuilder(state, self, state.mod)
+		else:
+			state = flow
+		
+		state.beginScope(self.span)
+		mir = state.analyzeNode(self.factor, USize)
+		
+		state.appendDropPoint()
+		block = state.block
+		state.endScope()
+		
+		count = 0
+		if mir == None or mir.type == None:
+			assert state.failed
+		elif not typesMatch(USize, mir.type):
+			logError(state, self.factor.span, 'expected type {}, found {}'.format(USize, mir.type))
+		else:
+			staticValue = state.staticEval(mir.symbol, [block])
+			if staticValue == None:
+				logError(state, self.factor.span, 'expression cannot be statically evaluated')
+			elif staticValue == GENERIC_STATIC_DATA:
+				count = GENERIC_STATIC_DATA
+			else:
+				assert staticValue.dataType == StaticDataType.INT
+				count = staticValue.data
+		
+		self.name = '[{} * {}]'.format(baseType.name, count)
+		return ArrayType(baseType, count) if baseType else None

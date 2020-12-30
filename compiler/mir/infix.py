@@ -1,4 +1,4 @@
-from .mir       import MIR
+from .mir       import MIR, StaticData, StaticDataType
 from ..         import ir
 from ..infixops import InfixOps, CMP_OPS
 
@@ -9,6 +9,64 @@ class InfixOp(MIR):
 		self.r = r
 		self.op = op
 		self.type = type
+	
+	def staticEval(self, state):
+		l = self.l.staticEval(state)
+		if l == None:
+			return None
+		r = self.r.staticEval(state)
+		if r == None:
+			return None
+		
+		if l.dataType != StaticDataType.INT or r.dataType != StaticDataType.INT:
+			return None
+		
+		rng = self.l.type.RNG
+		fType = ir.FundamentalType.fromResolvedType(self.l.type)
+		if self.op == InfixOps.PLUS:
+			data = l.data + r.data
+		elif self.op == InfixOps.MINUS:
+			data = l.data - r.data
+		elif self.op == InfixOps.TIMES:
+			data = l.data * r.data
+		elif self.op == InfixOps.DIV:
+			data = l.data / r.data
+		elif self.op == InfixOps.MODULO:
+			data = l.data % r.data
+		# elif self.op == InfixOps.LSHIFT:
+		# 	data = l.data + r.data
+		# elif self.op == InfixOps.RSHIFT:
+		# 	data = l.data + r.data
+		elif self.op == InfixOps.BITAND:
+			data = l.data & r.data
+		elif self.op == InfixOps.BITOR:
+			data = l.data | r.data
+		elif self.op == InfixOps.BITXOR:
+			data = l.data ^ r.data
+		elif self.op in CMP_OPS:
+			rng = range(0, 2)
+			fType = ir.I8
+			if self.op == InfixOps.EQ:
+				data = l.data == r.data
+			elif self.op == InfixOps.NEQ:
+				data = l.data != r.data
+			elif self.op == InfixOps.GREATER:
+				data = l.data > r.data
+			elif self.op == InfixOps.LESS:
+				data = l.data < r.data
+			elif self.op == InfixOps.GREATEREQ:
+				data = l.data >= r.data
+			elif self.op == InfixOps.LESSEQ:
+				data = l.data <= r.data
+			else:
+				assert 0
+		else:
+			return None
+		
+		if data not in rng:
+			assert 0
+		
+		return StaticData(data, StaticDataType.INT, fType)
 	
 	def commit(self, state):
 		self.l.commit(state)

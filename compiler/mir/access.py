@@ -258,7 +258,8 @@ class SymbolRead(SymbolAccess):
 		state.access(self)
 	
 	def staticEval(self, state):
-		assert self.ref and not self.deref
+		if not self.ref or self.deref:
+			return None
 		return state.staticRead(self.symbol)
 	
 	def writeIR(self, state):
@@ -401,9 +402,11 @@ class SymbolWrite(SymbolAccess):
 		for off in self.dynOffsets:
 			off.expr.commit(state)
 		state.access(self)
+		self.staticSideEffects(state)
 	
 	def staticSideEffects(self, state):
-		assert not (self.deref or self.isFieldAccess)
+		if self.deref or self.isFieldAccess:
+			return False
 		staticValue = self.rvalue.staticEval(state)
 		if staticValue:
 			state.staticWrite(self.symbol, staticValue)
@@ -665,6 +668,19 @@ def _SymbolAccess__analyzeSymbolAccess(state, expr, access, implicitType=None):
 		
 		if not access.type:
 			failed = True
+		elif access.type.name == 'arr':
+			dataPtr = access.moveToClone()
+			dataPtr.field = dataPtr.type.fields[1]
+			dataPtr.staticOffset += dataPtr.field.offset
+			dataPtr.type = dataPtr.type.fields[1].type
+			
+			(tempSymbol, tempWrite) = createTempSymbol(dataPtr)
+			state.decl(tempSymbol)
+			state.analyzeNode(tempWrite)
+			access.symbol = tempSymbol
+			access.deref = 1
+			access.type = access.symbol.type.typeAfterDeref()
+			access.isFieldAccess = True
 		elif not access.type.isArrayType:
 			failed = True
 			logError(state, expr.expr.span, 
@@ -679,17 +695,17 @@ def _SymbolAccess__analyzeSymbolAccess(state, expr, access, implicitType=None):
 			return
 		
 		staticIndex = index.staticEval(state)
-		if staticIndex:
+		if staticIndex != None and access.type.count != None:
 			assert staticIndex.dataType == StaticDataType.INT
 			if staticIndex.data >= access.type.count:
-				logError(state, expr.expr.span, 
+				logError(state, expr.index.span, 
 					'index {} out of range for array of size {}'.format(staticIndex.data, access.type.count))
-			
-			fieldInfo = access.type.fields[staticIndex.data]
-			access.staticOffset += fieldInfo.offset
-			if len(access.dynOffsets) == 0:
-				access.field = fieldInfo
-				access.fieldSpan = index.span
+			else:
+				fieldInfo = access.type.fields[staticIndex.data]
+				access.staticOffset += fieldInfo.offset
+				if len(access.dynOffsets) == 0:
+					access.field = fieldInfo
+					access.fieldSpan = index.span
 		else:
 			factor = getAlignedSize(access.type.baseType)
 			access.dynOffsets.append(DynOffset(index, factor if factor > 1 else None))

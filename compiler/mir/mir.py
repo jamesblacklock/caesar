@@ -1,6 +1,12 @@
 import ctypes
 from enum import Enum
 
+class __GenericStaticData:
+	def __str__(self):
+		return '<unresolved>'
+
+GENERIC_STATIC_DATA = __GenericStaticData()
+
 class StaticDataType(Enum):
 	INT = 'INT'
 	FLOAT = 'FLOAT'

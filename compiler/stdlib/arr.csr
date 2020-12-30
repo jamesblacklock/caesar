@@ -4,7 +4,7 @@
 struct arr[type El, usize Len]
     pub count: usize
     # data: &(El * Len)
-    data: &El
+    data: &[El * Len]
 
 # impl arr: Index[usize, El]
 #     fn index(self: *arr, i: usize) -> El
@@ -51,5 +51,5 @@ import libc::printf
 fn main()
     let array: arr[int, 10] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     # let vector: vec[int] = [1, 2, 3, 4, 5]
-    unsafe printf("%d", array[4])
+    unsafe printf("%d\n", array[11])
     

@@ -1,4 +1,4 @@
-from .mir.mir    import TypeModifiers
+from .mir.mir    import TypeModifiers, GENERIC_STATIC_DATA
 from .mir.coerce import Coerce
 
 PLATFORM_WORD_SIZE = 8
@@ -243,13 +243,19 @@ class ArrayFields:
 
 class ArrayType(Type):
 	def __init__(self, baseType, count):
-		byteSize = getAlignedSize(baseType) * count
+		isGenericType = baseType.isGenericType or count == GENERIC_STATIC_DATA
+		
+		if baseType.isGenericType and baseType.byteSize == None or count == GENERIC_STATIC_DATA:
+			byteSize = None
+			count = None
+		else:
+			byteSize = getAlignedSize(baseType) * count
 		super().__init__(
 			byteSize=byteSize, 
 			align=baseType.align, 
 			isArrayType=True, 
 			isCompositeType=True,
-			isGenericType=baseType.isGenericType)
+			isGenericType=isGenericType)
 		self.baseType = baseType
 		self.count = count
 		self.fields = ArrayFields(baseType, count)
