@@ -3,7 +3,7 @@ from .access import SymbolAccess, SymbolRead, AccessType
 from .fncall import FnCall
 from .drop   import DropSymbol
 from ..ir    import Br, BrIf, Dup, Ret, BlockMarker, Raise, getInputInfo
-from ..log   import logError, logExplain
+from ..log   import logError, logExplain, logWarning
 from ..types import PtrType
 
 class FieldState:
@@ -185,6 +185,9 @@ class CFGBlock:
 		if not (access.symbol and access.symbol.type):
 			return
 		
+		state.refType(access.type)
+		state.refSymbol(access.symbol)
+		
 		if access.symbol not in self.symbolState:
 			assert not access.symbol.isLocal
 			return
@@ -288,7 +291,7 @@ class CFGBlock:
 			fieldInfo = info.fieldState[field]
 			self.fieldLiveCheck(state, access, fieldInfo)
 			fieldInfo.movedSpan = fieldSpan
-			fieldInfo.moved = not field.type.isCopyable
+			fieldInfo.moved = not access.copy
 			
 			# movedFields = allFields(use.field.type)
 			# movedFields.add(use.field)
@@ -446,7 +449,7 @@ class CFGBlock:
 			ptr.type = PtrType(symbol.type, 1, True)
 		
 		# use the fn ref and call the drop fn
-		fnCall = FnCall(fnRef, [ptr], [], False, fnRef.type.returnType, span, isDrop=True)
+		fnCall = FnCall(fnRef, [ptr], [], False, fnRef.type.returnType, None, span, isDrop=True)
 		dropPoint.append(fnCall)
 	
 	def dropEnum(self, state, symbol, field, fieldBase, dropPoint, indLevel=0):
@@ -474,7 +477,7 @@ class CFGBlock:
 				logExplain(state, dropPoint.span, 'value escapes here')
 			
 			if field.type.dropFn:
-				self.callDropFn(field.type.dropFn, symbol, field, fieldBase, dropPoint)
+				self.callDropFn(field.type.dropFn, symbol, field, 0, dropPoint)
 			
 			self.dropFields(state, symbol, field, field.offset, dropPoint)
 	
@@ -500,9 +503,10 @@ class CFGBlock:
 		elif not t.isCompositeType:
 			return
 		
-		# fieldState = self.symbolState[symbol].fieldState
+		fieldState = self.symbolState[symbol].fieldState
 		for field in reversed(t.fields):
-			# if field not in fieldState or not fieldState[field].uninit:
+			info = fieldState[field]
+			if info.init and not info.moved:
 				if field.type.isOwnedType and not parentDropFn:
 					logError(state, symbol.span, 
 						'owned value in field `{}` was not discarded'.format(field.name))

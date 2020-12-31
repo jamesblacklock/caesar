@@ -7,8 +7,8 @@ class Index(AST):
 		self.expr = expr
 		self.index = index
 
-	def analyze(expr, state, implicitType):
-		return access.SymbolAccess.analyzeSymbolAccess(state, expr, implicitType)
+	def analyze(self, state, implicitType):
+		return access.SymbolAccess.analyzeSymbolAccess(state, self, implicitType)
 
 class Field(AST):
 	def __init__(self, expr, path, span):
@@ -16,6 +16,6 @@ class Field(AST):
 		self.expr = expr
 		self.path = path
 	
-	def analyze(expr, state, implicitType):
-		return access.SymbolAccess.analyzeSymbolAccess(state, expr, implicitType)
+	def analyze(self, state, implicitType):
+		return access.SymbolAccess.analyzeSymbolAccess(state, self, implicitType)
 	

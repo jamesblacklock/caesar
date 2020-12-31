@@ -8,6 +8,7 @@ class ParamTypeInst(Symbol):
 		super().__init__(SymbolType.TYPE, paramType.name, paramType.nameSpan, paramType.span)
 		self.paramType = paramType
 		self.type = defaultType
+		self.symbolTable = self.type.symbolTable
 
 class ParamTypeSymbol(Symbol):
 	def __init__(self, ast, genericParams):

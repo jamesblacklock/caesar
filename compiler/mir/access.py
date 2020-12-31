@@ -209,8 +209,8 @@ class SymbolRead(SymbolAccess):
 		if self.isFieldAccess and self.field and self.field.isUnionField and not state.scope.allowUnsafe:
 			logError(state, self.span, 'reading union fields is unsafe; context is safe')
 		
-		if not (self.addr or self.isFieldAccess):
-			self.ref = True
+		if not self.addr:
+			self.ref = not self.isFieldAccess
 			if self.symbol.isLocal:
 				self.copy = self.type.isCopyable and not self.leakOwned
 		
@@ -252,6 +252,7 @@ class SymbolRead(SymbolAccess):
 	
 	def commit(self, state):
 		for off in self.dynOffsets:
+			state.refType(off.baseType)
 			off.expr.commit(state)
 		state.access(self)
 	
@@ -264,6 +265,8 @@ class SymbolRead(SymbolAccess):
 		if self.type.isVoidType:
 			return
 		
+		symbol = state.ast.genericInc[self.symbol] if self.symbol.isGeneric else self.symbol
+		
 		stackTop = False
 		if self.symbol.isStatic or self.symbol.isFn:
 			assert not self.addr
@@ -271,7 +274,6 @@ class SymbolRead(SymbolAccess):
 			stackTop = True
 		elif self.symbol.isConst:
 			assert not self.addr
-			symbol = state.ast.genericInc[self.symbol] if self.symbol.isGeneric else self.symbol
 			ir.writeStaticValueIR(state, self, symbol.staticValue)
 			stackTop = True
 		else:
@@ -399,6 +401,7 @@ class SymbolWrite(SymbolAccess):
 		
 		self.rvalue.commit(state)
 		for off in self.dynOffsets:
+			state.refType(off.baseType)
 			off.expr.commit(state)
 		state.access(self)
 		self.staticSideEffects(state)
@@ -439,7 +442,10 @@ class SymbolWrite(SymbolAccess):
 				doAdd = True
 			for dyn in self.dynOffsets:
 				dyn.expr.writeIR(state)
-				factor = getAlignedSize(dyn.baseType)
+				t = dyn.baseType
+				if t.isGenericType:
+					t = state.ast.genericInc[dyn.baseType.symbol].type
+				factor = getAlignedSize(t)
 				if factor > 1:
 					state.appendInstr(ir.Imm(self, ir.IPTR, factor))
 					state.appendInstr(ir.Mul(self))
@@ -666,13 +672,42 @@ def _SymbolAccess__analyzeSymbolAccess(state, expr, access, implicitType=None):
 		
 		access.isFieldAccess = True
 		
+		isArr = False
+		isVec = False
+		if state.mod.arrMod and access.type and access.type.isStructType and access.type.symbol.paramType:
+			isArr = access.type.symbol.paramType == state.mod.arrMod.Arr
+			isVec = access.type.symbol.paramType == state.mod.arrMod.Vec
+		
+		count = None
+		fields = None
+		
 		if not access.type:
 			failed = True
-		elif access.type.name == 'arr':
+		elif isArr:
+			count = access.type.symbolTable['Len'].staticValue.data
+			fields = access.type.fields[1].type.typeAfterDeref().fields
+			
 			dataPtr = access.moveToClone()
 			dataPtr.field = dataPtr.type.fields[1]
+			dataPtr.fieldSpan = dataPtr.span
 			dataPtr.staticOffset += dataPtr.field.offset
 			dataPtr.type = dataPtr.type.fields[1].type
+			
+			(tempSymbol, tempWrite) = createTempSymbol(dataPtr)
+			state.decl(tempSymbol)
+			state.analyzeNode(tempWrite)
+			access.symbol = tempSymbol
+			access.deref = 1
+			access.type = access.symbol.type.typeAfterDeref()
+			access.isFieldAccess = True
+		elif isVec:
+			dataPtr = access.moveToClone()
+			dataPtr.field = dataPtr.type.fields[2]
+			dataPtr.fieldSpan = dataPtr.span
+			dataPtr.staticOffset += dataPtr.field.offset
+			dataPtr.type = dataPtr.type.fields[2].type.baseType
+			dataPtr.borrow = True
+			dataPtr.borrows = {dataPtr}
 			
 			(tempSymbol, tempWrite) = createTempSymbol(dataPtr)
 			state.decl(tempSymbol)
@@ -688,6 +723,10 @@ def _SymbolAccess__analyzeSymbolAccess(state, expr, access, implicitType=None):
 		elif index.type and index.type != USize:
 			failed = True
 			logError(state, expr.index.span, 'index must be type usize (found {})'.format(index.type))
+		else:
+			count = access.type.count
+			fields = access.type.fields
+			access.type = access.type.baseType
 		
 		if failed:
 			access.type = None
@@ -695,21 +734,19 @@ def _SymbolAccess__analyzeSymbolAccess(state, expr, access, implicitType=None):
 			return
 		
 		staticIndex = index.staticEval(state)
-		if staticIndex != None and access.type.count != None:
+		if None not in (staticIndex, count, fields):
 			assert staticIndex.dataType == StaticDataType.INT
-			if staticIndex.data >= access.type.count:
+			if staticIndex.data >= count:
 				logError(state, expr.index.span, 
-					'index {} out of range for array of size {}'.format(staticIndex.data, access.type.count))
+					'index {} out of range for array of size {}'.format(staticIndex.data, count))
 			else:
-				fieldInfo = access.type.fields[staticIndex.data]
+				fieldInfo = fields[staticIndex.data]
 				access.staticOffset += fieldInfo.offset
 				if len(access.dynOffsets) == 0:
 					access.field = fieldInfo
 					access.fieldSpan = index.span
 		else:
-			access.dynOffsets.append(DynOffset(index, access.type.baseType))
-		
-		access.type = access.type.baseType
+			access.dynOffsets.append(DynOffset(index, access.type))
 	else:
 		(symbol, write) = createTempSymbol(expr)
 		access.symbol = symbol

@@ -987,6 +987,8 @@ def writeStaticValueIR(state, ast, staticValue):
 		
 
 def fnToIR(fnDecl):
+	assert not fnDecl.genericReq
+	
 	state = IRState(fnDecl)
 	
 	for (i, param) in enumerate(reversed(fnDecl.params)):

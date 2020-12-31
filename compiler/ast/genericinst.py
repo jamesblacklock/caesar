@@ -18,10 +18,9 @@ class GenericAssocConst(ValueSymbol):
 		self.contracts = {}
 		if self.staticValue:
 			assert self.staticValue.dataType == StaticDataType.INT
-			self.mangledName = 'C{}i{}'.format(len(str(self.staticValue.data)) + 1, self.staticValue.data)
+			self.mangledName = 'C{}'.format(len(str(self.staticValue.data)) + 1, self.staticValue.data)
 		else:
-			self.mangledName = 'C2i?'
-		
+			self.mangledName = 'C_'
 
 class GenericAssocType(Symbol):
 	def __init__(self, param, type, span):
@@ -139,6 +138,7 @@ class GenericInst(AST):
 			if not genericSymbol.isGeneric:
 				genericSymbol = None
 		
+		self.argInfo.append(GenericArg(genericSymbol.genericStruct, None))
 		self.buildArgs(state, genericSymbol, genericSymbol.genericStruct.symbolTable if genericSymbol else None)
 		
 		if genericSymbol:
@@ -147,7 +147,9 @@ class GenericInst(AST):
 			structSymbol.type.symbolTable = self.argSymbolTable
 			structSymbol.type.symbolTable[genericSymbol.name] = structSymbol
 			structSymbol.analyze(state.ssstate, Deps(genericSymbol.ast))
-			structSymbol.mangledName += '$inst' + self.mangledArgs
+			structSymbol.mangledName += '?' + self.mangledArgs + '$'
+			
+			self.argInfo[0].argSymbol = structSymbol
 			
 			for symbol in genericSymbol.type.symbolTable.values():
 				if symbol.name in self.argSymbolTable:
@@ -172,7 +174,7 @@ class GenericInst(AST):
 		self.buildArgs(state, genericSymbol, genericSymbol.genericSymbolTable if genericSymbol else None)
 		
 		if genericSymbol:
-			return FnInst.getFnInst(state, genericSymbol, self.argSymbolTable, self.argInfo)
+			inst = FnInst.getFnInst(state, genericSymbol, self.argSymbolTable, self.argInfo)
 
 class FnInst(ValueSymbol):
 	def __init__(self, fn, mangledName, genericInc, symbolTable, instType=None):
@@ -198,7 +200,10 @@ class FnInst(ValueSymbol):
 	
 	@staticmethod
 	def getFnInst(state, fn, symbolTable, argInfo):
-		mangledName = fn.mangledName + '$inst'
+		if not fn.isGeneric:
+			return fn
+		
+		mangledName = fn.mangledName + '?'
 		genericInc = {}
 		genericReq = set(fn.genericReq)
 		for info in argInfo:
@@ -206,6 +211,7 @@ class FnInst(ValueSymbol):
 				genericReq.remove(info.paramSymbol)
 				genericInc[info.paramSymbol] = info.argSymbol
 				mangledName += info.argSymbol.mangledName
+		mangledName += '$'
 		
 		assert len(genericReq) == 0
 		if mangledName in state.mod.fnInsts:

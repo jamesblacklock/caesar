@@ -1,11 +1,12 @@
 @@arr_mod
 
 import libc { malloc, realloc, free }
+import drop::Drop
 
 # trait Index[type Key, type El]
 #     fn index(self: *Self, i: Key) -> El
 
-struct arr[type El, usize Len]
+pub struct arr[type El, usize Len]
     pub count: usize
     # data: &(El * Len)
     data: &[El * Len]
@@ -23,11 +24,15 @@ struct arr[type El, usize Len]
 #     fn index(self: *arr, i: usize..usize) -> slice[El]
 #         unsafe slice { count: i.end - i.start, data: (borrow self.data as &El) + i.start }
 
-struct vec[type El]
+pub struct vec[type El]
     pub count: usize
     cap: usize
     # data: owned(malloc, free) &(El * ?)
     data: owned(malloc, free) &El
+
+impl vec: Drop
+    fn drop(self: &mut vec)
+        unsafe free(self^.data)
 
 # impl vec: Index[usize, El]
 #     fn index(self: *arr, i: usize)
@@ -36,7 +41,7 @@ struct vec[type El]
 impl vec
     pub fn new() -> vec
         let cap = 16usz
-        let data = unsafe malloc(cap * sizeof(El)) as owned(malloc, free) &El
+        let data = unsafe malloc(cap * sizeof El) as owned(malloc, free) &El
         vec { count: 0, cap: cap, data: data }
     
     pub fn push(self: &mut vec, item: El)
@@ -49,12 +54,25 @@ impl vec
         self^.cap *= 2
         self^.data = unsafe realloc(
             self^.data as owned(malloc, free) &El
-            self^.cap * sizeof(El)) as owned(malloc, free) &El
+            self^.cap * sizeof El) as owned(malloc, free) &El
 
-import libc::printf
+# import libc::printf
 
-fn main()
-    let array: arr[int, 10] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-    # let vector: vec[int] = [1, 2, 3, 4, 5]
-    unsafe printf("%d\n", array[7])
+# fn main()
+#     let array: arr[int, 10] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+#     let d = array[4]
+#     # let vector: vec[int] = [1, 2, 3, 4, 5]
+#     # let vector = vec::[int]::new()
+#     let mut vector: vec[int] = vec::new()
+#     let mut n = 1
+#     while n <= 20
+#         vector->push(n)
+#         n += 1
+    
+#     let mut i = 0usz
+#     while i < vector.count
+#         unsafe printf("%d\n", vector[i])
+#         i += 1
+    
+#     unsafe free(vector.data)
     

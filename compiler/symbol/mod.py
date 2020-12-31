@@ -48,6 +48,7 @@ class Mod(SymbolAST):
 		self.symbols = []
 		self.symbolTable = {}
 		self.isFnMod = False
+		self.arrMod = None
 		self.strMod = None
 		self.transparent = False
 		
@@ -102,15 +103,16 @@ class Mod(SymbolAST):
 			self.fns.extend(self.fnInsts.values())
 			
 			for symbol in self.imports:
-				isStrType = self.strMod and symbol == self.strMod.symbolTable['str']
-				if symbol.unused and not isStrType:
+				isStrType = self.strMod and symbol == self.strMod.Str
+				isArrType = self.arrMod and symbol == self.arrMod.Arr
+				if symbol.unused and not (isStrType or isArrType):
 					logWarning(state, symbol.nameSpan, 'unused import')
 		
 		state.mod = self.parent
 
 class Impl(Mod):
 	def __init__(self, path, traitPath, doccomment, decls, span):
-		name = Name('$impl???', Span.merge(path[0].span, path[-1].span))
+		name = Name('@_$', Span.merge(path[0].span, path[-1].span))
 		super().__init__(name, doccomment, decls, span)
 		self.isImpl = True
 		self.path = path
@@ -124,7 +126,7 @@ class Impl(Mod):
 		symbol = state.lookupSymbol(self.path, inTypePosition=True)
 		if symbol:
 			self.type = symbol.type
-			self.name = '$impl{}'.format(state.mangleName(symbol))
+			self.name = '@{}$'.format(state.mangleName(symbol))
 			if symbol.symbolType == SymbolType.PARAM_TYPE:
 				# bring in the params (unless they are shadowed)
 				self.symbolTable = { **symbol.symbolTable, **self.symbolTable }
@@ -166,27 +168,26 @@ class Impl(Mod):
 			traitSymbols = None
 			symbolTable = self.type.symbolTable
 		
-		if self.type:
-			for symbol in self.symbols:
-				if symbol.name in symbolTable:
-					otherSymbol = symbolTable[symbol.name]
-					logError(state, symbol.nameSpan, 'cannot redeclare `{}` as a different symbol'.format(symbol.name))
-					logExplain(state, otherSymbol.nameSpan, '`{}` previously declared here'.format(symbol.name))
-					continue
+		for symbol in self.symbols:
+			if symbol.name in symbolTable:
+				otherSymbol = symbolTable[symbol.name]
+				logError(state, symbol.nameSpan, 'cannot redeclare `{}` as a different symbol'.format(symbol.name))
+				logExplain(state, otherSymbol.nameSpan, '`{}` previously declared here'.format(symbol.name))
+				continue
+			
+			if traitSymbols:
+				symbol.pub = True
 				
-				if traitSymbols:
-					symbol.pub = True
-					
-					if symbol.name not in traitSymbols:
-						logError(state, symbol.nameSpan, 'trait `{}` has no symbol `{}`'.format(self.trait.name, symbol.name))
-					
-					traitSymbol = traitSymbols[symbol.name]
-					del traitSymbols[symbol.name]
-					if not typesMatch(symbol.type, traitSymbol.type, selfType=self.type):
-						logError(state, symbol.nameSpan, ('implementation of `{}` for trait `{}` ' + 
-							'does not match the type defined by the trait').format(symbol.name, self.trait.name))
+				if symbol.name not in traitSymbols:
+					logError(state, symbol.nameSpan, 'trait `{}` has no symbol `{}`'.format(self.trait.name, symbol.name))
 				
-				symbolTable[symbol.name] = symbol
+				traitSymbol = traitSymbols[symbol.name]
+				del traitSymbols[symbol.name]
+				if not typesMatch(symbol.type, traitSymbol.type, selfType=self.type):
+					logError(state, symbol.nameSpan, ('implementation of `{}` for trait `{}` ' + 
+						'does not match the type defined by the trait').format(symbol.name, self.trait.name))
+			
+			symbolTable[symbol.name] = symbol
 		
 		if traitSymbols:
 			assert 0

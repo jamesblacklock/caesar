@@ -19,6 +19,7 @@ class FnCall(AST):
 		self.args = args
 	
 	def analyze(self, state, implicitType):
+		genericTypeSymbol = None
 		access = None
 		dynDispatch = False
 		if self.isMethodCall:
@@ -28,6 +29,9 @@ class FnCall(AST):
 				symbol = None
 				if name in selfArg.type.symbolTable:
 					symbol = selfArg.type.symbolTable[name]
+					if selfArg.type.isGenericType:
+						state.refType(selfArg.type, always=True)
+						genericTypeSymbol = selfArg.type.symbol
 					if selfArg.type.symbol and selfArg.type.symbol.isImport and not symbol.pub:
 						symbol = None
 				if symbol == None:
@@ -39,8 +43,7 @@ class FnCall(AST):
 					access.symbol = symbol
 					access.type = symbol.type
 		elif type(self.expr) == valueref.ValueRef:
-			variants = implicitType.symbolTable if implicitType and implicitType.isEnumType else None
-			symbol = state.lookupSymbol(self.expr.path, variants)
+			symbol = state.lookupSymbol(self.expr.path, implicitType=implicitType)
 			if symbol:
 				enumType = None
 				variant = None
@@ -126,7 +129,7 @@ class FnCall(AST):
 				if param:
 					logError(state, arg.span, 'reference to uninit symbol passed as parameter `{}`'.format(param.name))
 				else:
-					assert cVarArgs
+					assert hasCVarArgs
 					logError(state, arg.span, 'reference to uninit symbol passed as C variadic argument')
 			
 			if param:
@@ -142,6 +145,6 @@ class FnCall(AST):
 		if access == None or argFailed:
 			mir = None
 		else:
-			mir = FnCallMIR(access, args, cVarArgs, dynDispatch, returnType, self.span)
+			mir = FnCallMIR(access, args, cVarArgs, dynDispatch, returnType, genericTypeSymbol, self.span)
 		
 		return mir

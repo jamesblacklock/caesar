@@ -59,7 +59,7 @@ class Import(AST):
 	@staticmethod
 	def doImport(state, mod, path, rename=None):
 		path = [Name(p, mod.span) for p in path]
-		rename = Name(rename, ast.span) if rename else None
+		rename = Name(rename, mod.span) if rename else None
 		item = ImportItem(path, rename, mod.span)
 		
 		return Import.importItem(state, mod, item)

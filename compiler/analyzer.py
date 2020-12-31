@@ -1,15 +1,16 @@
-from .symbol.symbol  import SymbolType, Deps
-from .types          import BUILTIN_TYPES, typesMatch, canCoerce, tryPromote, FieldInfo
-from .log            import logError, logExplain
-from .ast.ast        import Attr
-from .attrs          import invokeAttrs
-from .symbol.mod     import Mod, Impl
-from .symbol.trait   import Trait
-from .symbol.fn      import Fn, CConv
-from .symbol.static  import Static
-# from .symbol.alias   import AliasDecl
-from .ast.importexpr import Import
-from .               import platform
+from .symbol.symbol    import SymbolType, Deps
+from .symbol.paramtype import ParamTypeInst
+from .types            import BUILTIN_TYPES, typesMatch, canCoerce, tryPromote, FieldInfo
+from .log              import logError, logExplain
+from .ast.ast          import Attr
+from .attrs            import invokeAttrs
+from .symbol.mod       import Mod, Impl
+from .symbol.trait     import Trait
+from .symbol.fn        import Fn, CConv
+from .symbol.static    import Static
+# from .symbol.alias     import AliasDecl
+from .ast.importexpr   import Import
+from .                 import platform
 
 class FieldLayout:
 	def __init__(self, align, byteSize, fields):
@@ -132,14 +133,15 @@ class AnalyzerState:
 			(state.ast.strMod, _) = Import.doImport(state, ast, ['str', 'str'])
 		elif ast.isStrMod:
 			ast.strMod = ast
-			ast.StrType = ast.symbolTable['str']
-			ast.StrDataType = ast.symbolTable['StrData']
+			ast.Str = ast.symbolTable['str']
+			ast.StrData = ast.symbolTable['StrData']
 		
 		if not ast.noArrImport:
 			(ast.arrMod, _) = Import.doImport(state, ast, ['arr', 'arr'])
 		elif ast.isArrMod:
 			ast.arrMod = ast
-			ast.ArrType = ast.symbolTable['arr']
+			ast.Arr = ast.symbolTable['arr']
+			ast.Vec = ast.symbolTable['vec']
 		
 		ast.checkSig(state)
 		ast.analyze(state, Deps(ast))
@@ -182,8 +184,8 @@ class AnalyzerState:
 		
 		return expr
 	
-	def mangleName(state, decl):
-		mod = state.mod
+	def mangleName(self, decl):
+		mod = self.mod
 		
 		if type(decl) == Fn and decl.type.cconv == CConv.C:
 			prefix = '_' if platform.MacOS or platform.Windows else ''
@@ -202,19 +204,19 @@ class AnalyzerState:
 			else:
 				assert 0
 			
-			mangled = '{}{}{}'.format(letter, len(decl.name), decl.name)
+			mangled = '{}{}'.format(letter, decl.name)
 			while mod:
 				if not mod.transparent:
 					if mod.isFnMod:
-						mangled = 'F{}{}{}'.format(len(mod.name), mod.name, mangled)
+						mangled = 'F{}.{}'.format(mod.name, mangled)
 					else:
-						mangled = 'M{}{}{}'.format(len(mod.name), mod.name, mangled)
+						mangled = 'M{}.{}'.format(mod.name, mangled)
 				
 				mod = mod.parent
 			
 			return mangled
 	
-	def generateFieldLayout(state, types, fieldNames=None, fieldInfo=None):
+	def generateFieldLayout(self, types, fieldNames=None, fieldInfo=None):
 		fields = []
 		maxAlign = 0
 		offset = 0
@@ -225,8 +227,11 @@ class AnalyzerState:
 			fieldInfo = (None for _ in types)
 		
 		unionSize = 0
+		sizeUnknown = False
 		
 		for (t, n, f) in zip(types, fieldNames, fieldInfo):
+			sizeUnknown = sizeUnknown or t.byteSize == None
+			
 			if t.isVoidType:
 				continue
 			
@@ -254,9 +259,10 @@ class AnalyzerState:
 		if unionSize > 0:
 			offset += unionSize
 		
-		return FieldLayout(maxAlign, offset, fields)
+		byteSize = None if sizeUnknown else offset
+		return FieldLayout(maxAlign, byteSize, fields)
 	
-	def lookupSymbol(self, path, symbolTable=None, inTypePosition=False, inValuePosition=False):
+	def lookupSymbol(self, path, symbolTable=None, implicitType=None, inTypePosition=False, inValuePosition=False):
 		symbolName = path[0]
 		path = path[1:]
 		
@@ -267,6 +273,8 @@ class AnalyzerState:
 			assert not inTypePosition
 			logError(self, symbolName.span, 'found type reference where a value was expected')
 			return None
+		elif symbolTable and symbolName.content in symbolTable:
+			symbol = symbolTable[symbolName.content]
 		else:
 			mod = self.mod
 			symbol = None
@@ -276,8 +284,11 @@ class AnalyzerState:
 					break
 				mod = mod.parent
 		
-		if symbol == None and symbolTable and symbolName.content in symbolTable:
-			symbol = symbolTable[symbolName.content]
+		if symbol == None and implicitType and implicitType.isEnumType and symbolName.content in implicitType.symbolTable:
+			symbol = implicitType.symbolTable[symbolName.content]
+		elif symbol.symbolType == SymbolType.PARAM_TYPE:
+			if implicitType and implicitType.isStructType and implicitType.symbol.paramType:
+				symbol = ParamTypeInst(implicitType.symbol.paramType, implicitType)
 		
 		if symbol != None:
 			symbol.unused = False
@@ -313,8 +324,8 @@ class AnalyzerState:
 				logError(self, symbolName.span, '`{}` is not a type'.format(symbolName.content))
 				symbol = None
 		elif inValuePosition and not inTypePosition:
-			if symbol.symbolType not in (SymbolType.VALUE, SymbolType.PARAM_TYPE, SymbolType.VARIANT):
-				if symbol.symbolType == SymbolType.TYPE:
+			if symbol.symbolType not in (SymbolType.VALUE, SymbolType.VARIANT):
+				if symbol.symbolType in (SymbolType.TYPE, SymbolType.PARAM_TYPE):
 					found = 'type reference'
 				elif symbol.symbolType == SymbolType.MOD:
 					found = 'module'

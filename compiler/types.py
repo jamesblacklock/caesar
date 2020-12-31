@@ -131,7 +131,11 @@ class OptionType(Type):
 
 class FnType(Type):
 	def __init__(self, unsafe, params, returnType, cVarArgs, cconv):
-		super().__init__(isFnType=True)
+		super().__init__(
+			name='fn(???) -> ???',
+			byteSize=PLATFORM_WORD_SIZE,
+			align=PLATFORM_WORD_SIZE,
+			isFnType=True)
 		self.unsafe = unsafe
 		self.returnType = returnType
 		self.returnTypeModifiers = TypeModifiers(False)

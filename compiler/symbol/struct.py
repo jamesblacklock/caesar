@@ -1,7 +1,7 @@
 from .symbol import Symbol, SymbolType
 from ..types import Type
 from .mod    import PatchMod
-from ..log   import logError, logError
+from ..log   import logError, logExplain
 
 class Struct(Symbol):
 	def __init__(self, ast):

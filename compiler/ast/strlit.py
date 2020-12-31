@@ -64,8 +64,8 @@ class StrLit(AST):
 			return state.analyzeNode(label)
 		
 		size = len(staticData.data)
-		tagValue = state.mod.strMod.StrDataType.symbolTable['Static'].tag.data
-		structValue = CreateStruct.create(state, state.mod.strMod.StrType, self.span, [
+		tagValue = state.mod.strMod.StrData.type.symbolTable['Static'].tag.data
+		structValue = CreateStruct.create(state, state.mod.strMod.Str.type, self.span, [
 			CreateStruct.init('size', IntValue(size, types.USize, self.span)),
 			CreateStruct.initStruct('data', [
 				CreateStruct.initStruct('$data', [CreateStruct.init('$Static', label)]),

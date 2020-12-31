@@ -14,8 +14,11 @@ class Tuple(Symbol):
 		return self.type.symbolTable
 	
 	def checkSig(self, state):
-		self.types = [t.resolveSig(state) for t in self.ast.typeRefs]
-		self.types = [t for t in self.types if t]
+		self.types = []
+		for t in self.ast.typeRefs:
+			t = t.resolveSig(state)
+			self.type.isGenericType = self.type.isGenericType or t.isGenericType
+			self.types.append(t)
 	
 	def analyze(self, state, deps):
 		if self in deps:
@@ -26,6 +29,7 @@ class Tuple(Symbol):
 		
 		for t in self.types:
 			state.finishResolvingType(t, deps)
+			self.type.isGenericType = self.type.isGenericType or t.isGenericType
 		
 		layout = state.generateFieldLayout(self.types)
 		self.type.applyLayout(layout)

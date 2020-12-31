@@ -182,11 +182,15 @@ class CFGBuilder:
 		self.scope.declaredSymbols.add(symbol)
 		self.block.decl(symbol)
 	
+	def refType(self, t, always=False):
+		if t and t.isGenericType and (always or t.byteSize == None):
+			self.genericReq.add(t.symbol)
+	
+	def refSymbol(self, symbol):
+		if symbol and symbol.isGeneric:
+			self.genericReq.add(symbol)
+	
 	def access(self, access):
-		if access.type and access.type.isGenericType and access.type.byteSize == None:
-			self.genericReq.add(access.type.symbol)
-		elif access.symbol and access.symbol.isGeneric:
-			self.genericReq.add(access.symbol)
 		self.block.access(self, access)
 	
 	def append(self, mir):
@@ -250,14 +254,16 @@ class CFGBuilder:
 		self.block.symbolState[symbol].staticValue = staticValue
 	
 	def staticRead(self, symbol):
-		return self.block.symbolState[symbol].staticValue
+		if symbol in self.block.symbolState:
+			return self.block.symbolState[symbol].staticValue
+		return None
 	
 	def generateFieldLayout(self, types, fieldNames=None, fieldInfo=None):
 		return self.ssstate.generateFieldLayout(types, fieldNames, fieldInfo)
 	
-	def lookupSymbol(self, path, symbolTable=None, inTypePosition=False, inValuePosition=False):
+	def lookupSymbol(self, path, symbolTable=None, implicitType=None, inTypePosition=False, inValuePosition=False):
 		symbolTable = {**symbolTable, **self.scope.symbolTable} if symbolTable else self.scope.symbolTable
-		return self.ssstate.lookupSymbol(path, symbolTable, inTypePosition, inValuePosition)
+		return self.ssstate.lookupSymbol(path, symbolTable, implicitType, inTypePosition, inValuePosition)
 	
 	def resolveTypeRef(self, typeRef):
 		return self.ssstate.finishResolvingType(typeRef.resolveSig(self.ssstate, self))

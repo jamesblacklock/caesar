@@ -6,6 +6,7 @@ from ..mir.primitive    import IntValue
 from ..mir.access       import SymbolAccess
 from ..log              import logError
 from ..span             import Span
+from math               import floor
 
 class TupleLit(AST):
 	def __init__(self, values, span, resolvedType=None):
@@ -99,18 +100,31 @@ class ArrayLit(AST):
 		if not state.mod.arrMod:
 			return dataStruct
 		
-		if not (implicitType and implicitType.isStructType and implicitType.symbol.paramType == state.mod.arrMod.ArrType):
+		isArr = implicitType and implicitType.isStructType and implicitType.symbol.paramType == state.mod.arrMod.Arr
+		isVec = implicitType and implicitType.isStructType and implicitType.symbol.paramType == state.mod.arrMod.Vec
+		
+		if isVec:
+			assert 0
+			# cap = floor(count * 1.5)
+			# # call malloc
+			# # call memcpy
+			# structValue = CreateStruct.create(state, implicitType, self.span, [
+			# 	CreateStruct.init('count', IntValue(count, USize, self.span)),
+			# 	CreateStruct.init('cap', IntValue(cap, USize, self.span)),
+			# 	CreateStruct.init('data', vecDataPtr)
+			# ])
+		elif isArr:
+			arrDataPtr = SymbolAccess.read(state, dataStruct)
+			arrDataPtr.symbol.mut = True
+			arrDataPtr.ref = False
+			arrDataPtr.addr = True
+			arrDataPtr.type = PtrType(arrDataPtr.type, 1, True)
+			
+			structValue = CreateStruct.create(state, implicitType, self.span, [
+				CreateStruct.init('count', IntValue(count, USize, self.span)),
+				CreateStruct.init('data', arrDataPtr)
+			])
+			
+			return structValue
+		else:
 			return dataStruct
-		
-		arrDataPtr = SymbolAccess.read(state, dataStruct)
-		arrDataPtr.symbol.mut = True
-		arrDataPtr.ref = False
-		arrDataPtr.addr = True
-		arrDataPtr.type = PtrType(arrDataPtr.type, 1, True)
-		
-		structValue = CreateStruct.create(state, implicitType, self.span, [
-			CreateStruct.init('count', IntValue(count, USize, self.span)),
-			CreateStruct.init('data', arrDataPtr)
-		])
-		
-		return structValue

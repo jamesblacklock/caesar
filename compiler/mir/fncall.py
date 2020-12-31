@@ -1,8 +1,8 @@
 from .mir import MIR
-from ..ir import FundamentalType, FExtend, IExtend, Extend, Imm, Add, Deref, Call, Field, IPTR, F64
+from ..ir import FundamentalType, FExtend, IExtend, Extend, Imm, Add, Deref, Call, Field, IPTR, F64, Global
 
 class FnCall(MIR):
-	def __init__(self, access, args, cVarArgs, dynDispatch, type, span, isDrop=False):
+	def __init__(self, access, args, cVarArgs, dynDispatch, type, genericTypeSymbol, span, isDrop=False):
 		super().__init__(span, not isDrop)
 		self.access = access
 		self.args = args
@@ -10,6 +10,7 @@ class FnCall(MIR):
 		self.isDrop = isDrop
 		self.dynDispatch = dynDispatch
 		self.type = type
+		self.genericTypeSymbol = genericTypeSymbol
 	
 	def commit(self, state):
 		self.access.commit(state)
@@ -57,6 +58,9 @@ class FnCall(MIR):
 			state.appendInstr(Imm(self, IPTR, IPTR.byteSize * index))
 			state.appendInstr(Add(self))
 			state.appendInstr(Deref(self, IPTR))
+		elif self.genericTypeSymbol:
+			symbol = state.ast.genericInc[self.genericTypeSymbol].symbolTable[self.access.symbol.name]
+			state.appendInstr(Global(self, IPTR, symbol.mangledName))
 		else:
 			self.access.writeIR(state)
 		
