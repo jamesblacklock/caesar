@@ -119,7 +119,7 @@ class Import(AST):
 				checksum = platform.readChecksum(importInfo)
 			
 			if checksum != source.checksum:
-				importedMod = state.analyze(ast)
+				importedMod = state.analyze(ast, isImport=True)
 				ir.generateIR(importedMod)
 				asm = amd64.generateAsm(importedMod)
 				

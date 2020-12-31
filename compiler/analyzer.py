@@ -87,7 +87,7 @@ def buildSymbolTable(state, mod):
 			buildSymbolTable(state, symbol.mod)
 		elif type(symbol) == Fn:
 			mod.fns.append(symbol)
-			if symbol.name == 'main':
+			if symbol.name == 'main' and not state.isImport:
 				mod.mainFn = symbol
 		elif type(symbol) == Static:
 			mod.statics.append(symbol)
@@ -111,76 +111,79 @@ def analyze(ast, forceRebuilds=False, checkOnly=False):
 	return AnalyzerState.analyze(None, ast, forceRebuilds)
 
 class AnalyzerState:
-	def __init__(self, ast, forceRebuilds, checkOnly):
+	def __init__(self, ast, forceRebuilds, checkOnly, isImport):
 		self.failed = False
 		self.forceRebuilds = forceRebuilds
 		self.checkOnly = checkOnly
+		self.isImport = isImport
 		self.ast = ast
 		self.mod = None
 	
-	def analyze(state, ast, forceRebuilds=None, checkOnly=None):
+	def analyze(self, ast, forceRebuilds=None, checkOnly=None, isImport=None):
 		if forceRebuilds == None:
-			forceRebuilds = state.forceRebuilds if state else False
+			forceRebuilds = self.forceRebuilds if self else False
 		if checkOnly == None:
-			checkOnly = state.checkOnly if state else False
+			checkOnly = self.checkOnly if self else False
+		if isImport == None:
+			isImport = self.isImport if self else False
 		
-		state = AnalyzerState(ast, forceRebuilds, checkOnly)
+		self = AnalyzerState(ast, forceRebuilds, checkOnly, isImport)
 		
-		buildSymbolTable(state, ast)
+		buildSymbolTable(self, ast)
 		
-		invokeAttrs(state, ast)
+		invokeAttrs(self, ast)
 		if not ast.noStrImport:
-			(state.ast.strMod, _) = Import.doImport(state, ast, ['str', 'str'])
+			(self.ast.strMod, _) = Import.doImport(self, ast, ['str', 'str'])
 		elif ast.isStrMod:
 			ast.strMod = ast
 			ast.Str = ast.symbolTable['str']
 			ast.StrData = ast.symbolTable['StrData']
 		
 		if not ast.noArrImport:
-			(ast.arrMod, _) = Import.doImport(state, ast, ['arr', 'arr'])
+			(ast.arrMod, _) = Import.doImport(self, ast, ['arr', 'arr'])
 		elif ast.isArrMod:
 			ast.arrMod = ast
 			ast.Arr = ast.symbolTable['arr']
 			ast.Vec = ast.symbolTable['vec']
 		
-		ast.checkSig(state)
-		ast.analyze(state, Deps(ast))
+		ast.checkSig(self)
+		ast.analyze(self, Deps(ast))
 		
-		if state.failed:
+		if self.failed:
 			exit(1)
 		
 		return ast
 	
-	def finishResolvingType(state, resolvedType, deps=None):
+	def finishResolvingType(self, resolvedType, deps=None):
 		if deps == None:
 			deps = Deps(None)
 		
 		if resolvedType == None:
 			return None
 		elif resolvedType.symbol:
-			resolvedType.symbol.analyze(state, deps)
+			resolvedType.symbol.analyze(self, deps)
 		elif resolvedType.isOwnedType:
-			finishAnalyzingOwnedType(state, resolvedType, deps)
+			finishAnalyzingOwnedType(self, resolvedType, deps)
 		elif resolvedType.isPtrType or resolvedType.isArrayType:# or resolvedType.isTypeDef:
-			state.finishResolvingType(resolvedType.baseType, deps)
+			self.finishResolvingType(resolvedType.baseType, deps)
 		elif resolvedType.isTupleType:
-			finishAnalyzingTupleType(state, resolvedType, deps)
+			finishAnalyzingTupleType(self, resolvedType, deps)
 		elif resolvedType.isStructType:
-			finishAnalyzingStructType(state, resolvedType, deps)
+			finishAnalyzingStructType(self, resolvedType, deps)
 		
 		resolvedType.updateName()
 		return resolvedType
 	
-	def resolveTypeRef(state, typeRef):
-		return state.finishResolvingType(typeRef.resolveSig(state))
+	def resolveTypeRef(self, typeRef):
+		return self.finishResolvingType(typeRef.resolveSig(self))
 	
-	def typeCheck(state, expr, expectedType):
+	def typeCheck(self, expr, expectedType):
 		if not (expr.type and expectedType):
 			return expr
 		
-		expr = tryPromote(state, expr, expectedType)
+		expr = tryPromote(self, expr, expectedType)
 		if not typesMatch(expr.type, expectedType):
-			logError(state, expr.span, 'expected type `{}`, found `{}`'.format(expectedType, expr.type))
+			logError(self, expr.span, 'expected type `{}`, found `{}`'.format(expectedType, expr.type))
 		
 		return expr
 	
