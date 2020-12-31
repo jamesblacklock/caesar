@@ -2,8 +2,8 @@ import ctypes
 from io       import StringIO
 from enum     import Enum
 from .mir.mir import StaticData, StaticDataType
-from .ir      import Dup, Global, Imm, Static, Deref, DerefW, Add, Sub, Mul, Div, Mod, LShift, RShift, BitAnd, \
-                     BitOr, BitXOr, Eq, NEq, Less, LessEq, \
+from .ir      import Dup, Global, Imm, Static, Deref, DerefW, Add, Sub, Mul, Div, Mod, LShift, RShift, SRShift, \
+                     BitAnd, BitOr, BitXOr, Eq, NEq, Less, LessEq, \
                      Greater, GreaterEq, FAdd, FSub, FMul, FDiv, FEq, FNEq, FLess, FLessEq, FGreater, FGreaterEq, \
                      Call, Extend, IExtend, Truncate, FExtend, FTruncate, IToF, UToF, FToI, FToU, Ret, BrIf, \
                      Br, Swap, Write, Pop, Raise, Neg, Res, Field, FieldW, DerefField, DerefFieldW, Fix, Addr, \
@@ -1157,18 +1157,24 @@ def mod(state, ir, nextIR):
 	mulDivMod(state, ir, False, True)
 
 def lshift(state, ir, nextIR):
-	lrshift(state, ir, False)
+	lrshift(state, ir, False, False)
 
 def rshift(state, ir, nextIR):
-	lrshift(state, ir, True)
+	lrshift(state, ir, True, False)
 
-def lrshift(state, ir, right):
+def srshift(state, ir, nextIR):
+	lrshift(state, ir, True, True)
+
+def lrshift(state, ir, right, signed):
 	shift = state.getOperand(0)
 	target = state.getOperand(1)
 	
 	if shift.storage == Storage.IMM and target.storage == Storage.IMM:
 		state.popOperand()
-		shift.value = (shift.value % 0x100000000) >> target.value if right else shift.value << target.value
+		signBit = 1 << (target.type.byteSize * 8 - 1)
+		sign = target.value & signBit if signed else 0
+		target.value = (target.value % (signBit << 1)) >> shift.value if right else target.value << shift.value
+		target.value += sign
 		return
 	
 	if shift.storage != Storage.IMM and shift != state.rcx:
@@ -1180,7 +1186,12 @@ def lrshift(state, ir, right):
 	
 	assert target.storage in (Storage.REG, Storage.STACK)
 	
-	state.appendInstr('shr' if right else 'sal',
+	if right:
+		opcode = 'sar' if signed else 'shr'
+	else:
+		opcode = 'sal'
+	
+	state.appendInstr(opcode,
 			Operand(target, Usage.DEST), 
 			Operand(shift, Usage.SRC, I8))
 	
@@ -1736,6 +1747,7 @@ irToAsmFns = {
 	Mod:         mod,
 	LShift:      lshift,
 	RShift:      rshift,
+	SRShift:      srshift,
 	BitAnd:      bitand,
 	BitOr:       bitor,
 	BitXOr:      bitxor,

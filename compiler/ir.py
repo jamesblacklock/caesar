@@ -646,6 +646,16 @@ class RShift(Instr):
 	def __str__(self):
 		return 'rshift'
 
+class SRShift(Instr):
+	def __init__(self, ast):
+		super().__init__(ast)
+		
+	def affectStack(self, state):
+		state.popOperand()
+	
+	def __str__(self):
+		return 'srshift'
+
 class FEq(Instr):
 	def __init__(self, ast):
 		super().__init__(ast)

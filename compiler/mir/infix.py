@@ -174,7 +174,10 @@ class InfixOp(MIR):
 	def writeRShiftIR(self, state):
 		self.l.writeIR(state)
 		self.r.writeIR(state)
-		state.appendInstr(ir.RShift(self))
+		if self.l.type.isSigned:
+			state.appendInstr(ir.SRShift(self))
+		else:
+			state.appendInstr(ir.RShift(self))
 	
 	def writeBitAndIR(self, state):
 		self.l.writeIR(state)

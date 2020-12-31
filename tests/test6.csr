@@ -75,3 +75,10 @@ fn main() -> int
     unsafe printf("asdf\n")
     unsafe printf("asdf\n")
     
+    # this will trigger constant propagation
+    unsafe printf("sar: %d; shr: %d\n", -1 >> 1, (-1 as uint) >> 1)
+    
+    # this will use the actual machine instructions
+    let n = if true { -1 } else { -1 }
+    unsafe printf("sar: %d; shr: %d\n", n >> 1, (n as uint) >> 1)
+    
