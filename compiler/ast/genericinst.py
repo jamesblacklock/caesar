@@ -1,3 +1,4 @@
+from symtable import SymbolTable
 from .ast               import AST
 from ..symbol.symbol    import Symbol, ValueSymbol, SymbolType, Deps
 from ..symbol.fn        import Fn
@@ -23,10 +24,11 @@ class GenericAssocConst(ValueSymbol):
 			self.mangledName = 'C_'
 
 class GenericAssocType(Symbol):
-	def __init__(self, param, type, span):
+	def __init__(self, parent, param, t, span):
 		super().__init__(SymbolType.TYPE, param.name.content, param.name.span, span, True)
 		self.ast = param
-		self.type = type
+		self.type = t
+		self.mangledName = '{}.T{}'.format(parent.mangledName if parent else '_', self.name)
 	
 	def analyze(self, state, deps):
 		pass
@@ -34,33 +36,46 @@ class GenericAssocType(Symbol):
 class GenericType(Type):
 	def __init__(self, name, span, symbol):
 		super().__init__(name, span, symbol, isGenericType=True)
+		self.mangledName = symbol.mangledName
 	
-	def resolveGenerics(self, symbolTable):
-		if self.name in symbolTable:
-			return symbolTable[self.name].type
+	def resolveGenerics(self, genericInc):
+		if self.symbol in genericInc:
+			return genericInc[self.symbol].type
 		return self
+	
+	def refGenericType(self, state):
+		state.genericReq.add(self.symbol)
 
 class GenericArg:
 	def __init__(self, paramSymbol, argSymbol):
 		self.paramSymbol = paramSymbol
 		self.argSymbol = argSymbol
 
+class GenericConstructor:
+	def __init__(self, argInfo, argSymbolTable, mangledArgs, incomplete, failed):
+		self.mangledArgs = mangledArgs
+		self.argInfo = argInfo
+		self.argSymbolTable = argSymbolTable
+		self.incomplete = incomplete
+		self.failed = failed
+
 class GenericInst(AST):
 	def __init__(self, path, args, span):
 		super().__init__(span, True)
 		self.path = path
 		self.args = args
-		self.inst = None
-		self.mangledArgs = ''
-		self.argInfo = []
-		self.argSymbolTable = {}
 	
 	def analyze(self, state, implicitType):
 		inst = self.constructFn(state)
 		return SymbolAccess.readSymbol(inst, self.span)
 	
-	def buildArgs(self, state, genericSymbol, genericSymbolTable):
+	def buildArgs(self, state, genericSymbol, genericSymbolTable, genericIncTable = None):
 		genericParams = [None for _ in self.args]
+		argInfo = []
+		argSymbolTable = {}
+		mangledArgs = ''
+		incomplete = False
+		failed = False
 		
 		if genericSymbol:
 			if len(genericSymbol.genericParams) != len(self.args):
@@ -72,6 +87,8 @@ class GenericInst(AST):
 				genericParams[i] = param
 		
 		for (param, arg) in zip(genericParams, self.args):
+			symbol = None
+			
 			requireValue = param and param.valueType
 			requireType = param and not param.valueType
 			isValue = arg.hasValue or (arg.maybeValue and requireValue)
@@ -88,7 +105,10 @@ class GenericInst(AST):
 					assert arg.maybeValue
 					symbol = state.lookupSymbol(arg.path, inValuePosition=True)
 					if symbol:
-						mir = SymbolAccess.readSymbol(symbol, arg.span)
+						if symbol.isGeneric:
+							incomplete = True
+						else:
+							mir = SymbolAccess.readSymbol(symbol, arg.span)
 				else:
 					mir = state.analyzeNode(arg, param.valueType)
 				
@@ -98,7 +118,7 @@ class GenericInst(AST):
 				
 				staticValue = None
 				if mir == None or mir.type == None:
-					assert state.failed
+					assert state.failed or symbol.isGeneric
 				elif param and not typesMatch(param.valueType, mir.type):
 					logError(state, arg.span, 'expected type {}, found {}'.format(param.valueType, mir.type))
 				else:
@@ -106,25 +126,43 @@ class GenericInst(AST):
 					if staticValue == None:
 						logError(state, arg.span, 'expression cannot be statically evaluated')
 				
-				symbol = GenericAssocConst(param, staticValue, arg.span)
+				if param and not (symbol and symbol.isGeneric):
+					symbol = GenericAssocConst(param, staticValue, arg.span)
 			else:
-				t = state.resolveTypeRef(arg)
-				symbol = GenericAssocType(param, t, arg.span)
-				symbol.mangledName = t.mangledName
+				t = None
+				if genericIncTable and arg.name in genericIncTable:
+					t = genericIncTable[arg.name]
+				else:
+					t = state.resolveTypeRef(arg)
+				
+				if param and t:
+					# if t.isGenericType:
+					# 	symbol = genericSymbolTable[param.name.content]
+					# 	incomplete = True
+					# else:
+					symbol = GenericAssocType(genericSymbol, param, t, arg.span)
+					symbol.mangledName = t.mangledName
 			
-			if genericSymbolTable and param:
+			if symbol == None:
+				assert state.failed
+				failed = True
+			elif genericSymbolTable and param:
 				paramSymbol = genericSymbolTable[param.name.content]
-				self.argSymbolTable[param.name.content] = symbol
-				self.argInfo.append(GenericArg(paramSymbol, symbol))
-				self.mangledArgs += symbol.mangledName
+				argSymbolTable[param.name.content] = symbol
+				argInfo.append(GenericArg(paramSymbol, symbol))
+				mangledArgs += symbol.mangledName
+		
+		return GenericConstructor(argInfo, argSymbolTable, mangledArgs, incomplete, failed)
 	
-	def constructType(self, state):
+	def constructType(self, state, genericIncTable = None):
 		from ..symbol.paramtype import ParamTypeSymbol, ParamTypeInst
 		
 		builtinName = self.path[0].content if len(self.path) == 1 else None
 		if builtinName in BUILTIN_TYPES:
 			logError(state, self.span, 'type `{}` is not a parameterized type'.format(builtinName))
 			return None
+		
+		mod = state.mod
 		
 		genericSymbol = state.lookupSymbol(self.path, inTypePosition=True)
 		if genericSymbol:
@@ -138,30 +176,46 @@ class GenericInst(AST):
 			if not genericSymbol.isGeneric:
 				genericSymbol = None
 		
-		self.argInfo.append(GenericArg(genericSymbol.genericStruct, None))
-		self.buildArgs(state, genericSymbol, genericSymbol.genericStruct.symbolTable if genericSymbol else None)
+		symbolTable = genericSymbol.genericStruct.symbolTable if genericSymbol else {}
+		constr = self.buildArgs(state, genericSymbol, symbolTable, genericIncTable)
 		
-		if genericSymbol:
+		if genericSymbol and not constr.failed:
+			mangledName = genericSymbol.genericStruct.mangledName + '?' + constr.mangledArgs + '$'
+			if mangledName in state.ssstate.typeInsts:
+				return state.ssstate.typeInsts[mangledName]
+			
+			state.mod = genericSymbol.mod
+			state.ssstate.mod = state.mod
+			
 			structSymbol = Struct(genericSymbol.ast)
 			structSymbol.paramType = genericSymbol
-			structSymbol.type.symbolTable = self.argSymbolTable
+			structSymbol.type.symbolTable = constr.argSymbolTable
 			structSymbol.type.symbolTable[genericSymbol.name] = structSymbol
 			structSymbol.analyze(state.ssstate, Deps(genericSymbol.ast))
-			structSymbol.mangledName += '?' + self.mangledArgs + '$'
+			structSymbol.mangledName = mangledName
+			structSymbol.genericInst = self
+			state.ssstate.typeInsts[mangledName] = structSymbol
 			
-			self.argInfo[0].argSymbol = structSymbol
+			constr.argInfo.insert(0, GenericArg(genericSymbol.genericStruct, ParamTypeInst(genericSymbol, structSymbol.type)))#structSymbol))
 			
 			for symbol in genericSymbol.type.symbolTable.values():
-				if symbol.name in self.argSymbolTable:
+				if symbol.name in constr.argSymbolTable:
 					continue
 				assert type(symbol) == Fn
-				fnSymbolTable = dict(self.argSymbolTable)
+				fnSymbolTable = dict(constr.argSymbolTable)
 				fnSymbolTable[genericSymbol.name] = ParamTypeInst(genericSymbol, structSymbol.type)
-				self.argSymbolTable[symbol.name] = FnInst.getFnInst(state, symbol, fnSymbolTable, self.argInfo)
-			
-			return structSymbol
+				fnInst = FnInst.getFnInst(state, symbol, fnSymbolTable, constr.argInfo)
+				fnInst.genericInc[genericSymbol.genericStruct] = structSymbol
+				constr.argSymbolTable[symbol.name] = fnInst
+		else:
+			structSymbol = None
+		
+		state.mod = mod
+		state.ssstate.mod = state.mod
+		return structSymbol
 	
 	def constructFn(self, state):
+		mod = state.mod
 		genericSymbol = state.lookupSymbol(self.path, inValuePosition=True)
 		if genericSymbol:
 			if not (genericSymbol.isFn and genericSymbol.isGeneric):
@@ -171,21 +225,29 @@ class GenericInst(AST):
 			if not genericSymbol.isGeneric:
 				genericSymbol = None
 		
-		self.buildArgs(state, genericSymbol, genericSymbol.genericSymbolTable if genericSymbol else None)
+		constr = self.buildArgs(state, genericSymbol, genericSymbol.genericSymbolTable if genericSymbol else None)
 		
-		if genericSymbol:
-			inst = FnInst.getFnInst(state, genericSymbol, self.argSymbolTable, self.argInfo)
-
+		assert not constr.incomplete
+		if genericSymbol and not constr.failed:
+			state.mod = genericSymbol.mod
+			state.ssstate.mod = state.mod
+			inst = FnInst.getFnInst(state, genericSymbol, constr.argSymbolTable, constr.argInfo)
+		else:
+			inst = None
+		
+		state.mod = mod
+		state.ssstate.mod = state.mod
+		return inst
 class FnInst(ValueSymbol):
-	def __init__(self, fn, mangledName, genericInc, symbolTable, instType=None):
+	def __init__(self, state, fn, mangledName, genericInc, symbolTable, instType=None):
 		super().__init__(fn.ast.name, fn.ast.nameSpan, fn.ast.span, fn.ast.pub)
 		self.mangledName = mangledName
 		self.genericInc = genericInc
 		
 		self.fn = fn
 		self.symbolTable = symbolTable
-		self.type = instType if instType else fn.type.resolveGenerics(symbolTable)
-		assert not self.type.isGenericType
+		self.type = instType if instType else fn.type.resolveGenerics(genericInc)
+		# assert not self.type.isGenericType
 		self.params = fn.params
 		# self.isDropFnForType = None
 		self.extern = False
@@ -213,20 +275,23 @@ class FnInst(ValueSymbol):
 				mangledName += info.argSymbol.mangledName
 		mangledName += '$'
 		
-		assert len(genericReq) == 0
-		if mangledName in state.mod.fnInsts:
-			existingInst = state.mod.fnInsts[mangledName]
-			instType = fn.type.resolveGenerics(symbolTable)
+		genericIncTable = { k.name: v for (k, v) in genericInc.items() }
+		for t in genericReq:
+			assert t.genericInst
+			u = t.genericInst.constructType(state, genericIncTable)
+			genericInc[t] = u
+
+		# assert len(genericReq) == 0
+		if mangledName in state.ssstate.fnInsts:
+			existingInst = state.ssstate.fnInsts[mangledName]
+			instType = fn.type.resolveGenerics(genericInc)
 			if typesMatch(instType, existingInst.type):
 				return existingInst
 			else:
-				newInst = FnInst(fn, mangledName, genericInc, symbolTable, instType)
+				newInst = FnInst(state, fn, mangledName, genericInc, symbolTable, instType)
 				newInst.extern = True
 				return newInst
 		
-		newInst = FnInst(fn, mangledName, genericInc, symbolTable)
-		state.mod.fnInsts[mangledName] = newInst
+		newInst = FnInst(state, fn, mangledName, genericInc, symbolTable)
+		state.ssstate.fnInsts[mangledName] = newInst
 		return newInst
-		
-	def writeIR(self, state):
-		assert 0

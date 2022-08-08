@@ -36,7 +36,7 @@ class Static(ValueSymbol):
 		
 		deps.push(self)
 		
-		flow = CFGBuilder(state, self, state.mod)
+		flow = CFGBuilder(state, None, state.mod, self.span)
 		flow.beginScope(self.span)
 		self.mir = flow.analyzeNode(self.ast.expr, self.type)
 		flow.endScope()

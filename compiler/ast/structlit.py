@@ -5,7 +5,7 @@ from ..mir.createstruct import CreateStruct, FieldInit
 from ..mir.primitive    import IntValue
 from ..log              import logError, logExplain
 from .typeref           import ParamTypeRef
-from ..types            import Void
+from ..types            import Void, generateFieldLayout
 
 class FieldLit(AST):
 	def __init__(self, name, expr, span):
@@ -123,7 +123,7 @@ class StructLit(AST):
 			fieldInfo = None
 			if self.isUnion:
 				fieldInfo = [UnionLitFieldInfo(f.pub, f.mut) for f in self.fields]
-			layout = state.generateFieldLayout(fieldTypes, fieldNames, fieldInfo)
+			layout = generateFieldLayout(fieldTypes, fieldNames, fieldInfo)
 			resolvedType = StructType.generateAnonStructType(layout)
 		
 		inits = []

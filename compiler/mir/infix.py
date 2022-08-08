@@ -22,7 +22,7 @@ class InfixOp(MIR):
 			return None
 		
 		rng = self.l.type.RNG
-		fType = ir.FundamentalType.fromResolvedType(self.l.type)
+		fType = ir.FundamentalType.fromResolvedType(state.fn, self.l.type)
 		if self.op == InfixOps.PLUS:
 			data = l.data + r.data
 		elif self.op == InfixOps.MINUS:
@@ -104,7 +104,7 @@ class InfixOp(MIR):
 		if self.l.type.isPtrType:
 			self.r.writeIR(state)
 			if self.l.type.indLevel == 1:
-				mul = self.l.type.baseType.byteSize
+				mul = ir.FundamentalType.fromResolvedType(state.ast, self.l.type.baseType).byteSize
 			else:
 				mul = ir.IPTR.byteSize
 			state.appendInstr(ir.Imm(self, ir.IPTR, mul))

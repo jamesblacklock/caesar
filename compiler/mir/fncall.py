@@ -40,7 +40,7 @@ class FnCall(MIR):
 			if access.type.isVoidType:
 				continue
 			
-			fType = FundamentalType.fromResolvedType(access.type)
+			fType = FundamentalType.fromResolvedType(state.ast, access.type)
 			if fType.isFloatType and fType.byteSize != 8:
 				assert fType.byteSize == 4
 				state.appendInstr(FExtend(self, F64))
@@ -65,7 +65,7 @@ class FnCall(MIR):
 			self.access.writeIR(state)
 		
 		argCt = len(self.args) + len(self.cVarArgs)
-		retType = None if self.type.isVoidType else FundamentalType.fromResolvedType(self.type)
+		retType = None if self.type.isVoidType else FundamentalType.fromResolvedType(state.ast, self.type)
 		state.appendInstr(Call(self, argCt, retType, self.access.type.cVarArgs))
 	
 	def __str__(self):

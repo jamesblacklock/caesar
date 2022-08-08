@@ -186,6 +186,10 @@ class CFGBlock:
 			return
 		
 		state.refType(access.type)
+		if access.deref:
+			t = access.symbol.type.typeAfterDeref(access.deref)
+			if t.isGenericType:
+				state.refType(t)
 		state.refSymbol(access.symbol)
 		
 		if access.symbol not in self.symbolState:

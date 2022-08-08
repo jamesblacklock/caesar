@@ -9,6 +9,7 @@ class ParamTypeInst(Symbol):
 		self.paramType = paramType
 		self.type = defaultType
 		self.symbolTable = self.type.symbolTable
+		self.mangledName = self.type.symbol.mangledName
 
 class ParamTypeSymbol(Symbol):
 	def __init__(self, ast, genericParams):
@@ -28,7 +29,9 @@ class ParamTypeSymbol(Symbol):
 		return self.type.symbolTable
 	
 	def checkSig(self, state):
+		self.mod = state.mod
 		self.genericStruct.symbolTable[self.name] = ParamTypeInst(self, self.genericStruct.type)
+		self.mangledName = state.mangleName(self)
 		
 		paramNames = {}
 		for param in self.genericParams:
@@ -40,14 +43,14 @@ class ParamTypeSymbol(Symbol):
 			if param.valueType:
 				symbol = GenericAssocConst(param, None, param.span)
 			else:
-				symbol = GenericAssocType(param, None, param.span)
+				symbol = GenericAssocType(self, param, None, param.span)
 				symbol.type = GenericType(param.name.content, param.name.span, symbol)
 			
 			self.genericStruct.symbolTable[param.name.content] = symbol
 			paramNames[param.name.content] = param.span
 		
 		self.genericStruct.checkSig(state)
-		self.mangledName = state.mangleName(self)
+		self.genericStruct.paramType = self
 		self.sigWasChecked = True
 	
 	def analyze(self, state, deps):

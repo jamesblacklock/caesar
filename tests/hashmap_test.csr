@@ -1,8 +1,10 @@
+@@no_arr
+
 import hashmap::HashMap
 import libc::printf
 
 fn main()
-    let map = HashMap::new()
+    let map: HashMap[int] = HashMap::new()
     
     map->put("apple", 1)
     map->put("banana", 2)
@@ -16,3 +18,5 @@ fn main()
         map->get("banana")
         map->get("apple")
         map->get("grape"))
+    
+    unsafe @leak @private map.buckets

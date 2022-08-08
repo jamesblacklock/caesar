@@ -45,7 +45,7 @@ class Return(AST):
 			state.block.outputs.add(access.symbol)
 			state.block.returnAccess = access
 		
-		if not typesMatch(returnType, expectedReturnType):
+		if expectedReturnType and not typesMatch(returnType, expectedReturnType):
 			span = self.expr.span if self.expr else self.span
 			logError(state, span, 'invalid return type (expected {}, found {})'
 				.format(expectedReturnType, returnType))

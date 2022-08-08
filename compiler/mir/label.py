@@ -14,7 +14,7 @@ class Label(MIR):
 	
 	def writeIR(self, state):
 		state.staticDefs.append(self.staticData)
-		fType = FundamentalType.fromResolvedType(self.type)
+		fType = FundamentalType.fromResolvedType(state.ast, self.type)
 		state.appendInstr(Static(self, fType, self.label))
 	
 	def __str__(self):

@@ -305,7 +305,7 @@ class SymbolRead(SymbolAccess):
 					state.appendInstr(ir.Imm(self, ir.IPTR, factor))
 					state.appendInstr(ir.Mul(self))
 			
-			fType = ir.FundamentalType.fromResolvedType(self.type)
+			fType = ir.FundamentalType.fromResolvedType(state.ast, self.type)
 			stackOffset = 1 if stackTop else state.localOffset(self.symbol)
 			if self.deref:
 				state.appendInstr(ir.DerefField(self, stackOffset, fType))
@@ -328,7 +328,7 @@ class SymbolRead(SymbolAccess):
 				for _ in range(0, self.deref - 1):
 					state.appendInstr(ir.Deref(self, ir.IPTR))
 				
-				fType = ir.FundamentalType.fromResolvedType(self.type)
+				fType = ir.FundamentalType.fromResolvedType(state.ast, self.type)
 				state.appendInstr(ir.Deref(self, fType))
 			elif self.staticOffset:
 				state.appendInstr(ir.Imm(self, ir.IPTR, self.staticOffset))
@@ -483,6 +483,9 @@ class SymbolWrite(SymbolAccess):
 					state.appendInstr(ir.Fix(self, 0))
 
 def _SymbolAccess__analyzeSymbolAccess(state, expr, access, implicitType=None):
+	from ..attrs        import invokeAttrs
+	invokeAttrs(state, expr)
+	
 	if type(expr) == valueref.ValueRef:
 		symbolTable = implicitType.symbolTable if implicitType else None
 		access.symbol = state.lookupSymbol(expr.path, symbolTable, inValuePosition=True)
@@ -500,18 +503,17 @@ def _SymbolAccess__analyzeSymbolAccess(state, expr, access, implicitType=None):
 						t = PtrType(t, contract.indLevel, contract.symbol.mut)
 			
 			if expr.leakOwned:
-				if state.scope.allowUnsafe:
-					if t.isOwnedType:
-						access.leakOwned = True
-						t = t.baseType
-				else:
+				if not state.scope.allowUnsafe:
 					logError(state, expr.span, 'cannot leak owned data in safe context')
+				if t.isOwnedType:
+					access.leakOwned = True
+					t = t.baseType
 			
 			access.type = t
 			if access.symbol.isStatic:
 				staticRead = SymbolRead(access.span)
 				staticRead.symbol = access.symbol
-				staticRead.type = access.symbol.type
+				staticRead.type = PtrType(access.symbol.type, 1, False)
 				staticRead.ref = True
 				(symbol, write) = createTempSymbol(staticRead)
 				state.decl(symbol)
@@ -640,8 +642,14 @@ def _SymbolAccess__analyzeSymbolAccess(state, expr, access, implicitType=None):
 			
 			fieldInfo = t.fieldDict[fieldName.content]
 			
+			privateAccess = False
+			if expr.privateAccess:
+				if not state.scope.allowUnsafe:
+					logError(state, expr.span, 'cannot violate field privacy data in safe context')
+				privateAccess = True
+			
 			pub = (fieldInfo.pub and fieldInfo.mut) if access.write else fieldInfo.pub
-			if not pub:
+			if not (pub or privateAccess):
 				symbolMod = t.symbol.mod
 				while symbolMod.transparent:
 					symbolMod = symbolMod.parent
@@ -660,8 +668,15 @@ def _SymbolAccess__analyzeSymbolAccess(state, expr, access, implicitType=None):
 			offset += fieldInfo.offset
 			t = fieldInfo.type
 		
+		if expr.leakOwned:
+			if not state.scope.allowUnsafe:
+				logError(state, expr.span, 'cannot leak owned data in safe context')
+			if t.isOwnedType:
+				access.leakOwned = True
+				t = t.baseType
+		
 		access.staticOffset += offset
-		access.type = fieldInfo.type
+		access.type = t
 		if len(access.dynOffsets) == 0:
 			access.field = fieldInfo
 			access.fieldSpan = expr.path[-1].span

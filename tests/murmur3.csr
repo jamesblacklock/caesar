@@ -11,6 +11,8 @@
 # non-native version will be less than optimal.
 #-----------------------------------------------------------------------------
 
+@@no_arr
+@@no_str
 
 #-----------------------------------------------------------------------------
 # Block read - if your platform needs to do endian-swapping or can only

@@ -1,6 +1,6 @@
 from .symbol         import Symbol, SymbolType
 from ..mir.mir       import StaticData, StaticDataType
-from ..types         import Type, Void, UInt8, UInt16, U8_MAX, U16_MAX
+from ..types         import Type, Void, UInt8, UInt16, U8_MAX, U16_MAX, generateFieldLayout
 from ..ast.structlit import UnionLitFieldInfo
 from .struct         import StructType
 from ..ir            import FundamentalType
@@ -32,7 +32,7 @@ class Enum(Symbol):
 				logError(state, self.nameSpan, 
 					'Congratulations, you\'ve broken the compiler! (too many variants)')
 		
-		fTagType = FundamentalType.fromResolvedType(self.type.tagType)
+		fTagType = FundamentalType.fromResolvedType(None, self.type.tagType)
 		for (i, v) in enumerate(self.type.variants):
 			assert v.name not in self.type.symbolTable
 			self.type.symbolTable[v.name] = v
@@ -56,10 +56,10 @@ class Enum(Symbol):
 				fieldInfo.append(UnionLitFieldInfo(False, False))
 		
 		if len(fieldTypes) > 0:
-			layout = state.generateFieldLayout(fieldTypes, fieldNames, fieldInfo)
+			layout = generateFieldLayout(fieldTypes, fieldNames, fieldInfo)
 			self.type.dataType = StructType.generateAnonStructType(layout)
 		
-		layout = state.generateFieldLayout([self.type.dataType, self.type.tagType], ['$data', '$tag'])
+		layout = generateFieldLayout([self.type.dataType, self.type.tagType], ['$data', '$tag'])
 		self.type.structType = StructType.generateAnonStructType(layout)
 		
 		self.type.byteSize = self.type.structType.byteSize

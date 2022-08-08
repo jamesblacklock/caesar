@@ -28,7 +28,8 @@ class Mod(SymbolAST):
 		self.decls = decls
 		# self.types = []
 		self.fns = []
-		self.fnInsts = {}
+		# self.fnInsts = {}
+		# self.typeInsts = {}
 		self.mods = []
 		self.statics = []
 		# self.consts = []
@@ -99,8 +100,6 @@ class Mod(SymbolAST):
 		if not state.checkOnly:
 			for fn in self.fns:
 				fn.analyzeBody(state)
-			
-			self.fns.extend(self.fnInsts.values())
 			
 			for symbol in self.imports:
 				isStrType = self.strMod and symbol == self.strMod.Str

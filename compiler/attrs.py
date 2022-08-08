@@ -1,11 +1,12 @@
 from .ast.valueref      import ValueRef
+from .ast.field         import Field
 from .ast.primitive     import IntLit, BoolLit
 from .ast.strlit        import StrLit
 from .ast.localdecl     import LetDecl, FnParam
 from .ast.fndecl        import FnDecl, CConv
 from .ast.structdecl    import StructDecl, FieldDecl
 from .symbol.mod        import Mod, TraitDecl
-from .log               import logError
+from .log               import logError, logExplain
 
 class AttrInfo:
 	def __init__(self, name, proc, appliesTo, argInfo):
@@ -73,6 +74,9 @@ def dropTraitAttr(state, decl, params, span):
 def leakAttr(state, decl, params, span):
 	decl.leakOwned = True
 
+def privateAttr(state, decl, params, span):
+	decl.privateAccess = True
+
 def inlineAttr(state, decl, params, span):
 	if len(params) == 0 or params[0].value:
 		decl.alwaysInline = True
@@ -89,7 +93,8 @@ StrModAttr = AttrInfo('str_mod', strModAttr, [Mod], [])
 NoArrAttr = AttrInfo('no_arr', noArrAttr, [Mod], [])
 ArrModAttr = AttrInfo('arr_mod', arrModAttr, [Mod], [])
 DropTraitAttr = AttrInfo('drop_trait', dropTraitAttr, [TraitDecl], [])
-LeakAttr = AttrInfo('leak', leakAttr, [ValueRef], [])
+LeakAttr = AttrInfo('leak', leakAttr, [ValueRef, Field], [])
+PrivateAttr = AttrInfo('private', privateAttr, [Field], [])
 InlineAttr = AttrInfo('inline', inlineAttr, [FnDecl], [AttrArg(BoolLit, optional=True)])
 
 builtinAttrs = {
@@ -104,6 +109,7 @@ builtinAttrs = {
 	ArrModAttr.name: ArrModAttr,
 	DropTraitAttr.name: DropTraitAttr,
 	LeakAttr.name: LeakAttr,
+	PrivateAttr.name: PrivateAttr,
 	InlineAttr.name: InlineAttr,
 }
 

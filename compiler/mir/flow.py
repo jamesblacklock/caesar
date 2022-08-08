@@ -31,7 +31,7 @@ class Scope:
 				self.contracts[contract.symbol] = contract
 
 class CFGBuilder:
-	def __init__(self, state, fn, mod):
+	def __init__(self, state, fn, mod, span):
 		self.ssstate = state
 		self.mod = mod
 		self.fn = fn
@@ -41,14 +41,14 @@ class CFGBuilder:
 		self.breakBlocks = []
 		self.continueBlocks = []
 		self.branchPoints = []
-		self.endSpan = fn.span.endSpan()
+		self.endSpan = span.endSpan()
 		self.failed = False
 		self.blockId = 1
 		self.dropPoint = None
 		self.genericReq = set()
 	
 	def createDiscardBuilder(self):
-		discard = CFGBuilder(self.ssstate, self.fn, self.mod)
+		discard = CFGBuilder(self.ssstate, self.fn, self.mod, self.endSpan)
 		discard.block = self.block.cloneForDiscard()
 		discard.blocks = [discard.block]
 		discard.scope = self.scope
@@ -145,7 +145,7 @@ class CFGBuilder:
 			if not self.block.ancestors:
 				self.block.initStateFromAncestors([startBlock])
 			self.appendBlock(self.block)
-		else:
+		elif not self.block.didReturn or self.block.didBreak:
 			self.beginBlock(self.scope.span.endSpan(advance=True))
 		
 		if self.scope.didBreak and not (self.scope.loop or self.scope.parent.loop or self.scope.parent.branch):
@@ -182,9 +182,9 @@ class CFGBuilder:
 		self.scope.declaredSymbols.add(symbol)
 		self.block.decl(symbol)
 	
-	def refType(self, t, always=False):
-		if t and t.isGenericType and (always or t.byteSize == None):
-			self.genericReq.add(t.symbol)
+	def refType(self, t):
+		if t and t.isGenericType and t.byteSize == None:
+			t.refGenericType(self)
 	
 	def refSymbol(self, symbol):
 		if symbol and symbol.isGeneric:
@@ -258,18 +258,29 @@ class CFGBuilder:
 			return self.block.symbolState[symbol].staticValue
 		return None
 	
-	def generateFieldLayout(self, types, fieldNames=None, fieldInfo=None):
-		return self.ssstate.generateFieldLayout(types, fieldNames, fieldInfo)
-	
 	def lookupSymbol(self, path, symbolTable=None, implicitType=None, inTypePosition=False, inValuePosition=False):
-		symbolTable = {**symbolTable, **self.scope.symbolTable} if symbolTable else self.scope.symbolTable
-		return self.ssstate.lookupSymbol(path, symbolTable, implicitType, inTypePosition, inValuePosition)
+		if symbolTable and self.scope:
+			symbolTable = {**symbolTable, **self.scope.symbolTable}
+		elif self.scope:
+			symbolTable = self.scope.symbolTable
+		res = self.ssstate.lookupSymbol(path, symbolTable, implicitType, inTypePosition, inValuePosition)
+		self.failed = self.failed or self.ssstate.failed
+		return res
 	
 	def resolveTypeRef(self, typeRef):
-		return self.ssstate.finishResolvingType(typeRef.resolveSig(self.ssstate, self))
+		res = self.ssstate.finishResolvingType(typeRef.resolveSig(self.ssstate, self))
+		self.failed = self.failed or self.ssstate.failed
+		return res
+	
+	def mangleName(self, symbol):
+		res = self.ssstate.mangleName(symbol)
+		self.failed = self.failed or self.ssstate.failed
+		return res
 	
 	def typeCheck(self, expr, expectedType):
-		return self.ssstate.typeCheck(expr, expectedType)
+		res = self.ssstate.typeCheck(expr, expectedType)
+		self.failed = self.failed or self.ssstate.failed
+		return res
 	
 	def printBlocks(self, block=None):
 		if self.blocks:

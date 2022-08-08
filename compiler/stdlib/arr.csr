@@ -11,7 +11,7 @@ pub struct arr[type El, usize Len]
     # data: &(El * Len)
     data: &[El * Len]
 
-# impl arr: Index[usize, El]
+# impl arr: Index[Len, El]
 #     fn index(self: *arr, i: usize) -> El
 #         unsafe (borrow self.data)^[i]
 

@@ -1990,7 +1990,15 @@ def parseExpr(state, exprClass, precedence=0, noSkipSpace=False, allowSimpleFnCa
 	elif state.tok.type == TokenType.TUPLE:
 		decl = parseTupleDecl(state, doccomment, False, pub)
 	elif state.tok.type == TokenType.STRUCT:
-		decl = parseStructDecl(state, doccomment, False, pub)
+		offset = state.offset
+		state.advance()
+		state.skipSpace()
+		isStructLit = state.tok.type != TokenType.NAME
+		state.rollback(offset)
+		if isStructLit:
+			decl = parseStructLit(state, None)
+		else:
+			decl = parseStructDecl(state, doccomment, False, pub)
 	elif state.tok.type == TokenType.UNION:
 		decl = parseUnionDecl(state, doccomment, False, pub)
 	elif state.tok.type == TokenType.ENUM:

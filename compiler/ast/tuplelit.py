@@ -1,5 +1,5 @@
 from .ast               import AST
-from ..types            import USize, Void, ArrayType, getAlignedSize, PtrType
+from ..types            import USize, Void, ArrayType, getAlignedSize, PtrType, generateFieldLayout
 from ..symbol.tuple     import TupleType
 from ..mir.createstruct import CreateStruct, FieldInit
 from ..mir.primitive    import IntValue
@@ -52,7 +52,7 @@ class TupleLit(AST):
 		
 		resolvedType = implicitType
 		if resolvedType == None:
-			layout = state.generateFieldLayout([access.type for access in accesses])
+			layout = generateFieldLayout([access.type for access in accesses])
 			resolvedType = TupleType.generateAnonTupleType(layout)
 		
 		inits = []

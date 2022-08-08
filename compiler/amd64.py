@@ -1806,7 +1806,7 @@ def declareExterns(mod, output, visited=None):
 		declareExterns(decl, output, visited)
 	
 	for decl in mod.fns:
-		if mod.isImport and not decl.pub:
+		if decl.isGeneric:
 			continue
 		if decl.extern or decl.isImport:
 			output.write('extern {}\n'.format(decl.mangledName))
@@ -1823,7 +1823,7 @@ def declareFns(mod, output, visited=None):
 		declareFns(decl, output, visited)
 	
 	for decl in mod.fns:
-		if decl.pub and not (decl.extern or decl.isImport):
+		if not (decl.extern or decl.isImport):
 			output.write('global {}\n'.format(decl.mangledName))
 
 def bytesDef(bytes):

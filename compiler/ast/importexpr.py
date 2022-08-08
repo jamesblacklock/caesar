@@ -168,7 +168,7 @@ class Import(AST):
 		if name.content in mod.symbolTable:
 			otherDecl = mod.symbolTable[name.content]
 			logError(state, name.span, 'import name collides with locally defined symbol')
-			logExplain(state, otherDecl.nameSpan, '`{}` locally defined declared here'.format(name.content))
+			logExplain(state, otherDecl.nameSpan, '`{}` locally defined symbol declared here'.format(name.content))
 		else:
 			symbol.nameSpan = name.span
 			mod.symbolTable[name.content] = symbol

@@ -33,10 +33,10 @@ class FnDecl(ValueSymbolAST):
 					continue
 				
 				if param.valueType:
-					symbol = GenericAssocConst(param, None, param.span)
+					symbol = GenericAssocConst(self, param, None, param.span)
 				else:
-					symbol = GenericAssocType(param, None, param.span)
-					symbol.type = GenericType(param.name.content, param.name.span, symbol)
+					t = GenericType(param.name.content, param.name.span, symbol)
+					symbol = GenericAssocType(self, param, t, param.span)
 			
 			genericParams.append(param)
 			genericSymbolTable[param.name.content] = symbol

@@ -30,7 +30,6 @@ class FnCall(AST):
 				if name in selfArg.type.symbolTable:
 					symbol = selfArg.type.symbolTable[name]
 					if selfArg.type.isGenericType:
-						state.refType(selfArg.type, always=True)
 						genericTypeSymbol = selfArg.type.symbol
 					if selfArg.type.symbol and selfArg.type.symbol.isImport and not symbol.pub:
 						symbol = None
@@ -78,6 +77,7 @@ class FnCall(AST):
 		
 		fnType = None
 		selfArg = None
+		
 		if access and access.type:
 			if not access.type.isFnType:
 				logError(state, self.expr.span, 'the expression cannot be called as a function')
@@ -87,6 +87,8 @@ class FnCall(AST):
 					selfArg = self.args[0]
 					if len(fnType.params) > 0 and fnType.params[0].type.isPtrType:
 						selfArg = Address(selfArg, fnType.params[0].type.mut, selfArg.span)
+					elif genericTypeSymbol and genericTypeSymbol.type.byteSize == 0:
+						state.genericReq.add(genericTypeSymbol)
 				
 				if fnType.unsafe and not state.scope.allowUnsafe:
 					logError(state, self.expr.span, 'unsafe function called in a safe context')

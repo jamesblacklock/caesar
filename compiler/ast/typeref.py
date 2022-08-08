@@ -33,7 +33,7 @@ class ParamTypeRef(TypeRef):
 		self.inst = inst
 	
 	def resolveSig(self, state, flow=None):
-		symbol = self.inst.constructType(flow if flow else CFGBuilder(state, self, state.mod))
+		symbol = self.inst.constructType(flow if flow else CFGBuilder(state, None, state.mod, self.span))
 		if symbol:
 			return symbol.type
 
@@ -97,7 +97,7 @@ class ArrayTypeRef(TypeRef):
 		baseType = self.baseType.resolveSig(state)
 		
 		if flow == None:
-			state = CFGBuilder(state, self, state.mod)
+			state = CFGBuilder(state, None, state.mod, self.span)
 		else:
 			state = flow
 		

@@ -29,6 +29,7 @@ class Fn(ValueSymbol):
 		self.inline = False
 		self.genericReq = set()
 		self.isGeneric = genericParams != None
+		self.genericInc = None
 	
 	def checkSig(self, state):
 		if self.genericSymbolTable:
@@ -90,7 +91,7 @@ class Fn(ValueSymbol):
 		if self.genericSymbolTable:
 			state.mod = PatchMod(state.mod, self.genericSymbolTable)
 		
-		flow = CFGBuilder(state, self, state.mod)
+		flow = CFGBuilder(state, self, state.mod, self.span)
 		flow.beginScope(self.ast.body.span, unsafe=self.unsafe)
 		
 		for param in self.params:
@@ -112,6 +113,8 @@ class Fn(ValueSymbol):
 			self.cfg = flow.blocks
 			self.genericReq.update(flow.genericReq)
 			self.isGeneric = len(self.genericReq) > 0
+			if self.isGeneric:
+				self.mod = state.mod
 			# if self.isDropFnForType:
 			# 	self.checkDropFnScope(state)
 		
@@ -148,4 +151,4 @@ class Fn(ValueSymbol):
 		else:
 			body = ''
 		
-		return '{} {}({}){}{}\n'.format(fnStr, self.name, params, ret, body)
+		return '{} {}({}){}{}\n'.format(fnStr, self.mangledName, params, ret, body)

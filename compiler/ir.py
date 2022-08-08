@@ -19,14 +19,14 @@ class FundamentalType:
 		return str(self)
 	
 	@staticmethod
-	def fromCompositeType(resolvedType):
+	def fromCompositeType(fn, resolvedType):
 		types = []
 		aligned = True
 		for field in resolvedType.fields:
 			if field.offset % field.type.align != 0:
 				aligned = False
 			
-			t = FundamentalType.fromResolvedType(field.type)
+			t = FundamentalType.fromResolvedType(fn, field.type)
 			if t.isCompositeType:
 				for (o, f) in t.types:
 					o += field.offset
@@ -42,12 +42,15 @@ class FundamentalType:
 		return FundamentalType(resolvedType.byteSize, types, aligned=aligned)
 	
 	@staticmethod
-	def fromResolvedType(resolvedType):
+	def fromResolvedType(fn, resolvedType):
+		if fn and fn.genericInc:
+			resolvedType = resolvedType.resolveGenerics(fn.genericInc)
+		
 		assert resolvedType.byteSize
 		if resolvedType.isCompositeType:
-			return FundamentalType.fromCompositeType(resolvedType)
+			return FundamentalType.fromCompositeType(fn, resolvedType)
 		elif resolvedType.isEnumType:
-			return FundamentalType.fromCompositeType(resolvedType.structType)
+			return FundamentalType.fromCompositeType(fn, resolvedType.structType)
 		elif resolvedType.isFloatType:
 			if resolvedType.byteSize == 4:
 				return F32
@@ -95,6 +98,7 @@ class Imm(Instr):
 		super().__init__(ast)
 		self.type = type
 		self.value = value
+		assert value != None
 		
 	def affectStack(self, state):
 		state.pushOperand(self.type)
@@ -796,7 +800,7 @@ class IRState:
 			if instParam.type.isVoidType:
 				continue
 			
-			fType = FundamentalType.fromResolvedType(instParam.type)
+			fType = FundamentalType.fromResolvedType(self.ast, instParam.type)
 			inputSymbols.append(param)
 			self.paramTypes.append(fType)
 		
@@ -807,7 +811,7 @@ class IRState:
 		# 	' -> {}'.format(self.retType) if self.retType else ''))
 		
 		if not fnDecl.type.returnType.isVoidType:
-			self.retType = FundamentalType.fromResolvedType(fnDecl.type.returnType)
+			self.retType = FundamentalType.fromResolvedType(self.ast, fnDecl.type.returnType)
 	
 	def appendInstr(self, instr):
 		self.instr.append(instr)

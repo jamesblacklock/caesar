@@ -12,11 +12,6 @@ from .symbol.static    import Static
 from .ast.importexpr   import Import
 from .                 import platform
 
-class FieldLayout:
-	def __init__(self, align, byteSize, fields):
-		self.align = align
-		self.byteSize = byteSize
-		self.fields = fields
 
 def finishAnalyzingTupleType(state, resolvedType, deps):
 	for field in resolvedType.fields:
@@ -118,6 +113,8 @@ class AnalyzerState:
 		self.isImport = isImport
 		self.ast = ast
 		self.mod = None
+		self.fnInsts = {}
+		self.typeInsts = {}
 	
 	def analyze(self, ast, forceRebuilds=None, checkOnly=None, isImport=None):
 		if forceRebuilds == None:
@@ -148,6 +145,7 @@ class AnalyzerState:
 		
 		ast.checkSig(self)
 		ast.analyze(self, Deps(ast))
+		ast.fns.extend(self.fnInsts.values())
 		
 		if self.failed:
 			exit(1)
@@ -219,52 +217,6 @@ class AnalyzerState:
 			
 			return mangled
 	
-	def generateFieldLayout(self, types, fieldNames=None, fieldInfo=None):
-		fields = []
-		maxAlign = 0
-		offset = 0
-		
-		if fieldNames == None:
-			fieldNames = (str(i) for i in range(0, len(types)))
-		if fieldInfo == None:
-			fieldInfo = (None for _ in types)
-		
-		unionSize = 0
-		sizeUnknown = False
-		
-		for (t, n, f) in zip(types, fieldNames, fieldInfo):
-			sizeUnknown = sizeUnknown or t.byteSize == None
-			
-			if t.isVoidType:
-				continue
-			
-			byteSize = t.byteSize if t.byteSize != None else 0
-			align = t.align if t.align != None else 1
-			
-			maxAlign = max(maxAlign, align)
-			
-			if offset % align > 0:
-				offset += align - offset % align
-			
-			isUnionField = f.unionField if f else False
-			noOffset     =   f.noOffset if f else False
-			pub          =        f.pub if f else True
-			mut          =        f.mut if f else True
-			
-			fields.append(FieldInfo(n, t, offset, isUnionField, pub, mut))
-			
-			if noOffset:
-				unionSize = max(unionSize, byteSize)
-			else:
-				offset += max(unionSize, byteSize)
-				unionSize = 0
-		
-		if unionSize > 0:
-			offset += unionSize
-		
-		byteSize = None if sizeUnknown else offset
-		return FieldLayout(maxAlign, byteSize, fields)
-	
 	def lookupSymbol(self, path, symbolTable=None, implicitType=None, inTypePosition=False, inValuePosition=False):
 		symbolName = path[0]
 		path = path[1:]
@@ -289,7 +241,7 @@ class AnalyzerState:
 		
 		if symbol == None and implicitType and implicitType.isEnumType and symbolName.content in implicitType.symbolTable:
 			symbol = implicitType.symbolTable[symbolName.content]
-		elif symbol.symbolType == SymbolType.PARAM_TYPE:
+		elif symbol and symbol.symbolType == SymbolType.PARAM_TYPE:
 			if implicitType and implicitType.isStructType and implicitType.symbol.paramType:
 				symbol = ParamTypeInst(implicitType.symbol.paramType, implicitType)
 		

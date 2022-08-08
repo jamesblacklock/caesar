@@ -56,10 +56,14 @@ class Type:
 		
 		return False
 	
-	def resolveGenerics(self, symbolTable):
+	def resolveGenerics(self, genericInc):
 		if self.isGenericType:
 			assert 0
 		return self
+	
+	def refGenericType(self, state):
+		if self.isGenericType:
+			assert 0
 	
 	def __str__(self):
 		if self.name == None:
@@ -80,22 +84,30 @@ class OwnedType(Type):
 		self.acquireSpan = acquireSpan
 		self.releaseSpan = releaseSpan
 	
+	def typeAfterDeref(self, count=1):
+		assert self.baseType.isPtrType
+		return self.baseType.typeAfterDeref(count)
+	
 	def updateName(self):
 		self.baseType.updateName()
 		self.name = 'owned({}, {}) {}'.format(
 			self.acquire.name if self.acquire else '<unknown>', 
 			self.release.name if self.release else '<unknown>', self.baseType.name)
 	
-	def resolveGenerics(self, symbolTable):
+	def resolveGenerics(self, genericInc):
 		if not self.isGenericType:
 			return self
 		return OwnedType(
-			self.baseType.resolveGenerics(symbolTable), 
+			self.baseType.resolveGenerics(genericInc), 
 			self.acquire, 
 			self.release, 
 			self.acquireSpan, 
 			self.releaseSpan, 
 			self.span)
+
+	def refGenericType(self, state):
+		if self.isGenericType:
+			self.baseType.refGenericType(state)
 
 class PrimitiveType(Type):
 	def __init__(self, name, byteSize, isIntType=False, 
@@ -124,10 +136,10 @@ class OptionType(Type):
 		self.types = types
 		self.isGenericType = len([None for t in types if t.isGenericType]) > 0
 	
-	def resolveGenerics(self, symbolTable):
+	def resolveGenerics(self, genericInc):
 		if not self.isGenericType:
 			return self
-		return OptionType([t.resolveGenerics(symbolTable) for t in self.types])
+		return OptionType([t.resolveGenerics(genericInc) for t in self.types])
 
 class FnType(Type):
 	def __init__(self, unsafe, params, returnType, cVarArgs, cconv):
@@ -158,22 +170,23 @@ class FnType(Type):
 			'...' if self.cVarArgs else '',
 			self.returnType.name)
 	
-	def resolveGenerics(self, symbolTable):
+	def resolveGenerics(self, genericInc):
 		if not self.isGenericType:
 			return self
 		return FnType(
 			self.unsafe, 
-			[p.resolveGenericParam(symbolTable) for p in self.params], 
-			self.returnType.resolveGenerics(symbolTable), 
+			[p.resolveGenericParam(genericInc) for p in self.params], 
+			self.returnType.resolveGenerics(genericInc), 
 			self.cVarArgs, 
 			self.cconv)
 
 class FieldInfo:
-	def __init__(self, name, symbolType, offset, isUnionField=False, pub=True, mut=True):
+	def __init__(self, name, symbolType, offset, isUnionField=False, noOffset=False, pub=True, mut=True):
 		self.name = name
 		self.type = symbolType
 		self.offset = offset
 		self.isUnionField = isUnionField
+		self.noOffset = noOffset
 		self.pub = pub
 		self.mut = mut
 
@@ -220,10 +233,14 @@ class PtrType(Type):
 		else:
 			return PtrType(self.baseType, self.indLevel - count, self.mut)
 	
-	def resolveGenerics(self, symbolTable):
+	def resolveGenerics(self, genericInc):
 		if not self.isGenericType:
 			return self
-		return PtrType(self.baseType.resolveGenerics(symbolTable), self.indLevel, self.mut)
+		return PtrType(self.baseType.resolveGenerics(genericInc), self.indLevel, self.mut)
+	
+	def refGenericType(self, state):
+		if self.isGenericType:
+			self.baseType.refGenericType(state)
 
 class ArrayFields:
 	def __init__(self, elementType, count):
@@ -270,10 +287,14 @@ class ArrayType(Type):
 		self.baseType.updateName()
 		self.name = '[{} * {}]'.format(self.baseType.name, self.count)
 	
-	def resolveGenerics(self, symbolTable):
+	def resolveGenerics(self, genericInc):
 		if not self.isGenericType:
 			return self
-		return ArrayType(self.baseType.resolveGenerics(symbolTable), self.count)
+		return ArrayType(self.baseType.resolveGenerics(genericInc), self.count)
+	
+	def refGenericType(self, state):
+		if self.isGenericType:
+			self.baseType.refGenericType(state)
 
 # class IndefiniteIntType(Type):
 # 	def __init__(self, initialValue):
@@ -390,6 +411,62 @@ ISize.MIN = ISZ_MIN
 ISize.MAX = ISZ_MAX
 ISize.RNG = ISZ_RNG
 
+class FieldLayout:
+	def __init__(self, align, byteSize, fields):
+		self.align = align
+		self.byteSize = byteSize
+		self.fields = fields
+
+def generateFieldLayout(types, fieldNames=None, fieldInfo=None, genericInc=None):
+	fields = []
+	maxAlign = 0
+	offset = 0
+	
+	if fieldNames == None:
+		fieldNames = (str(i) for i in range(0, len(types)))
+	if fieldInfo == None:
+		fieldInfo = (None for _ in types)
+	
+	unionSize = 0
+	sizeUnknown = False
+	
+	for (t, n, f) in zip(types, fieldNames, fieldInfo):
+		if genericInc:
+			t = t.resolveGenerics(genericInc)
+			assert t.byteSize != None
+		
+		sizeUnknown = sizeUnknown or t.byteSize == None
+		
+		if t.isVoidType:
+			continue
+		
+		byteSize = t.byteSize if t.byteSize != None else 0
+		align = t.align if t.align != None else 1
+		
+		maxAlign = max(maxAlign, align)
+		
+		if offset % align > 0:
+			offset += align - offset % align
+		
+		isUnionField = f.unionField if f else False
+		noOffset     =   f.noOffset if f else False
+		pub          =        f.pub if f else True
+		mut          =        f.mut if f else True
+		
+		fields.append(FieldInfo(n, t, offset, isUnionField, noOffset, pub, mut))
+		
+		if noOffset:
+			unionSize = max(unionSize, byteSize)
+		else:
+			offset += max(unionSize, byteSize)
+			unionSize = 0
+	
+	if unionSize > 0:
+		offset += unionSize
+	
+	byteSize = None if sizeUnknown else offset
+	return FieldLayout(maxAlign, byteSize, fields)
+
 def allFields(t):
 	if not t.isCompositeType:
 		return set()
@@ -424,6 +501,11 @@ def typesMatch(type1, type2, selfType=None):
 	assert type1 and type2 and not (type1.isUnknown or type2.isUnknown)
 	
 	if type1 == type2:
+		return True
+	elif not type1.isGenericType and type2.isGenericType and type1.symbol and type1.symbol.paramType == type2.symbol.paramType:
+		# This is for a (hacky?) special case where the concrete type is irrelevant to code generation
+		# due to being accessed solely via a pointer.
+		# TODO: make sure that this can't possible slip through in any other situation!
 		return True
 	elif type1.isPtrType and type2.isPtrType:
 		if type1.indLevel != type2.indLevel:

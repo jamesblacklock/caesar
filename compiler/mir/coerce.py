@@ -37,7 +37,7 @@ class Coerce(MIR):
 	
 	def writeTraitCoercionIR(self, state):
 		vtblName = self.access.type.baseType.traitImpls[self.type.baseType].vtblName
-		fType = ir.FundamentalType.fromResolvedType(self.type)
+		fType = ir.FundamentalType.fromResolvedType(state.ast, self.type)
 		
 		state.appendInstr(ir.Res(self, fType))
 		
@@ -66,8 +66,8 @@ class Coerce(MIR):
 		
 		fromSigned = self.access.type.isSigned
 		toSigned = self.type.isSigned
-		fromType = ir.FundamentalType.fromResolvedType(fromType)
-		toType = ir.FundamentalType.fromResolvedType(toType)
+		fromType = ir.FundamentalType.fromResolvedType(state.ast, fromType)
+		toType = ir.FundamentalType.fromResolvedType(state.ast, toType)
 		
 		if fromType.byteSize == toType.byteSize and fromType.isFloatType == toType.isFloatType:
 			assert 0

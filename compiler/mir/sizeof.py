@@ -13,9 +13,8 @@ class GenericSizeof(MIR):
 		pass
 	
 	def writeIR(self, state):
-		symbol = state.ast.genericInc[self.symbol]
-		assert symbol.type.byteSize != None
-		state.appendInstr(Imm(self, IPTR, symbol.type.byteSize))
+		t = self.symbol.type.resolveGenerics(state.ast.genericInc)
+		state.appendInstr(Imm(self, IPTR, t.byteSize))
 	
 	def __str__(self):
-		return '$label({})'.format(self.label)
+		return 'sizeof {}'.format(self.symbol.name)

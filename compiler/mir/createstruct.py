@@ -93,7 +93,7 @@ class CreateStruct(MIR):
 			self.typeModifiers.uninitFields = flattened
 	
 	def writeIR(self, state):
-		fType = ir.FundamentalType.fromResolvedType(self.type)
+		fType = ir.FundamentalType.fromResolvedType(state.ast, self.type)
 		state.appendInstr(ir.Res(self, fType))
 		
 		for init in self.inits:
@@ -102,6 +102,9 @@ class CreateStruct(MIR):
 			state.appendInstr(ir.FieldW(self, 2))
 	
 	def staticEval(self, state):
+		if self.type.byteSize == None:
+			return None
+		
 		structBytes = [0 for _ in range(0, self.type.byteSize)]
 		for init in self.inits:
 			staticFieldValue = init.access.staticEval(state)
@@ -112,7 +115,7 @@ class CreateStruct(MIR):
 			end = init.offset + len(fieldBytes)
 			structBytes[init.offset : end] = fieldBytes
 		
-		fType = ir.FundamentalType.fromResolvedType(self.type)
+		fType = ir.FundamentalType.fromResolvedType(state.fn, self.type)
 		return StaticData(structBytes, StaticDataType.BYTES, fType)
 	
 	def __str__(self):

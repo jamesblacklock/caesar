@@ -15,6 +15,8 @@ class Field(AST):
 		super().__init__(span, True)
 		self.expr = expr
 		self.path = path
+		self.privateAccess = False
+		self.leakOwned = False
 	
 	def analyze(self, state, implicitType):
 		return access.SymbolAccess.analyzeSymbolAccess(state, self, implicitType)

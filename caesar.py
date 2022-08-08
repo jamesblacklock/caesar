@@ -245,6 +245,7 @@ def main(args):
 			
 			if platform.MacOS:
 				linker = ('ld -e _caesar_start -macosx_version_min 10.8 -arch x86_64 {} ' + 
+					'-L/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/lib ' +
 					'-lc -lSystem -no_pie -o {}').format(' '.join(allObjFileNames), binFileName)
 			elif platform.Linux:
 				linker = ('ld -no-pie -e _start -A elf64 {} /usr/local/musl/lib/libc.a ' + 

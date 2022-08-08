@@ -1,5 +1,5 @@
 from .symbol import Symbol, SymbolType
-from ..types import Type
+from ..types import Type, generateFieldLayout
 from .mod    import PatchMod
 from ..log   import logError, logExplain
 
@@ -69,7 +69,7 @@ class Struct(Symbol):
 		for fieldType in self.types:
 			state.finishResolvingType(fieldType)
 		
-		layout = state.generateFieldLayout(self.types, self.fieldNames, self.fieldDecls)
+		layout = generateFieldLayout(self.types, self.fieldNames, self.fieldDecls)
 		self.type.applyLayout(layout)
 
 class StructType(Type):
@@ -94,6 +94,27 @@ class StructType(Type):
 		if self.anon:
 			self.name = '{{{}}}'.format(', '.join('{}: {}'.format(f.name, f.type.name) for f in self.fields))
 	
-	def resolveGenerics(self, symbolTable):
-		if self.name in symbolTable:
-			return symbolTable[self.name].type
+	def resolveGenerics(self, genericInc):
+		if not self.isGenericType:
+			return self
+		
+		if self.symbol in genericInc:
+			return genericInc[self.symbol].type
+		elif self.symbol.paramType:
+			# This is for a (hacky?) special case where the concrete type is irrelevant to code generation
+			# due to being accessed solely via a pointer. (cf. "types.py")
+			# TODO: make sure that this can't possible slip through in any other situation!
+			return self
+		
+		layout = generateFieldLayout(self.symbol.types, self.symbol.fieldNames, self.symbol.fieldDecls, genericInc=genericInc)
+		t = StructType(self.symbol.name, self.symbol.span, self.symbol)
+		t.applyLayout(layout)
+		return t
+	
+	def refGenericType(self, state):
+		if self.isGenericType:
+			if self.symbol and self.symbol.paramType:
+				state.genericReq.add(self.symbol)
+			# else:
+			for f in self.fields:
+				f.type.refGenericType(state)

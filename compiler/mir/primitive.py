@@ -44,11 +44,11 @@ class IntValue(MIR):
 		pass
 	
 	def staticEval(self, state):
-		fType = FundamentalType.fromResolvedType(self.type)
+		fType = FundamentalType.fromResolvedType(state.fn, self.type)
 		return StaticData(self.value, StaticDataType.INT, fType)
 	
 	def writeIR(self, state):
-		fType = FundamentalType.fromResolvedType(self.type)
+		fType = FundamentalType.fromResolvedType(state.ast, self.type)
 		state.appendInstr(Imm(self, fType, self.value))
 	
 	def __str__(self):
@@ -64,7 +64,7 @@ class FloatValue(MIR):
 		pass
 	
 	def writeIR(self, state):
-		fType = FundamentalType.fromResolvedType(self.type)
+		fType = FundamentalType.fromResolvedType(state.ast, self.type)
 		state.appendInstr(Imm(self, fType, self.value))
 	
 	def __str__(self):
