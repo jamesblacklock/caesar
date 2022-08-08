@@ -12,7 +12,6 @@ from .symbol.static    import Static
 from .ast.importexpr   import Import
 from .                 import platform
 
-
 def finishAnalyzingTupleType(state, resolvedType, deps):
 	for field in resolvedType.fields:
 		field.type = state.finishResolvingType(field.type, deps)
