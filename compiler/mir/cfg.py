@@ -468,7 +468,7 @@ class CFGBlock:
 					if field.type.isOwnedType and not parentDropFn:
 						logError(state, symbol.span, 
 							'owned value in field `{}` was not discarded'.format(field.name))
-						logExplain(state, span.endSpan(), 'value escapes here')
+						logExplain(state, dropPoint.span, 'value escapes here')
 					elif field.type.dropFn:
 						logWarning(state, symbol.span, 
 							'I can\'t drop `enum`s properly; field `{}` will not be dropped'.format(field.name))

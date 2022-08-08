@@ -2,9 +2,9 @@ from .ast          import AST
 from ..types       import typesMatch, Void
 from ..log         import logError
 
-def isInLoop(state):
+def isInLoop(state, span, isContinue):
 	if len(state.breakBlocks) == 0:
-		logError(state, expr.span, '`{}` expression is not inside a loop'
+		logError(state, span, '`{}` expression is not inside a loop'
 			.format('continue' if isContinue else 'break'))
 		return False
 	return True
@@ -14,7 +14,7 @@ class Break(AST):
 		super().__init__(span)
 	
 	def analyze(self, state, implicitType):
-		if isInLoop(state):
+		if isInLoop(state, self.span, False):
 			state.doBreak()
 
 class Continue(AST):
@@ -22,7 +22,7 @@ class Continue(AST):
 		super().__init__(span)
 	
 	def analyze(self, state, implicitType):
-		if isInLoop(state):
+		if isInLoop(state, self.span, True):
 			state.doContinue()
 
 class Return(AST):

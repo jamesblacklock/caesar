@@ -102,7 +102,7 @@ class SymbolAccess(MIR):
 		else:
 			access = SymbolRead(expr.span)
 		
-		__analyzeSymbolAccess(state, expr, access, implicitType)
+		_SymbolAccess__analyzeSymbolAccess(state, expr, access, implicitType)
 		
 		if access.write and access.symbol and (access.symbol.dropFn or access.deref or access.isFieldAccess):
 			(tempSymbol, tempWrite, tempRead) = createTempTriple(access.rvalue)

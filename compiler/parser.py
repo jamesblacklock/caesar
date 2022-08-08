@@ -873,7 +873,8 @@ def parseTypeRef(state):
 	elif state.tok.type == TokenType.NAME:
 		return parseNamedTypeRef(state)
 	else:
-		logError(state, state.tok.span, 'expected type reference, found {}'.format(typesStr, state.tok.type.desc()))
+		logError(state, state.tok.span, 'expected type reference, found {}'.format(state.tok.type.desc()))
+		state.advance()
 		return None
 
 def parseSimpleFnCall(state, expr):
@@ -1976,7 +1977,8 @@ def parseExpr(state, exprClass, precedence=0, noSkipSpace=False, allowSimpleFnCa
 		# decl = parseAlias(state, doccomment)
 	elif state.tok.type == TokenType.TYPE:
 		if exprClass == ExprClass.TRAIT:
-			decl = parseTraitTypeDecl(state, doccomment)
+			# decl = parseTraitTypeDecl(state, doccomment)
+			assert 0
 		else:
 			decl = parseTypeDecl(state, doccomment)
 	elif state.tok.type == TokenType.FN or \
@@ -1984,7 +1986,8 @@ def parseExpr(state, exprClass, precedence=0, noSkipSpace=False, allowSimpleFnCa
 		decl = parseFnDecl(state, doccomment, pub, extern, cconv, exprClass == ExprClass.TRAIT)
 	elif state.tok.type == TokenType.STATIC:
 		if exprClass == ExprClass.TRAIT:
-			decl = parseTraitStaticDecl(state, doccomment, extern)
+			# decl = parseTraitStaticDecl(state, doccomment, extern)
+			assert 0
 		else:
 			decl = parseStaticDecl(state, doccomment, extern)
 	elif state.tok.type == TokenType.TUPLE:
@@ -2005,7 +2008,8 @@ def parseExpr(state, exprClass, precedence=0, noSkipSpace=False, allowSimpleFnCa
 		decl = parseEnumDecl(state, doccomment)
 	elif state.tok.type == TokenType.CONST:
 		if exprClass == ExprClass.TRAIT:
-			decl = parseTraitConstDecl(state, doccomment)
+			# decl = parseTraitConstDecl(state, doccomment)
+			assert 0
 		else:
 			decl = parseConstDecl(state, doccomment)
 	elif state.tok.type in VALUE_EXPR_TOKS:

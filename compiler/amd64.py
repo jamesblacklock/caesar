@@ -36,7 +36,7 @@ def sizeInd(type):
 		return 'qword'
 
 def floatToHex(value, byteSize):
-	if target.type.byteSize == 4:
+	if byteSize == 4:
 		return hex(ctypes.c_uint32.from_buffer(ctypes.c_float(value)).value)
 	else:
 		return hex(ctypes.c_uint64.from_buffer(ctypes.c_double(value)).value)
@@ -1030,7 +1030,7 @@ def ftoi(state, ir, nextIR):
 def neg(state, ir, nextIR):
 	target = state.getOperand(0)
 	if target.storage == Storage.IMM:
-		target.value = -src.value
+		target.value = -target.value
 	else:
 		state.appendInstr('neg', Operand(target, Usage.SRC))
 
@@ -1079,7 +1079,7 @@ def addOrSub(state, ir, isAdd):
 		restoreReg(state, restoreRAX, state.rax)
 	
 	if restoreR9:
-		restoreReg(state, restoreRDI, state.r9)
+		restoreReg(state, restoreR9, state.r9)
 	
 	state.popOperand()
 	state.popOperand()
@@ -1396,7 +1396,7 @@ def fcmp(state, ir, nextIR):
 		l = reg
 	
 	if r.storage == Storage.REG:
-		reg = state.findXmmReg(dest.type)
+		reg = state.findXmmReg(r.type)
 		if reg == None:
 			reg = state.xmm9
 			stack = saveReg(state, reg)
