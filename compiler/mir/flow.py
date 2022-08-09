@@ -258,12 +258,14 @@ class CFGBuilder:
 			return self.block.symbolState[symbol].staticValue
 		return None
 	
-	def lookupSymbol(self, path, symbolTable=None, implicitType=None, inTypePosition=False, inValuePosition=False):
-		if symbolTable and self.scope:
+	def lookupSymbol(self, path, symbolTable=None, implicitType=None, inTypePosition=False, inValuePosition=False, inTable=False):
+		if inTable:
+			pass
+		elif symbolTable and self.scope:
 			symbolTable = {**symbolTable, **self.scope.symbolTable}
 		elif self.scope:
 			symbolTable = self.scope.symbolTable
-		res = self.ssstate.lookupSymbol(path, symbolTable, implicitType, inTypePosition, inValuePosition)
+		res = self.ssstate.lookupSymbol(path, symbolTable, implicitType, inTypePosition, inValuePosition, inTable)
 		self.failed = self.failed or self.ssstate.failed
 		return res
 	

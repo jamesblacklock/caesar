@@ -216,7 +216,7 @@ class AnalyzerState:
 			
 			return mangled
 	
-	def lookupSymbol(self, path, symbolTable=None, implicitType=None, inTypePosition=False, inValuePosition=False):
+	def lookupSymbol(self, path, symbolTable=None, implicitType=None, inTypePosition=False, inValuePosition=False, inTable=False):
 		symbolName = path[0]
 		path = path[1:]
 		
@@ -229,6 +229,8 @@ class AnalyzerState:
 			return None
 		elif symbolTable and symbolName.content in symbolTable:
 			symbol = symbolTable[symbolName.content]
+		elif inTable:
+			symbol = None
 		else:
 			mod = self.mod
 			symbol = None

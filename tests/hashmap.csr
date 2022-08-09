@@ -23,7 +23,7 @@ pub struct HashMap[type El]
 impl HashMap
     pub fn new() -> HashMap
         let capacity = 128usz
-        let buckets = unsafe calloc(sizeof Item[El], capacity) as owned(malloc, free) &mut Item::[El]
+        let buckets = unsafe calloc(sizeof Item[El], capacity) as owned(malloc, free) &mut Item[El]
         
         HashMap
             capacity: capacity

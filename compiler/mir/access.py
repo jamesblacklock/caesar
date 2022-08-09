@@ -1,6 +1,6 @@
 from enum           import Enum
 from .mir           import MIR, StaticDataType
-from ..ast          import deref, valueref, field, asgn, address
+from ..ast          import deref, valueref, field, asgn, address, genericinst
 from ..types        import typesMatch, tryPromote, getAlignedSize, PtrType, USize
 from ..             import ir
 from ..log          import logError
@@ -486,9 +486,15 @@ def _SymbolAccess__analyzeSymbolAccess(state, expr, access, implicitType=None):
 	from ..attrs        import invokeAttrs
 	invokeAttrs(state, expr)
 	
-	if type(expr) == valueref.ValueRef:
-		symbolTable = implicitType.symbolTable if implicitType else None
-		access.symbol = state.lookupSymbol(expr.path, symbolTable, inValuePosition=True)
+	if type(expr) in (valueref.ValueRef, genericinst.GenericInstValueRef):
+		if type(expr) == genericinst.GenericInstValueRef:
+			t = state.resolveTypeRef(expr.paramTypeRef)
+			if t:
+				access.symbol = state.lookupSymbol(expr.path, t.symbolTable, None, inValuePosition=True, inTable=True)
+		else:
+			symbolTable = implicitType.symbolTable if implicitType else None
+			access.symbol = state.lookupSymbol(expr.path, symbolTable, inValuePosition=True)
+		
 		if access.symbol:
 			if implicitType and access.symbol.type and access.symbol.type.canChangeTo(implicitType):
 				access.symbol.type = implicitType

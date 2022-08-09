@@ -59,6 +59,16 @@ class GenericConstructor:
 		self.incomplete = incomplete
 		self.failed = failed
 
+class GenericInstValueRef(AST):
+	def __init__(self, paramTypeRef, path, span):
+		super().__init__(span, True)
+		self.paramTypeRef = paramTypeRef
+		self.path = path
+		self.leakOwned = False
+	
+	def analyze(self, state, implicitType):
+		return SymbolAccess.analyzeSymbolAccess(state, self, implicitType)
+
 class GenericInst(AST):
 	def __init__(self, path, args, span):
 		super().__init__(span, True)
@@ -259,6 +269,9 @@ class FnInst(ValueSymbol):
 		self.genericReq = None
 		self.isGeneric = False
 		self.ir = None
+
+		# HACKY!
+		self.contracts = set()
 	
 	@staticmethod
 	def getFnInst(state, fn, symbolTable, argInfo):

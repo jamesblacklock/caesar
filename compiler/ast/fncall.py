@@ -143,7 +143,7 @@ class FnCall(AST):
 			cVarArgs = args[len(fnType.params):]
 			args = args[:len(fnType.params)]
 		
-		returnType = fnType.returnType if fnType else Void
+		returnType = fnType.returnType if fnType else None
 		if access == None or argFailed:
 			mir = None
 		else:

@@ -1,3 +1,5 @@
+#! /usr/local/bin/python3 ./caesar.py --run
+
 @@no_arr
 
 import hashmap::HashMap

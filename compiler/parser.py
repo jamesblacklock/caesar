@@ -37,7 +37,7 @@ from .ast.isexpr      import Pattern, IsExpr
 from .ast.importexpr  import Import, ImportTree
 from .ast.sizeof      import Sizeof, Offsetof
 from .ast.typeparam   import TypeParam
-from .ast.genericinst import GenericInst
+from .ast.genericinst import GenericInst, GenericInstValueRef
 from .types           import BUILTIN_TYPES
 
 INFIX_PRECEDENCE = {
@@ -664,14 +664,14 @@ def parseBlock(state, parseItem, blockMarkers=BlockMarkers.BRACE,
 		if needsTerm:
 			if expectType(state, TokenType.INDENT, TokenType.COMMA, TokenType.SEMICOLON, \
 				TokenType.NEWLINE, closeMarker) == False:
-				state.skipUntil(closeMarker)
+				state.skipUntil(closeMarker, TokenType.COMMA, TokenType.SEMICOLON)
 		else:
 			if expectType(state, TokenType.INDENT, TokenType.COMMA, TokenType.SEMICOLON, \
 				TokenType.NEWLINE, TokenType.EOF) == False:
-				break
+				state.skipUntil(TokenType.NEWLINE, TokenType.COMMA, TokenType.SEMICOLON)
 		
-		# skip the comma (it's just a separator)
-		if state.tok.type == TokenType.COMMA or state.tok.type == TokenType.SEMICOLON:
+		# skip separators and continue on to next item in the block
+		if state.tok.type in (TokenType.COMMA, TokenType.SEMICOLON):
 			state.advance()
 			trailingSeparator = True
 	
@@ -840,16 +840,16 @@ def parseTypeRefOrValueExpr(state):
 	
 	return result
 
+def parseParamTypeInst(state, path):
+	args = parseBlock(state, parseTypeRefOrValueExpr, BlockMarkers.BRACK, True)
+	inst = GenericInst(path.path, args.list, Span.merge(path.span, args.span))
+	return ParamTypeRef(inst, inst.span)
+
 def parseNamedTypeRef(state):
 	path = parsePath(state)
 	
-	if state.tok.type == TokenType.PATH and state.nextTok.type == TokenType.LBRACK:
-		state.advance()
-	
 	if state.tok.type == TokenType.LBRACK:
-		args = parseBlock(state, parseTypeRefOrValueExpr, BlockMarkers.BRACK, True)
-		inst = GenericInst(path.path, args.list, Span.merge(path.span, args.span))
-		return ParamTypeRef(inst, inst.span)
+		return parseParamTypeInst(state, path)
 	else:
 		return NamedTypeRef(path.path, path.span)
 
@@ -1030,6 +1030,43 @@ def parseAddress(state):
 	
 	span = Span.merge(span, expr.span)
 	return Address(expr, mut, span)
+
+def parseIndexOrParamTypeExpr(state, expr):
+	if type(expr) != ValueRef:
+		return parseIndex(state, expr)
+	
+	offset = state.offset
+	state.advance()
+	nest = 1
+	while nest > 0:
+		if state.tok.type == TokenType.LBRACK:
+			nest += 1
+		elif state.tok.type == TokenType.RBRACK:
+			nest -= 1
+		elif state.tok.type == TokenType.EOF:
+			break
+
+		state.advance()
+		state.skipSpace()
+	
+	isParamType = isStructStart(state) or state.tok.type == TokenType.PATH
+
+	state.rollback(offset)
+
+	if not isParamType:
+		return parseIndex(state, expr)
+	
+	typeRef = parseParamTypeInst(state, Path(expr.path, expr.span))
+
+	if state.tok.type == TokenType.PATH:
+		state.advance()
+		if expectType(state, TokenType.NAME):
+			path = parsePath(state)
+			return GenericInstValueRef(typeRef, path.path, path.span)
+		else:
+			return expr
+	else:
+		return parseStructLit(state, typeRef)
 
 def parseIndex(state, expr):
 	state.advance()
@@ -1376,16 +1413,7 @@ def parseValueExprImpl(state, precedence, noSkipSpace, allowSimpleFnCall):
 		expr = TupleLit(block.list, block.span)
 	elif state.tok.type == TokenType.NAME:
 		path = parsePath(state)
-		
-		if state.tok.type == TokenType.PATH and state.nextTok.type == TokenType.LBRACK:
-			state.advance()
-			genericBlock = parseBlock(state, parseTypeRefOrValueExpr, BlockMarkers.BRACK, True)
-			expr = GenericInst(path.path, genericBlock.list, Span.merge(path.span, genericBlock.span))
-			state.skipSpace()
-			if isStructStart(state):
-				typeRef = ParamTypeRef(expr, expr.span)
-				expr = parseStructLit(state, typeRef)
-		elif isStructStart(state):
+		if isStructStart(state):
 			typeRef = NamedTypeRef(path.path, path.span)
 			expr = parseStructLit(state, typeRef)
 		else:
@@ -1442,7 +1470,7 @@ def parseValueExprImpl(state, precedence, noSkipSpace, allowSimpleFnCall):
 	lastExpr = expr
 	while expr:
 		if state.tok.type == TokenType.LBRACK:
-			expr = parseIndex(state, expr)
+			expr = parseIndexOrParamTypeExpr(state, expr)
 		elif state.tok.type == TokenType.LPAREN:
 			expr = parseFnCall(state, expr)
 		elif state.tok.type in (TokenType.DOT, TokenType.DEREFDOT):
